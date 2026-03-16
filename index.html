@@ -1,53 +1,791 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Valquiria Inc</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Valquiria Inc. — Innovación · Precisión · Diseño</title>
+    <meta name="description" content="Valquiria Inc. — Holding de innovación: impresión 3D, material dental pedagógico, empaques termoformados, lámparas y más.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400&family=Montserrat:wght@200;300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
-<style>
-body{
-    margin:0;
-    font-family:Arial, Helvetica, sans-serif;
-    background:#0f1115;
-    color:white;
-    text-align:center;
-}
+        :root {
+            --gold: #C9A84C;
+            --gold-light: #E8D48B;
+            --gold-dark: #8B6914;
+            --black: #0A0A0A;
+            --black-soft: #111111;
+            --black-card: #141414;
+            --white: #F5F0E8;
+            --white-dim: #A09882;
+            --gray: #2A2A2A;
+            --font-display: 'Cormorant Garamond', Georgia, serif;
+            --font-body: 'Montserrat', sans-serif;
+        }
 
-header{
-    padding:80px 20px;
-}
+        html { scroll-behavior: smooth; }
 
-h1{
-    font-size:60px;
-    letter-spacing:4px;
-}
+        body {
+            font-family: var(--font-body);
+            background: var(--black);
+            color: var(--white);
+            overflow-x: hidden;
+            -webkit-font-smoothing: antialiased;
+        }
 
-p{
-    font-size:20px;
-    color:#aaa;
-}
+        /* ── PRELOADER ── */
+        .preloader {
+            position: fixed; inset: 0; z-index: 9999;
+            background: var(--black);
+            display: flex; align-items: center; justify-content: center;
+            transition: opacity 0.8s ease, visibility 0.8s ease;
+        }
+        .preloader.hidden { opacity: 0; visibility: hidden; }
+        .preloader-ring {
+            width: 60px; height: 60px;
+            border: 2px solid transparent;
+            border-top-color: var(--gold);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
 
-button{
-    margin-top:40px;
-    padding:15px 40px;
-    background:#c9a86a;
-    border:none;
-    color:black;
-    font-weight:bold;
-    font-size:18px;
-    cursor:pointer;
-}
-</style>
+        /* ── NAV ── */
+        nav {
+            position: fixed; top: 0; width: 100%; z-index: 100;
+            padding: 24px 48px;
+            display: flex; justify-content: space-between; align-items: center;
+            background: transparent;
+            transition: background 0.4s ease, backdrop-filter 0.4s ease, padding 0.4s ease;
+        }
+        nav.scrolled {
+            background: rgba(10,10,10,0.85);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            padding: 16px 48px;
+        }
+        .nav-logo {
+            font-family: var(--font-display);
+            font-size: 1.4rem;
+            font-weight: 600;
+            letter-spacing: 0.15em;
+            color: var(--gold);
+            text-decoration: none;
+            text-transform: uppercase;
+        }
+        .nav-links { display: flex; gap: 36px; list-style: none; }
+        .nav-links a {
+            font-family: var(--font-body);
+            font-size: 0.7rem;
+            font-weight: 500;
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            color: var(--white-dim);
+            text-decoration: none;
+            transition: color 0.3s ease;
+            position: relative;
+        }
+        .nav-links a::after {
+            content: '';
+            position: absolute; bottom: -4px; left: 0;
+            width: 0; height: 1px;
+            background: var(--gold);
+            transition: width 0.3s ease;
+        }
+        .nav-links a:hover { color: var(--white); }
+        .nav-links a:hover::after { width: 100%; }
+
+        .hamburger {
+            display: none; cursor: pointer;
+            flex-direction: column; gap: 5px;
+        }
+        .hamburger span {
+            width: 24px; height: 1.5px;
+            background: var(--gold);
+            transition: all 0.3s ease;
+        }
+        .hamburger.active span:nth-child(1) { transform: rotate(45deg) translate(4px, 4px); }
+        .hamburger.active span:nth-child(2) { opacity: 0; }
+        .hamburger.active span:nth-child(3) { transform: rotate(-45deg) translate(5px, -5px); }
+
+        .mobile-menu {
+            display: none;
+            position: fixed; inset: 0; z-index: 99;
+            background: rgba(10,10,10,0.97);
+            flex-direction: column;
+            align-items: center; justify-content: center; gap: 40px;
+        }
+        .mobile-menu.open { display: flex; }
+        .mobile-menu a {
+            font-family: var(--font-display);
+            font-size: 2rem; font-weight: 400;
+            letter-spacing: 0.1em;
+            color: var(--white);
+            text-decoration: none;
+            opacity: 0; transform: translateY(20px);
+            animation: fadeSlideIn 0.5s ease forwards;
+        }
+        .mobile-menu a:nth-child(1) { animation-delay: 0.1s; }
+        .mobile-menu a:nth-child(2) { animation-delay: 0.2s; }
+        .mobile-menu a:nth-child(3) { animation-delay: 0.3s; }
+        .mobile-menu a:nth-child(4) { animation-delay: 0.4s; }
+        .mobile-menu a:nth-child(5) { animation-delay: 0.5s; }
+
+        /* ── HERO ── */
+        .hero {
+            min-height: 100vh;
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            position: relative;
+            overflow: hidden;
+        }
+        .hero-bg {
+            position: absolute; inset: 0;
+            background: radial-gradient(ellipse at 50% 40%, rgba(201,168,76,0.06) 0%, transparent 60%),
+                        radial-gradient(ellipse at 20% 80%, rgba(201,168,76,0.03) 0%, transparent 50%),
+                        var(--black);
+        }
+        .hero-grain {
+            position: absolute; inset: 0;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+            opacity: 0.5;
+        }
+        .hero-lines {
+            position: absolute; inset: 0; overflow: hidden;
+        }
+        .hero-lines::before, .hero-lines::after {
+            content: '';
+            position: absolute;
+            width: 1px;
+            height: 200px;
+            background: linear-gradient(to bottom, transparent, var(--gold), transparent);
+            opacity: 0.08;
+        }
+        .hero-lines::before { left: 15%; top: 10%; animation: float 8s ease-in-out infinite; }
+        .hero-lines::after { right: 20%; bottom: 10%; animation: float 8s ease-in-out 4s infinite; }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0); opacity: 0.08; }
+            50% { transform: translateY(-40px); opacity: 0.15; }
+        }
+
+        .hero-content {
+            position: relative; z-index: 2;
+            display: flex; flex-direction: column;
+            align-items: center; text-align: center;
+            padding: 0 24px;
+        }
+        .hero-logo {
+            width: 180px; height: auto;
+            margin-bottom: 32px;
+            opacity: 0; animation: fadeIn 1.2s ease 0.3s forwards;
+            filter: drop-shadow(0 0 40px rgba(201,168,76,0.2));
+        }
+        .hero-title {
+            font-family: var(--font-display);
+            font-size: clamp(3rem, 8vw, 6.5rem);
+            font-weight: 300;
+            letter-spacing: 0.25em;
+            text-transform: uppercase;
+            color: var(--white);
+            line-height: 1.1;
+            opacity: 0; animation: fadeSlideIn 1s ease 0.6s forwards;
+        }
+        .hero-title span {
+            display: block;
+            font-size: 0.25em;
+            letter-spacing: 0.5em;
+            color: var(--gold);
+            font-family: var(--font-body);
+            font-weight: 400;
+            margin-top: 8px;
+        }
+        .hero-divider {
+            width: 60px; height: 1px;
+            background: var(--gold);
+            margin: 40px 0;
+            opacity: 0; animation: expandWidth 1s ease 1s forwards;
+        }
+        .hero-tagline {
+            font-family: var(--font-body);
+            font-size: 0.75rem;
+            font-weight: 300;
+            letter-spacing: 0.35em;
+            text-transform: uppercase;
+            color: var(--white-dim);
+            opacity: 0; animation: fadeSlideIn 1s ease 1.2s forwards;
+        }
+        .hero-scroll {
+            position: absolute; bottom: 40px; left: 50%; transform: translateX(-50%);
+            display: flex; flex-direction: column; align-items: center; gap: 8px;
+            opacity: 0; animation: fadeIn 1s ease 2s forwards;
+        }
+        .hero-scroll span {
+            font-size: 0.6rem; letter-spacing: 0.3em; text-transform: uppercase;
+            color: var(--white-dim); font-weight: 300;
+        }
+        .scroll-line {
+            width: 1px; height: 40px;
+            background: linear-gradient(to bottom, var(--gold), transparent);
+            animation: scrollPulse 2s ease-in-out infinite;
+        }
+        @keyframes scrollPulse {
+            0%, 100% { opacity: 1; transform: scaleY(1); }
+            50% { opacity: 0.3; transform: scaleY(0.6); }
+        }
+
+        @keyframes fadeIn { to { opacity: 1; } }
+        @keyframes fadeSlideIn { to { opacity: 1; transform: translateY(0); } }
+        @keyframes expandWidth { from { width: 0; } to { width: 60px; opacity: 1; } }
+
+        /* ── SECTIONS SHARED ── */
+        section {
+            padding: 120px 48px;
+            position: relative;
+        }
+        .section-label {
+            font-family: var(--font-body);
+            font-size: 0.6rem;
+            font-weight: 500;
+            letter-spacing: 0.4em;
+            text-transform: uppercase;
+            color: var(--gold);
+            margin-bottom: 20px;
+        }
+        .section-title {
+            font-family: var(--font-display);
+            font-size: clamp(2rem, 4vw, 3.5rem);
+            font-weight: 300;
+            letter-spacing: 0.08em;
+            line-height: 1.2;
+            margin-bottom: 24px;
+            color: var(--white);
+        }
+        .section-text {
+            font-size: 0.9rem;
+            font-weight: 300;
+            line-height: 1.8;
+            color: var(--white-dim);
+            max-width: 560px;
+        }
+
+        /* ── ABOUT ── */
+        .about {
+            display: flex;
+            align-items: center;
+            gap: 80px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .about-left { flex: 1; }
+        .about-right {
+            flex: 1;
+            position: relative;
+        }
+        .about-visual {
+            width: 100%; aspect-ratio: 4/5;
+            background: linear-gradient(135deg, var(--black-card), var(--gray));
+            border: 1px solid rgba(201,168,76,0.1);
+            position: relative; overflow: hidden;
+        }
+        .about-visual::before {
+            content: '';
+            position: absolute; inset: 20px;
+            border: 1px solid rgba(201,168,76,0.08);
+        }
+        .about-visual-inner {
+            position: absolute; inset: 0;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .about-visual-inner svg {
+            width: 60%; opacity: 0.08;
+        }
+        .about-stats {
+            display: flex; gap: 40px; margin-top: 48px;
+        }
+        .stat { }
+        .stat-number {
+            font-family: var(--font-display);
+            font-size: 2.5rem;
+            font-weight: 300;
+            color: var(--gold);
+        }
+        .stat-label {
+            font-size: 0.65rem;
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            color: var(--white-dim);
+            font-weight: 400;
+            margin-top: 4px;
+        }
+
+        /* ── DIVISIONS ── */
+        #divisiones { max-width: 1200px; margin: 0 auto; }
+        .divisions-header {
+            text-align: center;
+            margin-bottom: 80px;
+        }
+        .divisions-header .section-text { margin: 0 auto; }
+
+        .divisions-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 24px;
+        }
+        .division-card {
+            background: var(--black-card);
+            border: 1px solid rgba(201,168,76,0.06);
+            padding: 48px 36px;
+            position: relative;
+            overflow: hidden;
+            transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+            cursor: default;
+        }
+        .division-card::before {
+            content: '';
+            position: absolute; top: 0; left: 0;
+            width: 100%; height: 2px;
+            background: linear-gradient(to right, transparent, var(--gold), transparent);
+            opacity: 0;
+            transition: opacity 0.5s ease;
+        }
+        .division-card:hover {
+            border-color: rgba(201,168,76,0.15);
+            transform: translateY(-4px);
+        }
+        .division-card:hover::before { opacity: 1; }
+        .division-icon {
+            width: 48px; height: 48px;
+            margin-bottom: 28px;
+            color: var(--gold);
+        }
+        .division-name {
+            font-family: var(--font-display);
+            font-size: 1.6rem;
+            font-weight: 400;
+            letter-spacing: 0.05em;
+            margin-bottom: 8px;
+        }
+        .division-sub {
+            font-size: 0.65rem;
+            font-weight: 500;
+            letter-spacing: 0.25em;
+            text-transform: uppercase;
+            color: var(--gold);
+            margin-bottom: 20px;
+        }
+        .division-desc {
+            font-size: 0.85rem;
+            font-weight: 300;
+            line-height: 1.7;
+            color: var(--white-dim);
+        }
+        .division-tag {
+            display: inline-block;
+            margin-top: 24px;
+            font-size: 0.6rem;
+            font-weight: 500;
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            color: var(--gold);
+            border: 1px solid rgba(201,168,76,0.2);
+            padding: 6px 16px;
+            transition: all 0.3s ease;
+        }
+        .division-card:hover .division-tag {
+            background: rgba(201,168,76,0.08);
+        }
+
+        /* ── PHILOSOPHY ── */
+        .philosophy {
+            max-width: 900px; margin: 0 auto;
+            text-align: center;
+        }
+        .philosophy-quote {
+            font-family: var(--font-display);
+            font-size: clamp(1.5rem, 3.5vw, 2.8rem);
+            font-weight: 300;
+            font-style: italic;
+            line-height: 1.5;
+            color: var(--white);
+            margin-bottom: 32px;
+            position: relative;
+        }
+        .philosophy-quote::before {
+            content: '"';
+            position: absolute;
+            top: -40px; left: 50%; transform: translateX(-50%);
+            font-size: 6rem;
+            font-style: normal;
+            color: var(--gold);
+            opacity: 0.15;
+            font-family: var(--font-display);
+        }
+        .philosophy-author {
+            font-size: 0.7rem;
+            letter-spacing: 0.3em;
+            text-transform: uppercase;
+            color: var(--gold);
+            font-weight: 500;
+        }
+
+        /* ── CONTACT ── */
+        #contacto { max-width: 700px; margin: 0 auto; text-align: center; }
+        .contact-links {
+            display: flex; gap: 32px; justify-content: center;
+            margin-top: 48px; flex-wrap: wrap;
+        }
+        .contact-link {
+            display: flex; align-items: center; gap: 10px;
+            font-size: 0.8rem; font-weight: 300;
+            color: var(--white-dim);
+            text-decoration: none;
+            transition: color 0.3s ease;
+            letter-spacing: 0.05em;
+        }
+        .contact-link:hover { color: var(--gold); }
+        .contact-link svg { width: 18px; height: 18px; color: var(--gold); }
+
+        .contact-cta {
+            display: inline-block;
+            margin-top: 48px;
+            padding: 16px 48px;
+            font-family: var(--font-body);
+            font-size: 0.7rem;
+            font-weight: 500;
+            letter-spacing: 0.25em;
+            text-transform: uppercase;
+            color: var(--black);
+            background: linear-gradient(135deg, var(--gold-light), var(--gold), var(--gold-dark));
+            text-decoration: none;
+            transition: all 0.4s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        .contact-cta:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 40px rgba(201,168,76,0.2);
+        }
+
+        /* ── FOOTER ── */
+        footer {
+            padding: 48px;
+            border-top: 1px solid rgba(201,168,76,0.06);
+            display: flex; justify-content: space-between; align-items: center;
+            font-size: 0.65rem; color: var(--white-dim);
+            letter-spacing: 0.15em; font-weight: 300;
+        }
+        footer a { color: var(--white-dim); text-decoration: none; }
+        footer a:hover { color: var(--gold); }
+
+        /* ── REVEAL ANIMATION ── */
+        .reveal {
+            opacity: 0; transform: translateY(40px);
+            transition: opacity 0.8s ease, transform 0.8s ease;
+        }
+        .reveal.visible { opacity: 1; transform: translateY(0); }
+
+        /* ── SEPARATOR ── */
+        .sep {
+            width: 100%; max-width: 1200px; margin: 0 auto;
+            height: 1px;
+            background: linear-gradient(to right, transparent, rgba(201,168,76,0.12), transparent);
+        }
+
+        /* ── RESPONSIVE ── */
+        @media (max-width: 900px) {
+            nav { padding: 20px 24px; }
+            nav.scrolled { padding: 14px 24px; }
+            .nav-links { display: none; }
+            .hamburger { display: flex; }
+            section { padding: 80px 24px; }
+            .about { flex-direction: column; gap: 48px; }
+            .about-right { max-width: 400px; width: 100%; }
+            .divisions-grid { grid-template-columns: 1fr; }
+            .about-stats { gap: 24px; }
+            footer { flex-direction: column; gap: 16px; text-align: center; }
+        }
+
+        @media (max-width: 480px) {
+            .hero-logo { width: 120px; }
+            .contact-links { flex-direction: column; align-items: center; }
+        }
+    </style>
 </head>
-
 <body>
+    <!-- Preloader -->
+    <div class="preloader">
+        <div class="preloader-ring"></div>
+    </div>
 
-<header>
-<h1>VALQUIRIA</h1>
-<p>Innovación • Precisión • Diseño</p>
-<button>Próximamente</button>
-</header>
+    <!-- Navigation -->
+    <nav id="navbar">
+        <a href="#" class="nav-logo">Valquiria</a>
+        <ul class="nav-links">
+            <li><a href="#nosotros">Nosotros</a></li>
+            <li><a href="#divisiones">Divisiones</a></li>
+            <li><a href="#filosofia">Filosofía</a></li>
+            <li><a href="#contacto">Contacto</a></li>
+        </ul>
+        <div class="hamburger" id="hamburger" aria-label="Menú">
+            <span></span><span></span><span></span>
+        </div>
+    </nav>
 
+    <!-- Mobile Menu -->
+    <div class="mobile-menu" id="mobileMenu">
+        <a href="#nosotros" onclick="closeMobile()">Nosotros</a>
+        <a href="#divisiones" onclick="closeMobile()">Divisiones</a>
+        <a href="#filosofia" onclick="closeMobile()">Filosofía</a>
+        <a href="#contacto" onclick="closeMobile()">Contacto</a>
+    </div>
+
+    <!-- Hero -->
+    <section class="hero">
+        <div class="hero-bg"></div>
+        <div class="hero-grain"></div>
+        <div class="hero-lines"></div>
+        <div class="hero-content">
+            <img src="logo.png" alt="Valquiria Inc." class="hero-logo">
+            <h1 class="hero-title">
+                Valquiria
+                <span>Inc.</span>
+            </h1>
+            <div class="hero-divider"></div>
+            <p class="hero-tagline">Innovación · Precisión · Diseño</p>
+        </div>
+        <div class="hero-scroll">
+            <span>Explorar</span>
+            <div class="scroll-line"></div>
+        </div>
+    </section>
+
+    <div class="sep"></div>
+
+    <!-- About -->
+    <section id="nosotros">
+        <div class="about">
+            <div class="about-left reveal">
+                <p class="section-label">Quiénes Somos</p>
+                <h2 class="section-title">Creamos con propósito,<br>fabricamos con excelencia</h2>
+                <p class="section-text">
+                    Valquiria Inc. es un holding de innovación y manufactura con sede en Latinoamérica. 
+                    Reunimos bajo un mismo techo capacidades de impresión 3D, diseño de producto, 
+                    empaques termoformados, material pedagógico y más — siempre con un estándar de 
+                    calidad que desafía lo convencional.
+                </p>
+                <div class="about-stats">
+                    <div class="stat">
+                        <div class="stat-number">5+</div>
+                        <div class="stat-label">Divisiones</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-number">∞</div>
+                        <div class="stat-label">Posibilidades</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-number">1</div>
+                        <div class="stat-label">Estándar</div>
+                    </div>
+                </div>
+            </div>
+            <div class="about-right reveal">
+                <div class="about-visual">
+                    <div class="about-visual-inner">
+                        <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M50 5 L95 27.5 L95 72.5 L50 95 L5 72.5 L5 27.5 Z" stroke="currentColor" stroke-width="0.5" fill="none" color="#C9A84C"/>
+                            <path d="M50 20 L80 35 L80 65 L50 80 L20 65 L20 35 Z" stroke="currentColor" stroke-width="0.3" fill="none" color="#C9A84C"/>
+                            <path d="M50 35 L65 42.5 L65 57.5 L50 65 L35 57.5 L35 42.5 Z" stroke="currentColor" stroke-width="0.3" fill="none" color="#C9A84C"/>
+                        </svg>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <div class="sep"></div>
+
+    <!-- Divisions -->
+    <section id="divisiones">
+        <div class="divisions-header reveal">
+            <p class="section-label">Nuestras Divisiones</p>
+            <h2 class="section-title">Un ecosistema de innovación</h2>
+            <p class="section-text">
+                Cada división opera con identidad propia pero comparte el ADN de Valquiria: 
+                rigor técnico, diseño impecable y pasión por lo extraordinario.
+            </p>
+        </div>
+        <div class="divisions-grid">
+            <!-- Valquiria 3D -->
+            <div class="division-card reveal">
+                <svg class="division-icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M24 4L44 16V32L24 44L4 32V16L24 4Z"/>
+                    <path d="M24 4V44"/>
+                    <path d="M4 16L24 28L44 16"/>
+                </svg>
+                <h3 class="division-name">Valquiria 3D</h3>
+                <p class="division-sub">Manufactura Aditiva</p>
+                <p class="division-desc">
+                    Servicio profesional de impresión 3D. Prototipado rápido, piezas funcionales 
+                    y producción en serie con tecnología FDM y resina de alta resolución.
+                </p>
+                <span class="division-tag">Próximamente</span>
+            </div>
+            <!-- Valquiria Dental -->
+            <div class="division-card reveal">
+                <svg class="division-icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M14 8C10 8 6 12 6 18C6 30 16 38 20 42C22 44 24 40 24 36"/>
+                    <path d="M34 8C38 8 42 12 42 18C42 30 32 38 28 42C26 44 24 40 24 36"/>
+                </svg>
+                <h3 class="division-name">Valquiria Dental</h3>
+                <p class="division-sub">Material Pedagógico</p>
+                <p class="division-desc">
+                    Modelos anatómicos dentales, guías de estudio y material educativo de alta 
+                    fidelidad para universidades y profesionales de la odontología.
+                </p>
+                <span class="division-tag">Próximamente</span>
+            </div>
+            <!-- Valquiria Pack -->
+            <div class="division-card reveal">
+                <svg class="division-icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="6" y="14" width="36" height="28" rx="2"/>
+                    <path d="M6 22H42"/>
+                    <path d="M18 14V6H30V14"/>
+                </svg>
+                <h3 class="division-name">Valquiria Pack</h3>
+                <p class="division-sub">Empaques Termoformados</p>
+                <p class="division-desc">
+                    Diseño y producción de empaques termoformados personalizados para productos 
+                    que necesitan presentación premium y protección superior.
+                </p>
+                <span class="division-tag">Próximamente</span>
+            </div>
+            <!-- Valquiria Lux -->
+            <div class="division-card reveal">
+                <svg class="division-icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M24 4V8"/>
+                    <path d="M24 40V44"/>
+                    <path d="M8 24H4"/>
+                    <path d="M44 24H40"/>
+                    <circle cx="24" cy="24" r="10"/>
+                    <path d="M10 10L13 13"/>
+                    <path d="M35 35L38 38"/>
+                    <path d="M38 10L35 13"/>
+                    <path d="M13 35L10 38"/>
+                </svg>
+                <h3 class="division-name">Valquiria Lux</h3>
+                <p class="division-sub">Iluminación & Diseño</p>
+                <p class="division-desc">
+                    Lámparas de diseño y piezas de iluminación que fusionan manufactura aditiva 
+                    con estética contemporánea. Cada pieza es una obra funcional.
+                </p>
+                <span class="division-tag">Próximamente</span>
+            </div>
+        </div>
+    </section>
+
+    <div class="sep"></div>
+
+    <!-- Philosophy -->
+    <section id="filosofia">
+        <div class="philosophy reveal">
+            <p class="section-label">Nuestra Filosofía</p>
+            <p class="philosophy-quote">
+                No fabricamos productos. Diseñamos soluciones que inspiran, 
+                con la precisión que exige la excelencia.
+            </p>
+            <p class="philosophy-author">— Valquiria Inc.</p>
+        </div>
+    </section>
+
+    <div class="sep"></div>
+
+    <!-- Contact -->
+    <section id="contacto">
+        <div class="reveal">
+            <p class="section-label">Contacto</p>
+            <h2 class="section-title">Hablemos de tu próximo proyecto</h2>
+            <p class="section-text" style="margin: 0 auto;">
+                ¿Tienes una idea que necesita cobrar forma? Nos encantaría escucharte.
+            </p>
+            <div class="contact-links">
+                <a href="mailto:contacto@valquiriainc.com" class="contact-link">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <rect x="2" y="4" width="20" height="16" rx="2"/>
+                        <path d="M22 4L12 13L2 4"/>
+                    </svg>
+                    contacto@valquiriainc.com
+                </a>
+                <a href="https://instagram.com/valquiriainc" target="_blank" class="contact-link">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <rect x="2" y="2" width="20" height="20" rx="5"/>
+                        <circle cx="12" cy="12" r="5"/>
+                        <circle cx="17.5" cy="6.5" r="1.5" fill="currentColor" stroke="none"/>
+                    </svg>
+                    @valquiriainc
+                </a>
+            </div>
+            <a href="mailto:contacto@valquiriainc.com" class="contact-cta">Iniciar Conversación</a>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer>
+        <span>© 2025 Valquiria Inc. Todos los derechos reservados.</span>
+        <span>Innovación · Precisión · Diseño</span>
+    </footer>
+
+    <script>
+        // Preloader
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                document.querySelector('.preloader').classList.add('hidden');
+            }, 800);
+        });
+
+        // Nav scroll
+        const nav = document.getElementById('navbar');
+        window.addEventListener('scroll', () => {
+            nav.classList.toggle('scrolled', window.scrollY > 60);
+        });
+
+        // Hamburger
+        const hamburger = document.getElementById('hamburger');
+        const mobileMenu = document.getElementById('mobileMenu');
+        hamburger.addEventListener('click', () => {
+            hamburger.classList.toggle('active');
+            mobileMenu.classList.toggle('open');
+            document.body.style.overflow = mobileMenu.classList.contains('open') ? 'hidden' : '';
+        });
+        function closeMobile() {
+            hamburger.classList.remove('active');
+            mobileMenu.classList.remove('open');
+            document.body.style.overflow = '';
+        }
+
+        // Reveal on scroll
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('visible');
+                }
+            });
+        }, { threshold: 0.15, rootMargin: '0px 0px -40px 0px' });
+
+        document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
+        // Smooth scroll for anchor links
+        document.querySelectorAll('a[href^="#"]').forEach(a => {
+            a.addEventListener('click', (e) => {
+                e.preventDefault();
+                const target = document.querySelector(a.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            });
+        });
+    </script>
 </body>
 </html>
