@@ -514,6 +514,295 @@
             .hero-logo { width: 120px; }
             .contact-links { flex-direction: column; align-items: center; }
         }
+
+        /* ── ASESOR VALQUIRIA (CONCIERGE) ── */
+        .asesor-wrapper {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            z-index: 1000;
+            font-family: var(--font-body);
+        }
+
+        .asesor-btn {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: var(--black-soft);
+            border: 1px solid rgba(201, 168, 76, 0.4);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 0 4px 20px rgba(201, 168, 76, 0.15), inset 0 0 15px rgba(201, 168, 76, 0.05);
+            transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+            position: relative;
+            outline: none;
+        }
+
+        .asesor-btn::before {
+            content: '';
+            position: absolute;
+            inset: -4px;
+            border-radius: 50%;
+            border: 1px solid var(--gold);
+            opacity: 0;
+            transform: scale(0.9);
+            transition: all 0.4s ease;
+        }
+
+        .asesor-btn:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 25px rgba(201, 168, 76, 0.25), inset 0 0 20px rgba(201, 168, 76, 0.1);
+            border-color: rgba(201, 168, 76, 0.6);
+        }
+
+        .asesor-btn:hover::before {
+            opacity: 0.3;
+            transform: scale(1.1);
+            animation: pulse-ring 2s infinite cubic-bezier(0.215, 0.61, 0.355, 1);
+        }
+
+        @keyframes pulse-ring {
+            0% { transform: scale(0.9); opacity: 0.5; }
+            100% { transform: scale(1.3); opacity: 0; }
+        }
+
+        .asesor-btn svg {
+            width: 24px;
+            height: 24px;
+            color: var(--gold);
+            transition: transform 0.4s ease, opacity 0.4s ease;
+        }
+
+        .asesor-btn.open .asesor-btn-main-icon {
+            transform: rotate(90deg) scale(0);
+            opacity: 0;
+            position: absolute;
+        }
+        .asesor-btn-close-icon {
+            position: absolute;
+            width: 24px;
+            height: 24px;
+            color: var(--gold);
+            transform: rotate(-90deg) scale(0);
+            opacity: 0;
+        }
+        .asesor-btn.open .asesor-btn-close-icon {
+            transform: rotate(0) scale(1);
+            opacity: 1;
+        }
+
+        .asesor-panel {
+            position: absolute;
+            bottom: 80px;
+            right: 0;
+            width: 360px;
+            height: 520px;
+            max-height: calc(100vh - 120px);
+            background: rgba(12, 12, 12, 0.85);
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+            border: 1px solid rgba(201, 168, 76, 0.15);
+            border-radius: 16px;
+            box-shadow: 0 24px 48px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.03) inset;
+            display: flex;
+            flex-direction: column;
+            opacity: 0;
+            visibility: hidden;
+            transform: translateY(20px) scale(0.98);
+            transform-origin: bottom right;
+            transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+            overflow: hidden;
+            z-index: 999;
+        }
+
+        .asesor-panel.open {
+            opacity: 1;
+            visibility: visible;
+            transform: translateY(0) scale(1);
+        }
+
+        .asesor-header {
+            padding: 20px 24px;
+            border-bottom: 1px solid rgba(201, 168, 76, 0.1);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            background: linear-gradient(to right, rgba(20,20,20,0.4), rgba(26,26,26,0.4));
+        }
+
+        .asesor-avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: rgba(201, 168, 76, 0.08);
+            border: 1px solid rgba(201, 168, 76, 0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 0 10px rgba(201, 168, 76, 0.1);
+        }
+        .asesor-avatar svg { width: 18px; height: 18px; color: var(--gold); }
+
+        .asesor-header-info { display: flex; flex-direction: column; }
+        .asesor-header-title {
+            font-family: var(--font-display);
+            color: var(--gold);
+            font-size: 1.2rem;
+            font-weight: 500;
+            letter-spacing: 0.05em;
+            line-height: 1.2;
+        }
+        .asesor-header-status {
+            font-size: 0.6rem;
+            color: var(--white-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.15em;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            margin-top: 2px;
+        }
+        .asesor-header-status::before {
+            content: '';
+            width: 4px; height: 4px;
+            background: var(--gold);
+            border-radius: 50%;
+            box-shadow: 0 0 6px var(--gold);
+        }
+
+        .asesor-body {
+            flex: 1;
+            padding: 24px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            scroll-behavior: smooth;
+        }
+        .asesor-body::-webkit-scrollbar { width: 4px; }
+        .asesor-body::-webkit-scrollbar-track { background: transparent; }
+        .asesor-body::-webkit-scrollbar-thumb { background: rgba(201, 168, 76, 0.2); border-radius: 4px; }
+
+        .chat-msg {
+            max-width: 85%;
+            font-size: 0.8rem;
+            line-height: 1.6;
+            animation: msgFadeIn 0.4s ease forwards;
+            opacity: 0;
+            transform: translateY(10px);
+            letter-spacing: 0.02em;
+        }
+        @keyframes msgFadeIn {
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .chat-msg.system {
+            align-self: flex-start;
+            background: rgba(30, 30, 30, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            color: var(--white);
+            padding: 12px 16px;
+            border-radius: 2px 12px 12px 12px;
+        }
+        .chat-msg.system b { color: var(--gold); font-weight: 500; }
+
+        .chat-msg.user {
+            align-self: flex-end;
+            background: rgba(201, 168, 76, 0.08);
+            border: 1px solid rgba(201, 168, 76, 0.2);
+            color: var(--gold-light);
+            padding: 10px 14px;
+            border-radius: 12px 2px 12px 12px;
+        }
+
+        .chat-quick-replies {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-top: 2px;
+            animation: msgFadeIn 0.5s ease 0.2s forwards;
+            opacity: 0;
+            align-items: flex-start;
+        }
+
+        .quick-reply-btn {
+            background: transparent;
+            border: 1px solid rgba(201, 168, 76, 0.3);
+            color: var(--white-dim);
+            padding: 10px 16px;
+            border-radius: 8px;
+            font-family: var(--font-body);
+            font-size: 0.75rem;
+            text-align: left;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: fit-content;
+            max-width: 100%;
+        }
+        .quick-reply-btn::after {
+            content: '→';
+            color: var(--gold);
+            opacity: 0;
+            transform: translateX(-5px);
+            transition: all 0.3s ease;
+            margin-left: 8px;
+        }
+        .quick-reply-btn:hover {
+            background: rgba(201, 168, 76, 0.08);
+            border-color: rgba(201, 168, 76, 0.6);
+            color: var(--white);
+        }
+        .quick-reply-btn:hover::after {
+            opacity: 1;
+            transform: translateX(0);
+        }
+
+        .quick-reply-btn.primary {
+            background: linear-gradient(135deg, rgba(201,168,76,0.15), rgba(139,105,20,0.15));
+            border-color: var(--gold);
+            color: var(--gold-light);
+            text-align: center;
+            justify-content: center;
+        }
+        .quick-reply-btn.primary::after { display: none; }
+        .quick-reply-btn.primary:hover {
+            background: linear-gradient(135deg, rgba(201,168,76,0.25), rgba(139,105,20,0.25));
+            box-shadow: 0 4px 15px rgba(201, 168, 76, 0.15);
+        }
+
+        .chat-typing {
+            display: flex;
+            gap: 4px;
+            padding: 12px 16px;
+            background: rgba(30, 30, 30, 0.4);
+            border-radius: 2px 12px 12px 12px;
+            align-self: flex-start;
+            width: fit-content;
+            animation: msgFadeIn 0.3s ease forwards;
+        }
+        .typing-dot {
+            width: 5px; height: 5px;
+            background: var(--gold);
+            border-radius: 50%;
+            animation: typingPulse 1.4s infinite ease-in-out both;
+        }
+        .typing-dot:nth-child(1) { animation-delay: -0.32s; }
+        .typing-dot:nth-child(2) { animation-delay: -0.16s; }
+        
+        @keyframes typingPulse {
+            0%, 80%, 100% { transform: scale(0); opacity: 0.3; }
+            40% { transform: scale(1); opacity: 1; }
+        }
+
+        @media (max-width: 480px) {
+            .asesor-wrapper { bottom: 20px; right: 20px; }
+            .asesor-panel { width: calc(100vw - 40px); height: 75vh; bottom: 70px; }
+        }
     </style>
 </head>
 <body>
@@ -733,6 +1022,35 @@
         </div>
     </section>
 
+    <!-- Asesor Valquiria (Concierge Digital) -->
+    <div class="asesor-wrapper" id="asesorWrapper">
+        <div class="asesor-panel" id="asesorPanel">
+            <div class="asesor-header">
+                <div class="asesor-avatar">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+                    </svg>
+                </div>
+                <div class="asesor-header-info">
+                    <span class="asesor-header-title">Asesor Valquiria</span>
+                    <span class="asesor-header-status">Consultor en línea</span>
+                </div>
+            </div>
+            <div class="asesor-body" id="asesorBody">
+                <!-- Los mensajes se inyectan dinámicamente -->
+            </div>
+        </div>
+        <button class="asesor-btn" id="asesorBtn" aria-label="Abrir Asesor">
+            <svg class="asesor-btn-main-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2">
+                <path d="M12 2L14.5 9.5L22 12L14.5 14.5L12 22L9.5 14.5L2 12L9.5 9.5L12 2Z"/>
+            </svg>
+            <svg class="asesor-btn-close-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+        </button>
+    </div>
+
     <!-- Footer -->
     <footer>
         <span>© 2025 Valquiria Inc. Todos los derechos reservados.</span>
@@ -788,6 +1106,160 @@
                 }
             });
         });
+
+        // --- ASESOR VALQUIRIA LOGIC ---
+        const asesorBtn = document.getElementById('asesorBtn');
+        const asesorPanel = document.getElementById('asesorPanel');
+        const asesorBody = document.getElementById('asesorBody');
+        
+        let isChatOpen = false;
+        let isFirstOpen = true;
+
+        const CHAT_DATA = {
+            welcome: {
+                msg: "Bienvenido a Asesor Valquiria. Puedo ayudarte a encontrar la mejor solución según tu práctica, proyecto o necesidad académica.",
+                options: [
+                    { label: "Busco un producto para endodoncia", act: "endo" },
+                    { label: "Quiero orientación sobre material dental", act: "orientacion" },
+                    { label: "Necesito una solución para universidad", act: "uni" },
+                    { label: "Quiero hablar con un asesor", act: "asesor" }
+                ]
+            },
+            endo: {
+                msg: "Para tratamientos de endodoncia, recomiendo nuestro <b>Kit de dientes para endodoncia</b> o los <b>Dientes tipo Nissin para endodoncia</b>. Ambos ofrecen la anatomía precisa para instrumentación y obturación.",
+                options: [
+                    { label: "Hablar por WhatsApp sobre el Kit", act: "wa_endo", primary: true },
+                    { label: "Volver al inicio", act: "welcome" }
+                ]
+            },
+            orientacion: {
+                msg: "En Valquiria Dental desarrollamos desde <b>Dientes realistas anatómicos</b> hasta el <b>Simulador dental Carodonto Valquiria</b>. ¿Para qué entorno necesitas nuestras soluciones?",
+                options: [
+                    { label: "Buscamos soluciones para universidad", act: "uni" },
+                    { label: "Es para mi consultorio/práctica", act: "personal" }
+                ]
+            },
+            personal: {
+                msg: "Perfecto. Para práctica personal te invitamos a conocer nuestra línea de <b>Dientes tipo Nissin</b> y nuestro <b>Kit de pulpotomía</b>. Podemos enviarte el catálogo digital con disponibilidad.",
+                options: [
+                    { label: "Solicitar catálogo en WhatsApp", act: "wa_personal", primary: true },
+                    { label: "Otras opciones", act: "welcome" }
+                ]
+            },
+            uni: {
+                msg: "Para los entornos académicos más exigentes, el <b>Simulador dental Carodonto Valquiria</b> es nuestra solución insignia, ideal para integrarse con modelos de estudio detallado.",
+                options: [
+                    { label: "Contactar área institucional", act: "wa_uni", primary: true },
+                    { label: "Volver", act: "welcome" }
+                ]
+            },
+            asesor: {
+                msg: "Será un placer atenderte personalmente. Haz clic abajo para iniciar una conversación en WhatsApp con atención prioritaria.",
+                options: [
+                    { label: "Iniciar conversación", act: "wa_general", primary: true }
+                ]
+            }
+        };
+
+        const WA_NUMBER = "5215555555555"; // Cambiar por tu WhatsApp
+
+        function getWaLink(act) {
+            let text = "Hola, me interesa obtener información de Valquiria Dental.";
+            if (act === 'wa_endo') text = "Hola, estoy interesado en los productos para endodoncia de Valquiria Dental.";
+            if (act === 'wa_personal') text = "Hola, me gustaría solicitar el catálogo de dientes tipo Nissin y kits de práctica.";
+            if (act === 'wa_uni') text = "Hola, busco información para mi universidad sobre el Simulador Carodonto y modelos de estudio.";
+            return `https://wa.me/${WA_NUMBER}?text=${encodeURIComponent(text)}`;
+        }
+
+        asesorBtn.addEventListener('click', () => {
+            isChatOpen = !isChatOpen;
+            asesorBtn.classList.toggle('open');
+            asesorPanel.classList.toggle('open');
+            
+            if (isChatOpen && isFirstOpen) {
+                isFirstOpen = false;
+                setTimeout(() => {
+                    const typing = createTypingIndicator();
+                    asesorBody.appendChild(typing);
+                    scrollToBottom();
+                    
+                    setTimeout(() => {
+                        typing.remove();
+                        renderMessage(CHAT_DATA.welcome.msg, 'system');
+                        renderOptions(CHAT_DATA.welcome.options);
+                    }, 800);
+                }, 300);
+            }
+        });
+
+        function createTypingIndicator() {
+            const div = document.createElement('div');
+            div.className = 'chat-typing';
+            div.innerHTML = '<div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>';
+            return div;
+        }
+
+        function renderMessage(text, sender) {
+            const div = document.createElement('div');
+            div.className = `chat-msg ${sender}`;
+            div.innerHTML = text;
+            asesorBody.appendChild(div);
+            scrollToBottom();
+        }
+
+        function renderOptions(options) {
+            if (!options || options.length === 0) return;
+            const container = document.createElement('div');
+            container.className = 'chat-quick-replies';
+            
+            options.forEach(opt => {
+                const btn = document.createElement('button');
+                btn.className = `quick-reply-btn ${opt.primary ? 'primary' : ''}`;
+                btn.innerText = opt.label;
+                btn.onclick = () => handleOptionClick(opt);
+                container.appendChild(btn);
+            });
+            
+            asesorBody.appendChild(container);
+            scrollToBottom();
+        }
+
+        function removeLastOptions() {
+            const optionsContainers = asesorBody.querySelectorAll('.chat-quick-replies');
+            if (optionsContainers.length > 0) {
+                const last = optionsContainers[optionsContainers.length - 1];
+                last.style.pointerEvents = 'none';
+                last.style.opacity = '0.4';
+                last.style.filter = 'grayscale(100%)';
+            }
+        }
+
+        function handleOptionClick(opt) {
+            if (opt.act && opt.act.startsWith('wa_')) {
+                window.open(getWaLink(opt.act), '_blank');
+                return;
+            }
+            
+            removeLastOptions();
+            renderMessage(opt.label, 'user');
+            
+            const typing = createTypingIndicator();
+            asesorBody.appendChild(typing);
+            scrollToBottom();
+            
+            setTimeout(() => {
+                typing.remove();
+                const nextStep = CHAT_DATA[opt.act];
+                if (nextStep) {
+                    renderMessage(nextStep.msg, 'system');
+                    renderOptions(nextStep.options);
+                }
+            }, 800);
+        }
+
+        function scrollToBottom() {
+            asesorBody.scrollTo({ top: asesorBody.scrollHeight, behavior: 'smooth' });
+        }
     </script>
 </body>
 </html>
