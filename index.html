@@ -799,6 +799,95 @@
             40% { transform: scale(1); opacity: 1; }
         }
 
+        /* Footer & Input */
+        .asesor-footer {
+            padding: 16px 20px;
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+            background: rgba(10, 10, 10, 0.6);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            position: relative;
+        }
+        .asesor-input-wrapper {
+            flex: 1;
+            position: relative;
+            display: flex;
+            align-items: center;
+            background: rgba(20, 20, 20, 0.6);
+            border: 1px solid rgba(201, 168, 76, 0.2);
+            border-radius: 20px;
+            padding: 2px 4px 2px 16px;
+            transition: all 0.3s ease;
+        }
+        .asesor-input-wrapper:focus-within {
+            border-color: rgba(201, 168, 76, 0.6);
+            background: rgba(26, 26, 26, 0.8);
+            box-shadow: 0 0 12px rgba(201, 168, 76, 0.1);
+        }
+        .asesor-input {
+            flex: 1;
+            background: transparent;
+            border: none;
+            color: var(--white);
+            font-family: var(--font-body);
+            font-size: 0.8rem;
+            outline: none;
+            padding: 10px 0;
+            width: 100%;
+        }
+        .asesor-input::placeholder { color: rgba(160, 152, 130, 0.4); }
+        .asesor-input:disabled { opacity: 0.5; }
+        
+        .asesor-send {
+            background: var(--gold);
+            border: none;
+            cursor: pointer;
+            color: var(--black);
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+            opacity: 0.5;
+            pointer-events: none;
+            flex-shrink: 0;
+        }
+        .asesor-send.active {
+            opacity: 1;
+            pointer-events: auto;
+            box-shadow: 0 2px 8px rgba(201, 168, 76, 0.3);
+        }
+        .asesor-send.active:hover {
+            transform: scale(1.05);
+            background: var(--gold-light);
+        }
+        .asesor-send svg { width: 14px; height: 14px; position: relative; left: 1px; }
+
+        .asesor-header-actions {
+            margin-left: auto;
+            display: flex;
+        }
+        .asesor-restart {
+            background: transparent;
+            border: none;
+            color: var(--white-dim);
+            cursor: pointer;
+            padding: 8px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+        }
+        .asesor-restart:hover {
+            color: var(--gold);
+            background: rgba(201, 168, 76, 0.1);
+            transform: rotate(180deg);
+        }
+        
         @media (max-width: 480px) {
             .asesor-wrapper { bottom: 20px; right: 20px; }
             .asesor-panel { width: calc(100vw - 40px); height: 75vh; bottom: 70px; }
@@ -1022,7 +1111,7 @@
         </div>
     </section>
 
-    <!-- Asesor Valquiria (Concierge Digital) -->
+    <!-- Asesor Valquiria (Concierge Digital V2) -->
     <div class="asesor-wrapper" id="asesorWrapper">
         <div class="asesor-panel" id="asesorPanel">
             <div class="asesor-header">
@@ -1033,11 +1122,30 @@
                 </div>
                 <div class="asesor-header-info">
                     <span class="asesor-header-title">Asesor Valquiria</span>
-                    <span class="asesor-header-status">Consultor en línea</span>
+                    <span class="asesor-header-status">Consultor Premium</span>
+                </div>
+                <div class="asesor-header-actions">
+                    <button class="asesor-restart" id="asesorRestart" aria-label="Reiniciar conversación" title="Reiniciar conversación">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+                            <path d="M3 3v5h5"></path>
+                        </svg>
+                    </button>
                 </div>
             </div>
             <div class="asesor-body" id="asesorBody">
                 <!-- Los mensajes se inyectan dinámicamente -->
+            </div>
+            <div class="asesor-footer">
+                <div class="asesor-input-wrapper">
+                    <input type="text" class="asesor-input" id="asesorInput" placeholder="Describe lo que necesitas..." autocomplete="off">
+                    <button class="asesor-send" id="asesorSend" aria-label="Enviar mensaje">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="22" y1="2" x2="11" y2="13"></line>
+                            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                        </svg>
+                    </button>
+                </div>
             </div>
         </div>
         <button class="asesor-btn" id="asesorBtn" aria-label="Abrir Asesor">
@@ -1107,90 +1215,144 @@
             });
         });
 
-        // --- ASESOR VALQUIRIA LOGIC ---
+        // --- ASESOR VALQUIRIA LOGIC V2 ---
         const asesorBtn = document.getElementById('asesorBtn');
         const asesorPanel = document.getElementById('asesorPanel');
         const asesorBody = document.getElementById('asesorBody');
+        const asesorInput = document.getElementById('asesorInput');
+        const asesorSend = document.getElementById('asesorSend');
+        const asesorRestart = document.getElementById('asesorRestart');
+        const asesorWrapper = document.getElementById('asesorWrapper');
         
         let isChatOpen = false;
         let isFirstOpen = true;
+        let isTyping = false;
 
-        const CHAT_DATA = {
+        const WA_NUMBER = "5215555555555"; // Cambiar por tu WhatsApp
+
+        const RESPONSES = {
             welcome: {
-                msg: "Bienvenido a Asesor Valquiria. Puedo ayudarte a encontrar la mejor solución según tu práctica, proyecto o necesidad académica.",
+                msg: "Bienvenido a Asesor Valquiria. Puedo orientarte hacia la opción más adecuada según tu práctica o proyecto. ¿Qué tienes en mente hoy?",
                 options: [
-                    { label: "Busco un producto para endodoncia", act: "endo" },
-                    { label: "Quiero orientación sobre material dental", act: "orientacion" },
-                    { label: "Necesito una solución para universidad", act: "uni" },
-                    { label: "Quiero hablar con un asesor", act: "asesor" }
+                    { label: "Busco algo para endodoncia", act: "endo" },
+                    { label: "Necesito material para universidad", act: "uni" },
+                    { label: "Quiero opciones de práctica", act: "practica" }
                 ]
             },
             endo: {
-                msg: "Para tratamientos de endodoncia, recomiendo nuestro <b>Kit de dientes para endodoncia</b> o los <b>Dientes tipo Nissin para endodoncia</b>. Ambos ofrecen la anatomía precisa para instrumentación y obturación.",
+                msg: "Dentro de Valquiria Dental, esa necesidad se alinea perfectamente con nuestro <b>Kit de dientes para endodoncia</b> y los <b>Dientes tipo Nissin para endodoncia</b>. Ambos ofrecen una simulación de conductos excepcional.",
                 options: [
-                    { label: "Hablar por WhatsApp sobre el Kit", act: "wa_endo", primary: true },
-                    { label: "Volver al inicio", act: "welcome" }
+                    { label: "Ver disponibilidad en WhatsApp", act: "wa_endo", primary: true }
                 ]
             },
-            orientacion: {
-                msg: "En Valquiria Dental desarrollamos desde <b>Dientes realistas anatómicos</b> hasta el <b>Simulador dental Carodonto Valquiria</b>. ¿Para qué entorno necesitas nuestras soluciones?",
+            pulpo: {
+                msg: "Para procedimientos de odontopediatría, el <b>Kit de dientes para pulpotomía</b> es ideal. Cuenta con anatomía interna diseñada específicamente para estas prácticas.",
                 options: [
-                    { label: "Buscamos soluciones para universidad", act: "uni" },
-                    { label: "Es para mi consultorio/práctica", act: "personal" }
+                    { label: "Cotizar Kit en WhatsApp", act: "wa_pulpo", primary: true }
                 ]
             },
-            personal: {
-                msg: "Perfecto. Para práctica personal te invitamos a conocer nuestra línea de <b>Dientes tipo Nissin</b> y nuestro <b>Kit de pulpotomía</b>. Podemos enviarte el catálogo digital con disponibilidad.",
+            nissin: {
+                msg: "Nuestra línea incluye tanto <b>Dientes tipo Nissin estándar</b> como específicos para endodoncia. Son compatibles con la mayoría de los tipodontos del mercado.",
                 options: [
-                    { label: "Solicitar catálogo en WhatsApp", act: "wa_personal", primary: true },
-                    { label: "Otras opciones", act: "welcome" }
+                    { label: "Solicitar catálogo", act: "wa_general", primary: true }
+                ]
+            },
+            anatomia: {
+                msg: "Si priorizas el realismo anatómico, nuestros <b>Dientes realistas anatómicos</b> ofrecen surcos, cúspides y raíces altamente detalladas para un estudio morfológico superior.",
+                options: [
+                    { label: "Hablar con un asesor", act: "wa_general", primary: true }
                 ]
             },
             uni: {
-                msg: "Para los entornos académicos más exigentes, el <b>Simulador dental Carodonto Valquiria</b> es nuestra solución insignia, ideal para integrarse con modelos de estudio detallado.",
+                msg: "Para entornos académicos, el <b>Simulador dental Carodonto Valquiria</b> es nuestra solución más robusta. Permite entrenamientos inmersivos y controlados para los estudiantes.",
                 options: [
-                    { label: "Contactar área institucional", act: "wa_uni", primary: true },
-                    { label: "Volver", act: "welcome" }
+                    { label: "Solicitar propuesta institucional", act: "wa_uni", primary: true }
                 ]
             },
-            asesor: {
-                msg: "Será un placer atenderte personalmente. Haz clic abajo para iniciar una conversación en WhatsApp con atención prioritaria.",
+            practica: {
+                msg: "Para práctica personal o consultorio, sugerimos los <b>Dientes tipo Nissin</b> o los diferentes Kits (Endodoncia/Pulpotomía). Puedo sugerirte una ruta si me das más detalles.",
                 options: [
-                    { label: "Iniciar conversación", act: "wa_general", primary: true }
+                    { label: "Ir a WhatsApp con un asesor", act: "wa_general", primary: true }
+                ]
+            },
+            fallback: {
+                msg: "Comprendo. Debido a lo específico de tu solicitud, lo más sugerido es que un especialista nuestro te atienda de manera directa. Puedo prepararte el acceso a WhatsApp para continuar la conversación.",
+                options: [
+                    { label: "Conectar con Especialista", act: "wa_general", primary: true }
                 ]
             }
         };
 
-        const WA_NUMBER = "5215555555555"; // Cambiar por tu WhatsApp
-
         function getWaLink(act) {
             let text = "Hola, me interesa obtener información de Valquiria Dental.";
-            if (act === 'wa_endo') text = "Hola, estoy interesado en los productos para endodoncia de Valquiria Dental.";
-            if (act === 'wa_personal') text = "Hola, me gustaría solicitar el catálogo de dientes tipo Nissin y kits de práctica.";
-            if (act === 'wa_uni') text = "Hola, busco información para mi universidad sobre el Simulador Carodonto y modelos de estudio.";
+            if (act === 'wa_endo') text = "Hola, busco información sobre opciones para endodoncia (Kit y tipo Nissin).";
+            if (act === 'wa_pulpo') text = "Hola, deseo información sobre el Kit de dientes para pulpotomía.";
+            if (act === 'wa_uni') text = "Hola, represento a una universidad y busco información sobre el Simulador Carodonto.";
             return `https://wa.me/${WA_NUMBER}?text=${encodeURIComponent(text)}`;
         }
 
-        asesorBtn.addEventListener('click', () => {
+        // --- CORE FUNCTIONS ---
+        function toggleChat() {
             isChatOpen = !isChatOpen;
             asesorBtn.classList.toggle('open');
             asesorPanel.classList.toggle('open');
             
-            if (isChatOpen && isFirstOpen) {
-                isFirstOpen = false;
-                setTimeout(() => {
-                    const typing = createTypingIndicator();
-                    asesorBody.appendChild(typing);
-                    scrollToBottom();
-                    
-                    setTimeout(() => {
-                        typing.remove();
-                        renderMessage(CHAT_DATA.welcome.msg, 'system');
-                        renderOptions(CHAT_DATA.welcome.options);
-                    }, 800);
-                }, 300);
+            if (isChatOpen) {
+                if (isFirstOpen) {
+                    isFirstOpen = false;
+                    simulateSystemResponse('welcome');
+                } else {
+                    setTimeout(() => asesorInput.focus(), 300);
+                }
+            } else {
+                asesorInput.blur();
+            }
+        }
+
+        function closeChat() {
+            if (isChatOpen) toggleChat();
+        }
+
+        asesorBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleChat();
+        });
+
+        // Close on outside click
+        document.addEventListener('click', (e) => {
+            if (isChatOpen && !asesorPanel.contains(e.target) && !asesorBtn.contains(e.target)) {
+                closeChat();
             }
         });
+
+        asesorRestart.addEventListener('click', () => {
+            asesorBody.innerHTML = '';
+            asesorInput.value = '';
+            asesorInput.disabled = false;
+            updateSendButtonState();
+            simulateSystemResponse('welcome');
+        });
+
+        asesorInput.addEventListener('input', updateSendButtonState);
+        asesorInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && asesorInput.value.trim() !== '' && !isTyping) {
+                handleUserInput(asesorInput.value.trim());
+            }
+        });
+
+        asesorSend.addEventListener('click', () => {
+            if (asesorInput.value.trim() !== '' && !isTyping) {
+                handleUserInput(asesorInput.value.trim());
+            }
+        });
+
+        function updateSendButtonState() {
+            if (asesorInput.value.trim() !== '') {
+                asesorSend.classList.add('active');
+            } else {
+                asesorSend.classList.remove('active');
+            }
+        }
 
         function createTypingIndicator() {
             const div = document.createElement('div');
@@ -1216,7 +1378,14 @@
                 const btn = document.createElement('button');
                 btn.className = `quick-reply-btn ${opt.primary ? 'primary' : ''}`;
                 btn.innerText = opt.label;
-                btn.onclick = () => handleOptionClick(opt);
+                btn.onclick = () => {
+                    if (isTyping) return;
+                    if (opt.act && opt.act.startsWith('wa_')) {
+                        window.open(getWaLink(opt.act), '_blank');
+                        return;
+                    }
+                    handleUserInput(opt.label, opt.act);
+                };
                 container.appendChild(btn);
             });
             
@@ -1224,7 +1393,7 @@
             scrollToBottom();
         }
 
-        function removeLastOptions() {
+        function disableOldOptions() {
             const optionsContainers = asesorBody.querySelectorAll('.chat-quick-replies');
             if (optionsContainers.length > 0) {
                 const last = optionsContainers[optionsContainers.length - 1];
@@ -1234,27 +1403,48 @@
             }
         }
 
-        function handleOptionClick(opt) {
-            if (opt.act && opt.act.startsWith('wa_')) {
-                window.open(getWaLink(opt.act), '_blank');
-                return;
-            }
+        // --- NLP / INTENT LOGIC ---
+        function detectIntent(text) {
+            const t = text.toLowerCase();
+            if (t.includes('endo') || t.includes('conducto')) return 'endo';
+            if (t.includes('pulpo') || t.includes('infantil') || t.includes('odontopediatr')) return 'pulpo';
+            if (t.includes('nissin') || t.includes('nisi')) return 'nissin';
+            if (t.includes('realist') || t.includes('anatomic') || t.includes('anatomía')) return 'anatomia';
+            if (t.includes('simulador') || t.includes('universidad') || t.includes('carodonto') || t.includes('instituto')) return 'uni';
+            if (t.includes('practic') || t.includes('entrenamient')) return 'practica';
+            return 'fallback';
+        }
+
+        function handleUserInput(text, forceIntent = null) {
+            if (isTyping) return;
+            disableOldOptions();
+            renderMessage(text, 'user');
             
-            removeLastOptions();
-            renderMessage(opt.label, 'user');
+            asesorInput.value = '';
+            asesorInput.disabled = true;
+            updateSendButtonState();
             
+            const intent = forceIntent || detectIntent(text);
+            simulateSystemResponse(intent);
+        }
+
+        function simulateSystemResponse(intentKey) {
+            isTyping = true;
             const typing = createTypingIndicator();
             asesorBody.appendChild(typing);
             scrollToBottom();
             
             setTimeout(() => {
                 typing.remove();
-                const nextStep = CHAT_DATA[opt.act];
-                if (nextStep) {
-                    renderMessage(nextStep.msg, 'system');
-                    renderOptions(nextStep.options);
-                }
-            }, 800);
+                const node = RESPONSES[intentKey] || RESPONSES.fallback;
+                renderMessage(node.msg, 'system');
+                renderOptions(node.options);
+                
+                isTyping = false;
+                asesorInput.disabled = false;
+                setTimeout(() => { if (isChatOpen) asesorInput.focus(); }, 50);
+                scrollToBottom();
+            }, 800 + Math.random() * 400); // Variabilidad humana simulada
         }
 
         function scrollToBottom() {
