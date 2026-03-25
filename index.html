@@ -1,15 +1,25 @@
 <!DOCTYPE html>
 <html lang="es">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Valquiria Inc. — Innovación · Precisión · Diseño</title>
-    <meta name="description" content="Valquiria Inc. — Holding de innovación: impresión 3D, material dental pedagógico, empaques termoformados, lámparas y más.">
+    <meta name="description"
+        content="Valquiria Inc. — Holding de innovación: impresión 3D, material dental pedagógico, empaques termoformados, lámparas y más.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400&family=Montserrat:wght@200;300;400;500;600;700&display=swap" rel="stylesheet">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400&family=Montserrat:wght@200;300;400;500;600;700&display=swap"
+        rel="stylesheet">
     <style>
-        *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+        *,
+        *::before,
+        *::after {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
 
         :root {
             --gold: #C9A84C;
@@ -25,7 +35,9 @@
             --font-body: 'Montserrat', sans-serif;
         }
 
-        html { scroll-behavior: smooth; }
+        html {
+            scroll-behavior: smooth;
+        }
 
         body {
             font-family: var(--font-body);
@@ -37,35 +49,57 @@
 
         /* ── PRELOADER ── */
         .preloader {
-            position: fixed; inset: 0; z-index: 9999;
+            position: fixed;
+            inset: 0;
+            z-index: 9999;
             background: var(--black);
-            display: flex; align-items: center; justify-content: center;
+            display: flex;
+            align-items: center;
+            justify-content: center;
             transition: opacity 0.8s ease, visibility 0.8s ease;
         }
-        .preloader.hidden { opacity: 0; visibility: hidden; }
+
+        .preloader.hidden {
+            opacity: 0;
+            visibility: hidden;
+        }
+
         .preloader-ring {
-            width: 60px; height: 60px;
+            width: 60px;
+            height: 60px;
             border: 2px solid transparent;
             border-top-color: var(--gold);
             border-radius: 50%;
             animation: spin 1s linear infinite;
         }
-        @keyframes spin { to { transform: rotate(360deg); } }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
 
         /* ── NAV ── */
         nav {
-            position: fixed; top: 0; width: 100%; z-index: 100;
+            position: fixed;
+            top: 0;
+            width: 100%;
+            z-index: 100;
             padding: 24px 48px;
-            display: flex; justify-content: space-between; align-items: center;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
             background: transparent;
             transition: background 0.4s ease, backdrop-filter 0.4s ease, padding 0.4s ease;
         }
+
         nav.scrolled {
-            background: rgba(10,10,10,0.85);
+            background: rgba(10, 10, 10, 0.85);
             backdrop-filter: blur(20px);
             -webkit-backdrop-filter: blur(20px);
             padding: 16px 48px;
         }
+
         .nav-logo {
             font-family: var(--font-display);
             font-size: 1.4rem;
@@ -75,7 +109,13 @@
             text-decoration: none;
             text-transform: uppercase;
         }
-        .nav-links { display: flex; gap: 36px; list-style: none; }
+
+        .nav-links {
+            display: flex;
+            gap: 36px;
+            list-style: none;
+        }
+
         .nav-links a {
             font-family: var(--font-body);
             font-size: 0.7rem;
@@ -87,75 +127,134 @@
             transition: color 0.3s ease;
             position: relative;
         }
+
         .nav-links a::after {
             content: '';
-            position: absolute; bottom: -4px; left: 0;
-            width: 0; height: 1px;
+            position: absolute;
+            bottom: -4px;
+            left: 0;
+            width: 0;
+            height: 1px;
             background: var(--gold);
             transition: width 0.3s ease;
         }
-        .nav-links a:hover { color: var(--white); }
-        .nav-links a:hover::after { width: 100%; }
+
+        .nav-links a:hover {
+            color: var(--white);
+        }
+
+        .nav-links a:hover::after {
+            width: 100%;
+        }
 
         .hamburger {
-            display: none; cursor: pointer;
-            flex-direction: column; gap: 5px;
+            display: none;
+            cursor: pointer;
+            flex-direction: column;
+            gap: 5px;
         }
+
         .hamburger span {
-            width: 24px; height: 1.5px;
+            width: 24px;
+            height: 1.5px;
             background: var(--gold);
             transition: all 0.3s ease;
         }
-        .hamburger.active span:nth-child(1) { transform: rotate(45deg) translate(4px, 4px); }
-        .hamburger.active span:nth-child(2) { opacity: 0; }
-        .hamburger.active span:nth-child(3) { transform: rotate(-45deg) translate(5px, -5px); }
+
+        .hamburger.active span:nth-child(1) {
+            transform: rotate(45deg) translate(4px, 4px);
+        }
+
+        .hamburger.active span:nth-child(2) {
+            opacity: 0;
+        }
+
+        .hamburger.active span:nth-child(3) {
+            transform: rotate(-45deg) translate(5px, -5px);
+        }
 
         .mobile-menu {
             display: none;
-            position: fixed; inset: 0; z-index: 99;
-            background: rgba(10,10,10,0.97);
+            position: fixed;
+            inset: 0;
+            z-index: 99;
+            background: rgba(10, 10, 10, 0.97);
             flex-direction: column;
-            align-items: center; justify-content: center; gap: 40px;
+            align-items: center;
+            justify-content: center;
+            gap: 40px;
         }
-        .mobile-menu.open { display: flex; }
+
+        .mobile-menu.open {
+            display: flex;
+        }
+
         .mobile-menu a {
             font-family: var(--font-display);
-            font-size: 2rem; font-weight: 400;
+            font-size: 2rem;
+            font-weight: 400;
             letter-spacing: 0.1em;
             color: var(--white);
             text-decoration: none;
-            opacity: 0; transform: translateY(20px);
+            opacity: 0;
+            transform: translateY(20px);
             animation: fadeSlideIn 0.5s ease forwards;
         }
-        .mobile-menu a:nth-child(1) { animation-delay: 0.1s; }
-        .mobile-menu a:nth-child(2) { animation-delay: 0.2s; }
-        .mobile-menu a:nth-child(3) { animation-delay: 0.3s; }
-        .mobile-menu a:nth-child(4) { animation-delay: 0.4s; }
-        .mobile-menu a:nth-child(5) { animation-delay: 0.5s; }
+
+        .mobile-menu a:nth-child(1) {
+            animation-delay: 0.1s;
+        }
+
+        .mobile-menu a:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .mobile-menu a:nth-child(3) {
+            animation-delay: 0.3s;
+        }
+
+        .mobile-menu a:nth-child(4) {
+            animation-delay: 0.4s;
+        }
+
+        .mobile-menu a:nth-child(5) {
+            animation-delay: 0.5s;
+        }
 
         /* ── HERO ── */
         .hero {
             min-height: 100vh;
-            display: flex; flex-direction: column;
-            align-items: center; justify-content: center;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
             position: relative;
             overflow: hidden;
         }
+
         .hero-bg {
-            position: absolute; inset: 0;
-            background: radial-gradient(ellipse at 50% 40%, rgba(201,168,76,0.06) 0%, transparent 60%),
-                        radial-gradient(ellipse at 20% 80%, rgba(201,168,76,0.03) 0%, transparent 50%),
-                        var(--black);
+            position: absolute;
+            inset: 0;
+            background: radial-gradient(ellipse at 50% 40%, rgba(201, 168, 76, 0.06) 0%, transparent 60%),
+                radial-gradient(ellipse at 20% 80%, rgba(201, 168, 76, 0.03) 0%, transparent 50%),
+                var(--black);
         }
+
         .hero-grain {
-            position: absolute; inset: 0;
+            position: absolute;
+            inset: 0;
             background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
             opacity: 0.5;
         }
+
         .hero-lines {
-            position: absolute; inset: 0; overflow: hidden;
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
         }
-        .hero-lines::before, .hero-lines::after {
+
+        .hero-lines::before,
+        .hero-lines::after {
             content: '';
             position: absolute;
             width: 1px;
@@ -163,28 +262,52 @@
             background: linear-gradient(to bottom, transparent, var(--gold), transparent);
             opacity: 0.08;
         }
-        .hero-lines::before { left: 15%; top: 10%; animation: float 8s ease-in-out infinite; }
-        .hero-lines::after { right: 20%; bottom: 10%; animation: float 8s ease-in-out 4s infinite; }
+
+        .hero-lines::before {
+            left: 15%;
+            top: 10%;
+            animation: float 8s ease-in-out infinite;
+        }
+
+        .hero-lines::after {
+            right: 20%;
+            bottom: 10%;
+            animation: float 8s ease-in-out 4s infinite;
+        }
 
         @keyframes float {
-            0%, 100% { transform: translateY(0); opacity: 0.08; }
-            50% { transform: translateY(-40px); opacity: 0.15; }
+
+            0%,
+            100% {
+                transform: translateY(0);
+                opacity: 0.08;
+            }
+
+            50% {
+                transform: translateY(-40px);
+                opacity: 0.15;
+            }
         }
 
         .hero-content {
-            position: relative; z-index: 2;
-            display: flex; flex-direction: column;
-            align-items: center; text-align: center;
+            position: relative;
+            z-index: 2;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
             padding: 0 24px;
         }
+
         .hero-logo {
             width: 110px;
             height: auto;
             margin-bottom: 20px;
             opacity: 0;
             animation: fadeIn 1.2s ease 0.3s forwards;
-            filter: drop-shadow(0 0 18px rgba(201,168,76,0.18));
+            filter: drop-shadow(0 0 18px rgba(201, 168, 76, 0.18));
         }
+
         .hero-title {
             font-family: var(--font-display);
             font-size: clamp(3rem, 8vw, 6.5rem);
@@ -193,8 +316,10 @@
             text-transform: uppercase;
             color: var(--white);
             line-height: 1.1;
-            opacity: 0; animation: fadeSlideIn 1s ease 0.6s forwards;
+            opacity: 0;
+            animation: fadeSlideIn 1s ease 0.6s forwards;
         }
+
         .hero-title span {
             display: block;
             font-size: 0.25em;
@@ -204,12 +329,16 @@
             font-weight: 400;
             margin-top: 8px;
         }
+
         .hero-divider {
-            width: 60px; height: 1px;
+            width: 60px;
+            height: 1px;
             background: var(--gold);
             margin: 40px 0;
-            opacity: 0; animation: expandWidth 1s ease 1s forwards;
+            opacity: 0;
+            animation: expandWidth 1s ease 1s forwards;
         }
+
         .hero-tagline {
             font-family: var(--font-body);
             font-size: 0.75rem;
@@ -217,36 +346,82 @@
             letter-spacing: 0.35em;
             text-transform: uppercase;
             color: var(--white-dim);
-            opacity: 0; animation: fadeSlideIn 1s ease 1.2s forwards;
+            opacity: 0;
+            animation: fadeSlideIn 1s ease 1.2s forwards;
         }
+
         .hero-scroll {
-            position: absolute; bottom: 40px; left: 50%; transform: translateX(-50%);
-            display: flex; flex-direction: column; align-items: center; gap: 8px;
-            opacity: 0; animation: fadeIn 1s ease 2s forwards;
+            position: absolute;
+            bottom: 40px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            opacity: 0;
+            animation: fadeIn 1s ease 2s forwards;
         }
+
         .hero-scroll span {
-            font-size: 0.6rem; letter-spacing: 0.3em; text-transform: uppercase;
-            color: var(--white-dim); font-weight: 300;
+            font-size: 0.6rem;
+            letter-spacing: 0.3em;
+            text-transform: uppercase;
+            color: var(--white-dim);
+            font-weight: 300;
         }
+
         .scroll-line {
-            width: 1px; height: 40px;
+            width: 1px;
+            height: 40px;
             background: linear-gradient(to bottom, var(--gold), transparent);
             animation: scrollPulse 2s ease-in-out infinite;
         }
+
         @keyframes scrollPulse {
-            0%, 100% { opacity: 1; transform: scaleY(1); }
-            50% { opacity: 0.3; transform: scaleY(0.6); }
+
+            0%,
+            100% {
+                opacity: 1;
+                transform: scaleY(1);
+            }
+
+            50% {
+                opacity: 0.3;
+                transform: scaleY(0.6);
+            }
         }
 
-        @keyframes fadeIn { to { opacity: 1; } }
-        @keyframes fadeSlideIn { to { opacity: 1; transform: translateY(0); } }
-        @keyframes expandWidth { from { width: 0; } to { width: 60px; opacity: 1; } }
+        @keyframes fadeIn {
+            to {
+                opacity: 1;
+            }
+        }
+
+        @keyframes fadeSlideIn {
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes expandWidth {
+            from {
+                width: 0;
+            }
+
+            to {
+                width: 60px;
+                opacity: 1;
+            }
+        }
 
         /* ── SECTIONS SHARED ── */
         section {
             padding: 120px 48px;
             position: relative;
         }
+
         .section-label {
             font-family: var(--font-body);
             font-size: 0.6rem;
@@ -256,6 +431,7 @@
             color: var(--gold);
             margin-bottom: 20px;
         }
+
         .section-title {
             font-family: var(--font-display);
             font-size: clamp(2rem, 4vw, 3.5rem);
@@ -265,6 +441,7 @@
             margin-bottom: 24px;
             color: var(--white);
         }
+
         .section-text {
             font-size: 0.9rem;
             font-weight: 300;
@@ -281,39 +458,60 @@
             max-width: 1200px;
             margin: 0 auto;
         }
-        .about-left { flex: 1; }
+
+        .about-left {
+            flex: 1;
+        }
+
         .about-right {
             flex: 1;
             position: relative;
         }
+
         .about-visual {
-            width: 100%; aspect-ratio: 4/5;
+            width: 100%;
+            aspect-ratio: 4/5;
             background: linear-gradient(135deg, var(--black-card), var(--gray));
-            border: 1px solid rgba(201,168,76,0.1);
-            position: relative; overflow: hidden;
+            border: 1px solid rgba(201, 168, 76, 0.1);
+            position: relative;
+            overflow: hidden;
         }
+
         .about-visual::before {
             content: '';
-            position: absolute; inset: 20px;
-            border: 1px solid rgba(201,168,76,0.08);
+            position: absolute;
+            inset: 20px;
+            border: 1px solid rgba(201, 168, 76, 0.08);
         }
+
         .about-visual-inner {
-            position: absolute; inset: 0;
-            display: flex; align-items: center; justify-content: center;
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
+
         .about-visual-inner svg {
-            width: 60%; opacity: 0.08;
+            width: 60%;
+            opacity: 0.08;
         }
+
         .about-stats {
-            display: flex; gap: 40px; margin-top: 48px;
+            display: flex;
+            gap: 40px;
+            margin-top: 48px;
         }
-        .stat { }
+
+        .stat {}
+
         .stat-number {
             font-family: var(--font-display);
             font-size: 2.5rem;
             font-weight: 300;
             color: var(--gold);
         }
+
         .stat-label {
             font-size: 0.65rem;
             letter-spacing: 0.2em;
@@ -324,45 +522,64 @@
         }
 
         /* ── DIVISIONS ── */
-        #divisiones { max-width: 1200px; margin: 0 auto; }
+        #divisiones {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
         .divisions-header {
             text-align: center;
             margin-bottom: 80px;
         }
-        .divisions-header .section-text { margin: 0 auto; }
+
+        .divisions-header .section-text {
+            margin: 0 auto;
+        }
 
         .divisions-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
             gap: 24px;
         }
+
         .division-card {
             background: var(--black-card);
-            border: 1px solid rgba(201,168,76,0.06);
+            border: 1px solid rgba(201, 168, 76, 0.06);
             padding: 48px 36px;
             position: relative;
             overflow: hidden;
             transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
             cursor: default;
         }
+
         .division-card::before {
             content: '';
-            position: absolute; top: 0; left: 0;
-            width: 100%; height: 2px;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 2px;
             background: linear-gradient(to right, transparent, var(--gold), transparent);
             opacity: 0;
             transition: opacity 0.5s ease;
         }
+
         .division-card:hover {
-            border-color: rgba(201,168,76,0.15);
+            border-color: rgba(201, 168, 76, 0.15);
             transform: translateY(-4px);
         }
-        .division-card:hover::before { opacity: 1; }
+
+        .division-card:hover::before {
+            opacity: 1;
+        }
+
         .division-icon {
-            width: 48px; height: 48px;
+            width: 48px;
+            height: 48px;
             margin-bottom: 28px;
             color: var(--gold);
         }
+
         .division-name {
             font-family: var(--font-display);
             font-size: 1.6rem;
@@ -370,6 +587,7 @@
             letter-spacing: 0.05em;
             margin-bottom: 8px;
         }
+
         .division-sub {
             font-size: 0.65rem;
             font-weight: 500;
@@ -378,12 +596,14 @@
             color: var(--gold);
             margin-bottom: 20px;
         }
+
         .division-desc {
             font-size: 0.85rem;
             font-weight: 300;
             line-height: 1.7;
             color: var(--white-dim);
         }
+
         .division-tag {
             display: inline-block;
             margin-top: 24px;
@@ -392,19 +612,22 @@
             letter-spacing: 0.2em;
             text-transform: uppercase;
             color: var(--gold);
-            border: 1px solid rgba(201,168,76,0.2);
+            border: 1px solid rgba(201, 168, 76, 0.2);
             padding: 6px 16px;
             transition: all 0.3s ease;
         }
+
         .division-card:hover .division-tag {
-            background: rgba(201,168,76,0.08);
+            background: rgba(201, 168, 76, 0.08);
         }
 
         /* ── PHILOSOPHY ── */
         .philosophy {
-            max-width: 900px; margin: 0 auto;
+            max-width: 900px;
+            margin: 0 auto;
             text-align: center;
         }
+
         .philosophy-quote {
             font-family: var(--font-display);
             font-size: clamp(1.5rem, 3.5vw, 2.8rem);
@@ -415,16 +638,20 @@
             margin-bottom: 32px;
             position: relative;
         }
+
         .philosophy-quote::before {
             content: '"';
             position: absolute;
-            top: -40px; left: 50%; transform: translateX(-50%);
+            top: -40px;
+            left: 50%;
+            transform: translateX(-50%);
             font-size: 6rem;
             font-style: normal;
             color: var(--gold);
             opacity: 0.15;
             font-family: var(--font-display);
         }
+
         .philosophy-author {
             font-size: 0.7rem;
             letter-spacing: 0.3em;
@@ -434,21 +661,41 @@
         }
 
         /* ── CONTACT ── */
-        #contacto { max-width: 700px; margin: 0 auto; text-align: center; }
-        .contact-links {
-            display: flex; gap: 32px; justify-content: center;
-            margin-top: 48px; flex-wrap: wrap;
+        #contacto {
+            max-width: 700px;
+            margin: 0 auto;
+            text-align: center;
         }
+
+        .contact-links {
+            display: flex;
+            gap: 32px;
+            justify-content: center;
+            margin-top: 48px;
+            flex-wrap: wrap;
+        }
+
         .contact-link {
-            display: flex; align-items: center; gap: 10px;
-            font-size: 0.8rem; font-weight: 300;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 0.8rem;
+            font-weight: 300;
             color: var(--white-dim);
             text-decoration: none;
             transition: color 0.3s ease;
             letter-spacing: 0.05em;
         }
-        .contact-link:hover { color: var(--gold); }
-        .contact-link svg { width: 18px; height: 18px; color: var(--gold); }
+
+        .contact-link:hover {
+            color: var(--gold);
+        }
+
+        .contact-link svg {
+            width: 18px;
+            height: 18px;
+            color: var(--gold);
+        }
 
         .contact-cta {
             display: inline-block;
@@ -466,53 +713,111 @@
             position: relative;
             overflow: hidden;
         }
+
         .contact-cta:hover {
             transform: translateY(-2px);
-            box-shadow: 0 12px 40px rgba(201,168,76,0.2);
+            box-shadow: 0 12px 40px rgba(201, 168, 76, 0.2);
         }
 
         /* ── FOOTER ── */
         footer {
             padding: 48px;
-            border-top: 1px solid rgba(201,168,76,0.06);
-            display: flex; justify-content: space-between; align-items: center;
-            font-size: 0.65rem; color: var(--white-dim);
-            letter-spacing: 0.15em; font-weight: 300;
+            border-top: 1px solid rgba(201, 168, 76, 0.06);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.65rem;
+            color: var(--white-dim);
+            letter-spacing: 0.15em;
+            font-weight: 300;
         }
-        footer a { color: var(--white-dim); text-decoration: none; }
-        footer a:hover { color: var(--gold); }
+
+        footer a {
+            color: var(--white-dim);
+            text-decoration: none;
+        }
+
+        footer a:hover {
+            color: var(--gold);
+        }
 
         /* ── REVEAL ANIMATION ── */
         .reveal {
-            opacity: 0; transform: translateY(40px);
+            opacity: 0;
+            transform: translateY(40px);
             transition: opacity 0.8s ease, transform 0.8s ease;
         }
-        .reveal.visible { opacity: 1; transform: translateY(0); }
+
+        .reveal.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
 
         /* ── SEPARATOR ── */
         .sep {
-            width: 100%; max-width: 1200px; margin: 0 auto;
+            width: 100%;
+            max-width: 1200px;
+            margin: 0 auto;
             height: 1px;
-            background: linear-gradient(to right, transparent, rgba(201,168,76,0.12), transparent);
+            background: linear-gradient(to right, transparent, rgba(201, 168, 76, 0.12), transparent);
         }
 
         /* ── RESPONSIVE ── */
         @media (max-width: 900px) {
-            nav { padding: 20px 24px; }
-            nav.scrolled { padding: 14px 24px; }
-            .nav-links { display: none; }
-            .hamburger { display: flex; }
-            section { padding: 80px 24px; }
-            .about { flex-direction: column; gap: 48px; }
-            .about-right { max-width: 400px; width: 100%; }
-            .divisions-grid { grid-template-columns: 1fr; }
-            .about-stats { gap: 24px; }
-            footer { flex-direction: column; gap: 16px; text-align: center; }
+            nav {
+                padding: 20px 24px;
+            }
+
+            nav.scrolled {
+                padding: 14px 24px;
+            }
+
+            .nav-links {
+                display: none;
+            }
+
+            .hamburger {
+                display: flex;
+            }
+
+            section {
+                padding: 80px 24px;
+            }
+
+            .about {
+                flex-direction: column;
+                gap: 48px;
+            }
+
+            .about-right {
+                max-width: 400px;
+                width: 100%;
+            }
+
+            .divisions-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .about-stats {
+                gap: 24px;
+            }
+
+            footer {
+                flex-direction: column;
+                gap: 16px;
+                text-align: center;
+            }
         }
 
         @media (max-width: 480px) {
-            .hero-logo { width: 120px; }
-            .contact-links { flex-direction: column; align-items: center; }
+            .hero-logo {
+                width: 120px;
+            }
+
+            .contact-links {
+                flex-direction: column;
+                align-items: center;
+            }
         }
 
         /* ── ASESOR VALQUIRIA (CONCIERGE) ── */
@@ -564,8 +869,15 @@
         }
 
         @keyframes pulse-ring {
-            0% { transform: scale(0.9); opacity: 0.5; }
-            100% { transform: scale(1.3); opacity: 0; }
+            0% {
+                transform: scale(0.9);
+                opacity: 0.5;
+            }
+
+            100% {
+                transform: scale(1.3);
+                opacity: 0;
+            }
         }
 
         .asesor-btn svg {
@@ -580,6 +892,7 @@
             opacity: 0;
             position: absolute;
         }
+
         .asesor-btn-close-icon {
             position: absolute;
             width: 24px;
@@ -588,6 +901,7 @@
             transform: rotate(-90deg) scale(0);
             opacity: 0;
         }
+
         .asesor-btn.open .asesor-btn-close-icon {
             transform: rotate(0) scale(1);
             opacity: 1;
@@ -629,7 +943,7 @@
             display: flex;
             align-items: center;
             gap: 12px;
-            background: linear-gradient(to right, rgba(20,20,20,0.4), rgba(26,26,26,0.4));
+            background: linear-gradient(to right, rgba(20, 20, 20, 0.4), rgba(26, 26, 26, 0.4));
         }
 
         .asesor-avatar {
@@ -643,9 +957,18 @@
             justify-content: center;
             box-shadow: 0 0 10px rgba(201, 168, 76, 0.1);
         }
-        .asesor-avatar svg { width: 18px; height: 18px; color: var(--gold); }
 
-        .asesor-header-info { display: flex; flex-direction: column; }
+        .asesor-avatar svg {
+            width: 18px;
+            height: 18px;
+            color: var(--gold);
+        }
+
+        .asesor-header-info {
+            display: flex;
+            flex-direction: column;
+        }
+
         .asesor-header-title {
             font-family: var(--font-display);
             color: var(--gold);
@@ -654,6 +977,7 @@
             letter-spacing: 0.05em;
             line-height: 1.2;
         }
+
         .asesor-header-status {
             font-size: 0.6rem;
             color: var(--white-dim);
@@ -664,9 +988,11 @@
             gap: 5px;
             margin-top: 2px;
         }
+
         .asesor-header-status::before {
             content: '';
-            width: 4px; height: 4px;
+            width: 4px;
+            height: 4px;
             background: var(--gold);
             border-radius: 50%;
             box-shadow: 0 0 6px var(--gold);
@@ -681,9 +1007,19 @@
             gap: 16px;
             scroll-behavior: smooth;
         }
-        .asesor-body::-webkit-scrollbar { width: 4px; }
-        .asesor-body::-webkit-scrollbar-track { background: transparent; }
-        .asesor-body::-webkit-scrollbar-thumb { background: rgba(201, 168, 76, 0.2); border-radius: 4px; }
+
+        .asesor-body::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        .asesor-body::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .asesor-body::-webkit-scrollbar-thumb {
+            background: rgba(201, 168, 76, 0.2);
+            border-radius: 4px;
+        }
 
         .chat-msg {
             max-width: 85%;
@@ -694,8 +1030,12 @@
             transform: translateY(10px);
             letter-spacing: 0.02em;
         }
+
         @keyframes msgFadeIn {
-            to { opacity: 1; transform: translateY(0); }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
 
         .chat-msg.system {
@@ -706,7 +1046,11 @@
             padding: 12px 16px;
             border-radius: 2px 12px 12px 12px;
         }
-        .chat-msg.system b { color: var(--gold); font-weight: 500; }
+
+        .chat-msg.system b {
+            color: var(--gold);
+            font-weight: 500;
+        }
 
         .chat-msg.user {
             align-self: flex-end;
@@ -744,6 +1088,7 @@
             width: fit-content;
             max-width: 100%;
         }
+
         .quick-reply-btn::after {
             content: '→';
             color: var(--gold);
@@ -752,26 +1097,32 @@
             transition: all 0.3s ease;
             margin-left: 8px;
         }
+
         .quick-reply-btn:hover {
             background: rgba(201, 168, 76, 0.08);
             border-color: rgba(201, 168, 76, 0.6);
             color: var(--white);
         }
+
         .quick-reply-btn:hover::after {
             opacity: 1;
             transform: translateX(0);
         }
 
         .quick-reply-btn.primary {
-            background: linear-gradient(135deg, rgba(201,168,76,0.15), rgba(139,105,20,0.15));
+            background: linear-gradient(135deg, rgba(201, 168, 76, 0.15), rgba(139, 105, 20, 0.15));
             border-color: var(--gold);
             color: var(--gold-light);
             text-align: center;
             justify-content: center;
         }
-        .quick-reply-btn.primary::after { display: none; }
+
+        .quick-reply-btn.primary::after {
+            display: none;
+        }
+
         .quick-reply-btn.primary:hover {
-            background: linear-gradient(135deg, rgba(201,168,76,0.25), rgba(139,105,20,0.25));
+            background: linear-gradient(135deg, rgba(201, 168, 76, 0.25), rgba(139, 105, 20, 0.25));
             box-shadow: 0 4px 15px rgba(201, 168, 76, 0.15);
         }
 
@@ -785,18 +1136,36 @@
             width: fit-content;
             animation: msgFadeIn 0.3s ease forwards;
         }
+
         .typing-dot {
-            width: 5px; height: 5px;
+            width: 5px;
+            height: 5px;
             background: var(--gold);
             border-radius: 50%;
             animation: typingPulse 1.4s infinite ease-in-out both;
         }
-        .typing-dot:nth-child(1) { animation-delay: -0.32s; }
-        .typing-dot:nth-child(2) { animation-delay: -0.16s; }
-        
+
+        .typing-dot:nth-child(1) {
+            animation-delay: -0.32s;
+        }
+
+        .typing-dot:nth-child(2) {
+            animation-delay: -0.16s;
+        }
+
         @keyframes typingPulse {
-            0%, 80%, 100% { transform: scale(0); opacity: 0.3; }
-            40% { transform: scale(1); opacity: 1; }
+
+            0%,
+            80%,
+            100% {
+                transform: scale(0);
+                opacity: 0.3;
+            }
+
+            40% {
+                transform: scale(1);
+                opacity: 1;
+            }
         }
 
         /* Footer & Input */
@@ -809,6 +1178,7 @@
             gap: 12px;
             position: relative;
         }
+
         .asesor-input-wrapper {
             flex: 1;
             position: relative;
@@ -820,11 +1190,13 @@
             padding: 2px 4px 2px 16px;
             transition: all 0.3s ease;
         }
+
         .asesor-input-wrapper:focus-within {
             border-color: rgba(201, 168, 76, 0.6);
             background: rgba(26, 26, 26, 0.8);
             box-shadow: 0 0 12px rgba(201, 168, 76, 0.1);
         }
+
         .asesor-input {
             flex: 1;
             background: transparent;
@@ -836,9 +1208,15 @@
             padding: 10px 0;
             width: 100%;
         }
-        .asesor-input::placeholder { color: rgba(160, 152, 130, 0.4); }
-        .asesor-input:disabled { opacity: 0.5; }
-        
+
+        .asesor-input::placeholder {
+            color: rgba(160, 152, 130, 0.4);
+        }
+
+        .asesor-input:disabled {
+            opacity: 0.5;
+        }
+
         .asesor-send {
             background: var(--gold);
             border: none;
@@ -855,21 +1233,30 @@
             pointer-events: none;
             flex-shrink: 0;
         }
+
         .asesor-send.active {
             opacity: 1;
             pointer-events: auto;
             box-shadow: 0 2px 8px rgba(201, 168, 76, 0.3);
         }
+
         .asesor-send.active:hover {
             transform: scale(1.05);
             background: var(--gold-light);
         }
-        .asesor-send svg { width: 14px; height: 14px; position: relative; left: 1px; }
+
+        .asesor-send svg {
+            width: 14px;
+            height: 14px;
+            position: relative;
+            left: 1px;
+        }
 
         .asesor-header-actions {
             margin-left: auto;
             display: flex;
         }
+
         .asesor-restart {
             background: transparent;
             border: none;
@@ -882,18 +1269,28 @@
             justify-content: center;
             transition: all 0.3s ease;
         }
+
         .asesor-restart:hover {
             color: var(--gold);
             background: rgba(201, 168, 76, 0.1);
             transform: rotate(180deg);
         }
-        
+
         @media (max-width: 480px) {
-            .asesor-wrapper { bottom: 20px; right: 20px; }
-            .asesor-panel { width: calc(100vw - 40px); height: 75vh; bottom: 70px; }
+            .asesor-wrapper {
+                bottom: 20px;
+                right: 20px;
+            }
+
+            .asesor-panel {
+                width: calc(100vw - 40px);
+                height: 75vh;
+                bottom: 70px;
+            }
         }
     </style>
 </head>
+
 <body>
     <!-- Preloader -->
     <div class="preloader">
@@ -951,9 +1348,9 @@
                 <p class="section-label">Quiénes Somos</p>
                 <h2 class="section-title">Creamos con propósito,<br>fabricamos con excelencia</h2>
                 <p class="section-text">
-                    Valquiria Inc. es un holding de innovación y manufactura con sede en Latinoamérica. 
-                    Reunimos bajo un mismo techo capacidades de impresión 3D, diseño de producto, 
-                    empaques termoformados, material pedagógico y más — siempre con un estándar de 
+                    Valquiria Inc. es un holding de innovación y manufactura con sede en Latinoamérica.
+                    Reunimos bajo un mismo techo capacidades de impresión 3D, diseño de producto,
+                    empaques termoformados, material pedagógico y más — siempre con un estándar de
                     calidad que desafía lo convencional.
                 </p>
                 <div class="about-stats">
@@ -975,9 +1372,12 @@
                 <div class="about-visual">
                     <div class="about-visual-inner">
                         <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <path d="M50 5 L95 27.5 L95 72.5 L50 95 L5 72.5 L5 27.5 Z" stroke="currentColor" stroke-width="0.5" fill="none" color="#C9A84C"/>
-                            <path d="M50 20 L80 35 L80 65 L50 80 L20 65 L20 35 Z" stroke="currentColor" stroke-width="0.3" fill="none" color="#C9A84C"/>
-                            <path d="M50 35 L65 42.5 L65 57.5 L50 65 L35 57.5 L35 42.5 Z" stroke="currentColor" stroke-width="0.3" fill="none" color="#C9A84C"/>
+                            <path d="M50 5 L95 27.5 L95 72.5 L50 95 L5 72.5 L5 27.5 Z" stroke="currentColor"
+                                stroke-width="0.5" fill="none" color="#C9A84C" />
+                            <path d="M50 20 L80 35 L80 65 L50 80 L20 65 L20 35 Z" stroke="currentColor"
+                                stroke-width="0.3" fill="none" color="#C9A84C" />
+                            <path d="M50 35 L65 42.5 L65 57.5 L50 65 L35 57.5 L35 42.5 Z" stroke="currentColor"
+                                stroke-width="0.3" fill="none" color="#C9A84C" />
                         </svg>
                     </div>
                 </div>
@@ -993,72 +1393,76 @@
             <p class="section-label">Nuestras Divisiones</p>
             <h2 class="section-title">Un ecosistema de innovación</h2>
             <p class="section-text">
-                Cada división opera con identidad propia pero comparte el ADN de Valquiria: 
+                Cada división opera con identidad propia pero comparte el ADN de Valquiria:
                 rigor técnico, diseño impecable y pasión por lo extraordinario.
             </p>
         </div>
         <div class="divisions-grid">
             <!-- Valquiria 3D -->
             <div class="division-card reveal">
-                <svg class="division-icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M24 4L44 16V32L24 44L4 32V16L24 4Z"/>
-                    <path d="M24 4V44"/>
-                    <path d="M4 16L24 28L44 16"/>
+                <svg class="division-icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M24 4L44 16V32L24 44L4 32V16L24 4Z" />
+                    <path d="M24 4V44" />
+                    <path d="M4 16L24 28L44 16" />
                 </svg>
                 <h3 class="division-name">Valquiria 3D</h3>
                 <p class="division-sub">Manufactura Aditiva</p>
                 <p class="division-desc">
-                    Servicio profesional de impresión 3D. Prototipado rápido, piezas funcionales 
+                    Servicio profesional de impresión 3D. Prototipado rápido, piezas funcionales
                     y producción en serie con tecnología FDM y resina de alta resolución.
                 </p>
                 <span class="division-tag">Próximamente</span>
             </div>
             <!-- Valquiria Dental -->
             <div class="division-card reveal">
-                <svg class="division-icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M14 8C10 8 6 12 6 18C6 30 16 38 20 42C22 44 24 40 24 36"/>
-                    <path d="M34 8C38 8 42 12 42 18C42 30 32 38 28 42C26 44 24 40 24 36"/>
+                <svg class="division-icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M14 8C10 8 6 12 6 18C6 30 16 38 20 42C22 44 24 40 24 36" />
+                    <path d="M34 8C38 8 42 12 42 18C42 30 32 38 28 42C26 44 24 40 24 36" />
                 </svg>
                 <h3 class="division-name">Valquiria Dental</h3>
                 <p class="division-sub">Material Pedagógico</p>
                 <p class="division-desc">
-                    Modelos anatómicos dentales, guías de estudio y material educativo de alta 
+                    Modelos anatómicos dentales, guías de estudio y material educativo de alta
                     fidelidad para universidades y profesionales de la odontología.
                 </p>
                 <span class="division-tag">Próximamente</span>
             </div>
             <!-- Valquiria Pack -->
             <div class="division-card reveal">
-                <svg class="division-icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                    <rect x="6" y="14" width="36" height="28" rx="2"/>
-                    <path d="M6 22H42"/>
-                    <path d="M18 14V6H30V14"/>
+                <svg class="division-icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="6" y="14" width="36" height="28" rx="2" />
+                    <path d="M6 22H42" />
+                    <path d="M18 14V6H30V14" />
                 </svg>
                 <h3 class="division-name">Valquiria Pack</h3>
                 <p class="division-sub">Empaques Termoformados</p>
                 <p class="division-desc">
-                    Diseño y producción de empaques termoformados personalizados para productos 
+                    Diseño y producción de empaques termoformados personalizados para productos
                     que necesitan presentación premium y protección superior.
                 </p>
                 <span class="division-tag">Próximamente</span>
             </div>
             <!-- Valquiria Lux -->
             <div class="division-card reveal">
-                <svg class="division-icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M24 4V8"/>
-                    <path d="M24 40V44"/>
-                    <path d="M8 24H4"/>
-                    <path d="M44 24H40"/>
-                    <circle cx="24" cy="24" r="10"/>
-                    <path d="M10 10L13 13"/>
-                    <path d="M35 35L38 38"/>
-                    <path d="M38 10L35 13"/>
-                    <path d="M13 35L10 38"/>
+                <svg class="division-icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M24 4V8" />
+                    <path d="M24 40V44" />
+                    <path d="M8 24H4" />
+                    <path d="M44 24H40" />
+                    <circle cx="24" cy="24" r="10" />
+                    <path d="M10 10L13 13" />
+                    <path d="M35 35L38 38" />
+                    <path d="M38 10L35 13" />
+                    <path d="M13 35L10 38" />
                 </svg>
                 <h3 class="division-name">Valquiria Lux</h3>
                 <p class="division-sub">Iluminación & Diseño</p>
                 <p class="division-desc">
-                    Lámparas de diseño y piezas de iluminación que fusionan manufactura aditiva 
+                    Lámparas de diseño y piezas de iluminación que fusionan manufactura aditiva
                     con estética contemporánea. Cada pieza es una obra funcional.
                 </p>
                 <span class="division-tag">Próximamente</span>
@@ -1073,7 +1477,7 @@
         <div class="philosophy reveal">
             <p class="section-label">Nuestra Filosofía</p>
             <p class="philosophy-quote">
-                No fabricamos productos. Diseñamos soluciones que inspiran, 
+                No fabricamos productos. Diseñamos soluciones que inspiran,
                 con la precisión que exige la excelencia.
             </p>
             <p class="philosophy-author">— Valquiria Inc.</p>
@@ -1093,21 +1497,19 @@
             <div class="contact-links">
                 <a href="mailto:ventas@valquiriadental.com" class="contact-link">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                        <rect x="2" y="4" width="20" height="16" rx="2"/>
-                        <path d="M22 4L12 13L2 4"/>
+                        <rect x="2" y="4" width="20" height="16" rx="2" />
+                        <path d="M22 4L12 13L2 4" />
                     </svg>
-                    contacto@valquiriainc.com
+                    ventas@valquiriadental.com
                 </a>
-                <a href="https://instagram.com/valquiriainc" target="_blank" class="contact-link">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                        <rect x="2" y="2" width="20" height="20" rx="5"/>
-                        <circle cx="12" cy="12" r="5"/>
-                        <circle cx="17.5" cy="6.5" r="1.5" fill="currentColor" stroke="none"/>
+                <a href="https://wa.me/525554675821" target="_blank" class="contact-link">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
                     </svg>
-                    @valquiriainc
+                    WhatsApp
                 </a>
             </div>
-            <a href="mailto:contacto@valquiriainc.com" class="contact-cta">Iniciar Conversación</a>
+            <a href="mailto:ventas@valquiriadental.com" class="contact-cta">Iniciar Conversación</a>
         </div>
     </section>
 
@@ -1116,8 +1518,9 @@
         <div class="asesor-panel" id="asesorPanel">
             <div class="asesor-header">
                 <div class="asesor-avatar">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+                        stroke-linejoin="round">
+                        <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
                     </svg>
                 </div>
                 <div class="asesor-header-info">
@@ -1125,8 +1528,10 @@
                     <span class="asesor-header-status">Consultor Premium</span>
                 </div>
                 <div class="asesor-header-actions">
-                    <button class="asesor-restart" id="asesorRestart" aria-label="Reiniciar conversación" title="Reiniciar conversación">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <button class="asesor-restart" id="asesorRestart" aria-label="Reiniciar conversación"
+                        title="Reiniciar conversación">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
                             <path d="M3 3v5h5"></path>
                         </svg>
@@ -1138,9 +1543,11 @@
             </div>
             <div class="asesor-footer">
                 <div class="asesor-input-wrapper">
-                    <input type="text" class="asesor-input" id="asesorInput" placeholder="Describe lo que necesitas..." autocomplete="off">
+                    <input type="text" class="asesor-input" id="asesorInput" placeholder="Describe lo que necesitas..."
+                        autocomplete="off">
                     <button class="asesor-send" id="asesorSend" aria-label="Enviar mensaje">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                            stroke-linecap="round" stroke-linejoin="round">
                             <line x1="22" y1="2" x2="11" y2="13"></line>
                             <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
                         </svg>
@@ -1150,9 +1557,10 @@
         </div>
         <button class="asesor-btn" id="asesorBtn" aria-label="Abrir Asesor">
             <svg class="asesor-btn-main-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2">
-                <path d="M12 2L14.5 9.5L22 12L14.5 14.5L12 22L9.5 14.5L2 12L9.5 9.5L12 2Z"/>
+                <path d="M12 2L14.5 9.5L22 12L14.5 14.5L12 22L9.5 14.5L2 12L9.5 9.5L12 2Z" />
             </svg>
-            <svg class="asesor-btn-close-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <svg class="asesor-btn-close-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+                stroke-linecap="round" stroke-linejoin="round">
                 <line x1="18" y1="6" x2="6" y2="18"></line>
                 <line x1="6" y1="6" x2="18" y2="18"></line>
             </svg>
@@ -1223,84 +1631,22 @@
         const asesorSend = document.getElementById('asesorSend');
         const asesorRestart = document.getElementById('asesorRestart');
         const asesorWrapper = document.getElementById('asesorWrapper');
-        
+
         let isChatOpen = false;
         let isFirstOpen = true;
         let isTyping = false;
-
-        const WA_NUMBER = "5215555555555"; // Cambiar por tu WhatsApp
-
-        const RESPONSES = {
-            welcome: {
-                msg: "Bienvenido a Asesor Valquiria. Puedo orientarte hacia la opción más adecuada según tu práctica o proyecto. ¿Qué tienes en mente hoy?",
-                options: [
-                    { label: "Busco algo para endodoncia", act: "endo" },
-                    { label: "Necesito material para universidad", act: "uni" },
-                    { label: "Quiero opciones de práctica", act: "practica" }
-                ]
-            },
-            endo: {
-                msg: "Dentro de Valquiria Dental, esa necesidad se alinea perfectamente con nuestro <b>Kit de dientes para endodoncia</b> y los <b>Dientes tipo Nissin para endodoncia</b>. Ambos ofrecen una simulación de conductos excepcional.",
-                options: [
-                    { label: "Ver disponibilidad en WhatsApp", act: "wa_endo", primary: true }
-                ]
-            },
-            pulpo: {
-                msg: "Para procedimientos de odontopediatría, el <b>Kit de dientes para pulpotomía</b> es ideal. Cuenta con anatomía interna diseñada específicamente para estas prácticas.",
-                options: [
-                    { label: "Cotizar Kit en WhatsApp", act: "wa_pulpo", primary: true }
-                ]
-            },
-            nissin: {
-                msg: "Nuestra línea incluye tanto <b>Dientes tipo Nissin estándar</b> como específicos para endodoncia. Son compatibles con la mayoría de los tipodontos del mercado.",
-                options: [
-                    { label: "Solicitar catálogo", act: "wa_general", primary: true }
-                ]
-            },
-            anatomia: {
-                msg: "Si priorizas el realismo anatómico, nuestros <b>Dientes realistas anatómicos</b> ofrecen surcos, cúspides y raíces altamente detalladas para un estudio morfológico superior.",
-                options: [
-                    { label: "Hablar con un asesor", act: "wa_general", primary: true }
-                ]
-            },
-            uni: {
-                msg: "Para entornos académicos, el <b>Simulador dental Carodonto Valquiria</b> es nuestra solución más robusta. Permite entrenamientos inmersivos y controlados para los estudiantes.",
-                options: [
-                    { label: "Solicitar propuesta institucional", act: "wa_uni", primary: true }
-                ]
-            },
-            practica: {
-                msg: "Para práctica personal o consultorio, sugerimos los <b>Dientes tipo Nissin</b> o los diferentes Kits (Endodoncia/Pulpotomía). Puedo sugerirte una ruta si me das más detalles.",
-                options: [
-                    { label: "Ir a WhatsApp con un asesor", act: "wa_general", primary: true }
-                ]
-            },
-            fallback: {
-                msg: "Comprendo. Debido a lo específico de tu solicitud, lo más sugerido es que un especialista nuestro te atienda de manera directa. Puedo prepararte el acceso a WhatsApp para continuar la conversación.",
-                options: [
-                    { label: "Conectar con Especialista", act: "wa_general", primary: true }
-                ]
-            }
-        };
-
-        function getWaLink(act) {
-            let text = "Hola, me interesa obtener información de Valquiria Dental.";
-            if (act === 'wa_endo') text = "Hola, busco información sobre opciones para endodoncia (Kit y tipo Nissin).";
-            if (act === 'wa_pulpo') text = "Hola, deseo información sobre el Kit de dientes para pulpotomía.";
-            if (act === 'wa_uni') text = "Hola, represento a una universidad y busco información sobre el Simulador Carodonto.";
-            return `https://wa.me/${WA_NUMBER}?text=${encodeURIComponent(text)}`;
-        }
+        let chatHistory = [];
 
         // --- CORE FUNCTIONS ---
         function toggleChat() {
             isChatOpen = !isChatOpen;
             asesorBtn.classList.toggle('open');
             asesorPanel.classList.toggle('open');
-            
+
             if (isChatOpen) {
                 if (isFirstOpen) {
                     isFirstOpen = false;
-                    simulateSystemResponse('welcome');
+                    sendInitialWelcomeMessage();
                 } else {
                     setTimeout(() => asesorInput.focus(), 300);
                 }
@@ -1329,8 +1675,9 @@
             asesorBody.innerHTML = '';
             asesorInput.value = '';
             asesorInput.disabled = false;
+            chatHistory = [];
             updateSendButtonState();
-            simulateSystemResponse('welcome');
+            sendInitialWelcomeMessage();
         });
 
         asesorInput.addEventListener('input', updateSendButtonState);
@@ -1361,90 +1708,71 @@
             return div;
         }
 
+        function parseMarkdown(text) {
+            let html = text.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>'); // Bold
+            html = html.replace(/\*(.*?)\*/g, '<i>$1</i>'); // Italic
+            html = html.replace(/\[(.*?)\]\((.*?)\)/g, '<a href="$2" target="_blank" style="color: var(--gold); text-decoration: underline;">$1</a>'); // Links
+            html = html.replace(/\n/g, '<br>'); // Line breaks
+            return html;
+        }
+
         function renderMessage(text, sender) {
             const div = document.createElement('div');
             div.className = `chat-msg ${sender}`;
-            div.innerHTML = text;
+            div.innerHTML = parseMarkdown(text);
             asesorBody.appendChild(div);
             scrollToBottom();
         }
 
-        function renderOptions(options) {
-            if (!options || options.length === 0) return;
-            const container = document.createElement('div');
-            container.className = 'chat-quick-replies';
-            
-            options.forEach(opt => {
-                const btn = document.createElement('button');
-                btn.className = `quick-reply-btn ${opt.primary ? 'primary' : ''}`;
-                btn.innerText = opt.label;
-                btn.onclick = () => {
-                    if (isTyping) return;
-                    if (opt.act && opt.act.startsWith('wa_')) {
-                        window.open(getWaLink(opt.act), '_blank');
-                        return;
-                    }
-                    handleUserInput(opt.label, opt.act);
-                };
-                container.appendChild(btn);
-            });
-            
-            asesorBody.appendChild(container);
-            scrollToBottom();
-        }
-
-        function disableOldOptions() {
-            const optionsContainers = asesorBody.querySelectorAll('.chat-quick-replies');
-            if (optionsContainers.length > 0) {
-                const last = optionsContainers[optionsContainers.length - 1];
-                last.style.pointerEvents = 'none';
-                last.style.opacity = '0.4';
-                last.style.filter = 'grayscale(100%)';
-            }
-        }
-
-        // --- NLP / INTENT LOGIC ---
-        function detectIntent(text) {
-            const t = text.toLowerCase();
-            if (t.includes('endo') || t.includes('conducto')) return 'endo';
-            if (t.includes('pulpo') || t.includes('infantil') || t.includes('odontopediatr')) return 'pulpo';
-            if (t.includes('nissin') || t.includes('nisi')) return 'nissin';
-            if (t.includes('realist') || t.includes('anatomic') || t.includes('anatomía')) return 'anatomia';
-            if (t.includes('simulador') || t.includes('universidad') || t.includes('carodonto') || t.includes('instituto')) return 'uni';
-            if (t.includes('practic') || t.includes('entrenamient')) return 'practica';
-            return 'fallback';
-        }
-
-        function handleUserInput(text, forceIntent = null) {
+        // --- AI API LOGIC ---
+        async function handleUserInput(text) {
             if (isTyping) return;
-            disableOldOptions();
+
             renderMessage(text, 'user');
-            
+            chatHistory.push({ role: 'user', parts: [{ text: text }] });
+
             asesorInput.value = '';
             asesorInput.disabled = true;
             updateSendButtonState();
-            
-            const intent = forceIntent || detectIntent(text);
-            simulateSystemResponse(intent);
-        }
 
-        function simulateSystemResponse(intentKey) {
             isTyping = true;
             const typing = createTypingIndicator();
             asesorBody.appendChild(typing);
             scrollToBottom();
-            
-            setTimeout(() => {
+
+            try {
+                const response = await fetch('https://rodrigo-corrales1429-github-io.onrender.com/api/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ messages: chatHistory })
+                });
+
+                const data = await response.json();
                 typing.remove();
-                const node = RESPONSES[intentKey] || RESPONSES.fallback;
-                renderMessage(node.msg, 'system');
-                renderOptions(node.options);
-                
-                isTyping = false;
-                asesorInput.disabled = false;
-                setTimeout(() => { if (isChatOpen) asesorInput.focus(); }, 50);
-                scrollToBottom();
-            }, 800 + Math.random() * 400); // Variabilidad humana simulada
+
+                if (data.error) {
+                    renderMessage("⚠️ " + data.error, 'system');
+                } else {
+                    const aiReply = data.reply;
+                    renderMessage(aiReply, 'system');
+                    chatHistory.push({ role: 'model', parts: [{ text: aiReply }] });
+                }
+            } catch (err) {
+                typing.remove();
+                renderMessage("Lo siento, el servidor de IA no está disponible en este momento. Por favor verifica que esté corriendo en el puerto 3000.", 'system');
+                console.error(err);
+            }
+
+            isTyping = false;
+            asesorInput.disabled = false;
+            setTimeout(() => { if (isChatOpen) asesorInput.focus(); }, 50);
+            scrollToBottom();
+        }
+
+        function sendInitialWelcomeMessage() {
+            const welcomeText = "Bienvenido a Valquiria Inc. Soy el Asesor Valquiria, tu conserje digital. ¿En qué te puedo asistir el día de hoy con nuestros productos o divisiones?";
+            chatHistory.push({ role: 'model', parts: [{ text: welcomeText }] });
+            renderMessage(welcomeText, 'system');
         }
 
         function scrollToBottom() {
@@ -1452,4 +1780,5 @@
         }
     </script>
 </body>
+
 </html>
