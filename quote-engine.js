@@ -1,18 +1,21 @@
 /**
  * ============================================================================
- *  MOTOR DE COTIZACIÓN — VALQUIRIA
+ *  MOTOR DE COTIZACIÓN — VALQUIRIA  (v2 con búsqueda inteligente)
  * ============================================================================
- *  Esta es la única parte del sistema que toca dinero. Está diseñada para
- *  ser MATEMÁTICAMENTE EXACTA bajo cualquier circunstancia.
+ *  Cambios v2:
+ *  - Búsqueda tolera errores ortográficos (Levenshtein distance ≤ 1)
+ *  - Búsqueda tolera palabras parciales ("pulpo" encuentra "pulpotomía")
+ *  - Stop-words en español (no contamina el ranking con "hola", "qué", etc.)
+ *  - Normalización de acentos ("pediatria" = "pediatría")
+ *  - Si no hay match exacto, devuelve top productos (bot nunca se queda sin
+ *    nada que ofrecer al usuario).
  *
- *  Reglas de blindaje:
+ *  Reglas de blindaje (sin cambios respecto a v1):
  *  1. Toda aritmética se hace con ENTEROS (centavos), nunca flotantes.
- *  2. Nada de Number.toFixed() para "redondear" — esa función miente.
- *  3. Cada cotización se reverifica antes de devolverla (self-check).
- *  4. Los SKUs inválidos NO se ignoran silenciosamente: se reportan.
- *  5. Cantidades negativas, cero, no-enteras o absurdas se rechazan.
- *  6. El catálogo es la única fuente de precios; nunca confiamos en lo
- *     que diga el LLM sobre números.
+ *  2. Cada cotización se reverifica antes de devolverla (self-check).
+ *  3. Los SKUs inválidos NO se ignoran silenciosamente: se reportan.
+ *  4. Cantidades negativas, cero, no-enteras o absurdas se rechazan.
+ *  5. El catálogo es la única fuente de precios.
  * ============================================================================
  */
 
@@ -32,7 +35,6 @@ const CANTIDAD_MAXIMA_POR_LINEA = parseInt(
   10
 );
 
-// Sanity check de configuración al arrancar:
 if (
   !Number.isInteger(ENVIO_GRATIS_DESDE_CENTAVOS) ||
   !Number.isInteger(COSTO_ENVIO_CENTAVOS) ||
@@ -45,7 +47,22 @@ if (
   );
 }
 
-// ------- HELPERS DE FORMATO -------
+// ------- STOP-WORDS EN ESPAÑOL -------
+// Estas palabras nunca aportan al score de búsqueda.
+const STOP_WORDS = new Set([
+  "hola", "buenas", "buenos", "buen", "dia", "tardes", "noches",
+  "que", "qué", "como", "cómo", "cual", "cuál", "cuales", "cuáles",
+  "tiene", "tienen", "tener", "tengo", "haber", "hay",
+  "para", "por", "con", "sin", "del", "los", "las", "una", "uno", "unos", "unas",
+  "este", "esta", "estos", "estas", "ese", "esa", "esos", "esas",
+  "necesito", "quiero", "busco", "buscar", "ver", "saber",
+  "puede", "puedo", "podrias", "podrías", "podria", "podría", "puedes",
+  "favor", "gracias", "todo", "todos", "todas", "ayuda", "ayudame",
+  "soy", "estoy", "estamos", "ando", "estaba",
+  "the", "and", "for", "you", "with"
+]);
+
+// ------- HELPERS -------
 
 /**
  * Convierte centavos enteros a string "$X,XXX.XX MXN".
@@ -59,18 +76,56 @@ function centavosAPesos(centavos) {
   const abs = Math.abs(centavos);
   const pesos = Math.floor(abs / 100);
   const cents = abs % 100;
-  const pesosStr = pesos.toLocaleString("en-US"); // separador de miles
+  const pesosStr = pesos.toLocaleString("en-US");
   const centsStr = cents.toString().padStart(2, "0");
   return `${negativo ? "-" : ""}$${pesosStr}.${centsStr} MXN`;
 }
 
-// ------- VALIDACIÓN DE ENTRADA -------
+/**
+ * Quita acentos y baja a minúsculas. "Pediatría" → "pediatria".
+ */
+function normalizarTexto(s) {
+  return String(s)
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^\w\s]/g, " ")  // signos de puntuación a espacios
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
 /**
- * Valida que `items` tenga la forma [{sku: string, cantidad: int>0}, ...].
- * Lanza Error con mensaje legible si algo falla.
- * Devuelve una versión normalizada (cantidades como enteros, sin duplicados).
+ * Distancia de Levenshtein iterativa.
+ * Cuántas sustituciones, inserciones o eliminaciones convierten a en b.
+ * "nisin" vs "nissin" = 1 (insertar una 's').
  */
+function levenshtein(a, b) {
+  if (a === b) return 0;
+  if (a.length === 0) return b.length;
+  if (b.length === 0) return a.length;
+
+  // Optimización: solo guardamos dos filas en lugar de la matriz completa.
+  let filaPrev = new Array(a.length + 1);
+  let filaActual = new Array(a.length + 1);
+  for (let j = 0; j <= a.length; j++) filaPrev[j] = j;
+
+  for (let i = 1; i <= b.length; i++) {
+    filaActual[0] = i;
+    for (let j = 1; j <= a.length; j++) {
+      const costo = a.charAt(j - 1) === b.charAt(i - 1) ? 0 : 1;
+      filaActual[j] = Math.min(
+        filaActual[j - 1] + 1,       // inserción
+        filaPrev[j] + 1,             // eliminación
+        filaPrev[j - 1] + costo      // sustitución
+      );
+    }
+    [filaPrev, filaActual] = [filaActual, filaPrev];
+  }
+  return filaPrev[a.length];
+}
+
+// ------- VALIDACIÓN DE INPUT (sin cambios) -------
+
 function validarYNormalizarItems(items) {
   if (!Array.isArray(items)) {
     throw new Error("El campo 'items' debe ser un arreglo.");
@@ -82,7 +137,6 @@ function validarYNormalizarItems(items) {
     throw new Error("Demasiadas líneas en la cotización (máximo 50).");
   }
 
-  // Consolidar SKUs duplicados sumando cantidades
   const consolidado = new Map();
 
   for (let i = 0; i < items.length; i++) {
@@ -97,7 +151,6 @@ function validarYNormalizarItems(items) {
 
     const sku = item.sku.trim();
 
-    // La cantidad puede venir como number o string ("2"). Forzamos a entero.
     const cantidadNum = Number(item.cantidad);
     if (
       !Number.isFinite(cantidadNum) ||
@@ -127,19 +180,8 @@ function validarYNormalizarItems(items) {
   }));
 }
 
-// ------- MOTOR PRINCIPAL DE COTIZACIÓN -------
+// ------- COTIZACIÓN (sin cambios estructurales) -------
 
-/**
- * Calcula una cotización completa.
- *
- * @param {Array<{sku: string, cantidad: number}>} items
- * @returns Un objeto con TODA la información necesaria para presentar la
- *          cotización al usuario, incluyendo strings ya formateados.
- *
- * Si hay un error de validación o un SKU inválido, retorna un objeto
- *   { ok: false, error: "...", sku_invalido?: "..." }
- * para que Gemini pueda explicarle el problema al usuario.
- */
 function calcularCotizacion(items) {
   let itemsNormalizados;
   try {
@@ -171,7 +213,6 @@ function calcularCotizacion(items) {
       continue;
     }
 
-    // Aritmética en enteros — esta es la línea crítica.
     const linea_centavos = producto.precio_centavos * item.cantidad;
 
     lineas.push({
@@ -187,8 +228,6 @@ function calcularCotizacion(items) {
     subtotal_centavos += linea_centavos;
   }
 
-  // Si hay errores de SKU o stock, abortamos la cotización para que Gemini
-  // primero los resuelva con el usuario antes de ofrecer un total.
   if (skusInvalidos.length > 0) {
     return {
       ok: false,
@@ -208,13 +247,10 @@ function calcularCotizacion(items) {
     };
   }
 
-  // ------- Aplicar regla de envío -------
   const envio_gratis = subtotal_centavos >= ENVIO_GRATIS_DESDE_CENTAVOS;
   const envio_centavos = envio_gratis ? 0 : COSTO_ENVIO_CENTAVOS;
   const total_centavos = subtotal_centavos + envio_centavos;
 
-  // ------- Detectar oportunidad de upsell -------
-  // Si está a menos de $300 MXN del envío gratis, vale sugerirlo.
   let upsell = null;
   if (!envio_gratis) {
     const falta_centavos = ENVIO_GRATIS_DESDE_CENTAVOS - subtotal_centavos;
@@ -230,8 +266,7 @@ function calcularCotizacion(items) {
     }
   }
 
-  // ------- SELF-CHECK: reverificar la suma -------
-  // Recalculamos desde cero, sin reutilizar variables intermedias.
+  // Self-check
   let suma_verificacion = 0;
   for (const linea of lineas) {
     suma_verificacion += linea.subtotal_linea_centavos;
@@ -241,8 +276,6 @@ function calcularCotizacion(items) {
     suma_verificacion !== subtotal_centavos ||
     total_verificacion !== total_centavos
   ) {
-    // Esto NUNCA debería ocurrir. Si pasa, hay un bug grave y preferimos
-    // fallar abiertamente antes que cobrar mal.
     return {
       ok: false,
       error:
@@ -251,7 +284,6 @@ function calcularCotizacion(items) {
     };
   }
 
-  // ------- Empaquetar respuesta legible para el LLM -------
   return {
     ok: true,
     moneda: "MXN",
@@ -269,8 +301,7 @@ function calcularCotizacion(items) {
       umbral_envio_gratis: centavosAPesos(ENVIO_GRATIS_DESDE_CENTAVOS)
     },
     total: centavosAPesos(total_centavos),
-    upsell, // null si no aplica
-    // Campos crudos por si el frontend los quiere usar para tarjetas o checkout:
+    upsell,
     _raw: {
       subtotal_centavos,
       envio_centavos,
@@ -279,72 +310,124 @@ function calcularCotizacion(items) {
   };
 }
 
-// ------- BÚSQUEDA DE PRODUCTOS -------
+// ------- BÚSQUEDA INTELIGENTE (v2) -------
+
+function productoAFichaCorta(p) {
+  return {
+    sku: p.sku,
+    nombre: p.nombre,
+    precio: centavosAPesos(p.precio_centavos),
+    precio_regular: centavosAPesos(p.precio_regular_centavos),
+    stock_disponible: p.stock,
+    descripcion: p.descripcion_corta
+  };
+}
 
 /**
- * Busca productos por texto libre. Compara contra nombre, descripción
- * corta y keywords. Devuelve un arreglo simplificado para el LLM.
+ * Busca productos con tolerancia a:
+ *  - Palabras parciales: "pulpo" encuentra "pulpotomía".
+ *  - Errores ortográficos: "nisin" encuentra "nissin" (Levenshtein ≤ 1).
+ *  - Acentos: "pediatria" encuentra "pediatría".
+ *  - Stop-words: "hola que tienen para endo" → solo el token "endo" puntúa.
  *
- * No es búsqueda semántica (no necesitamos ese nivel para 4 productos),
- * pero es lo suficientemente flexible para encontrar "endodoncia",
- * "nissin", "kit", "pediatria", etc.
+ * Si no hay matches reales, devuelve igualmente el top del catálogo con
+ * `coincidencia_exacta: false` para que el bot pueda guiar al usuario.
  */
 function buscarProductos(query) {
   if (typeof query !== "string" || query.trim() === "") {
     return { ok: false, error: "La búsqueda requiere un texto no vacío." };
   }
 
-  const q = query.toLowerCase().trim();
-  // Tokenizamos en palabras de >= 3 caracteres para tolerar typos como "endo"
-  const tokens = q.split(/\s+/).filter(t => t.length >= 3);
+  const qNormalizado = normalizarTexto(query);
 
+  // Tokens significativos: longitud >= 3 y NO sean stop-words.
+  const tokens = qNormalizado
+    .split(/\s+/)
+    .filter(t => t.length >= 3 && !STOP_WORDS.has(t));
+
+  // Caso A: el query no tenía palabras útiles ("hola", "ayuda")
+  // → devolvemos el catálogo completo para que el bot pregunte.
+  if (tokens.length === 0) {
+    const top = getCatalogoActivo().slice(0, 5).map(productoAFichaCorta);
+    return {
+      ok: true,
+      cantidad_resultados: top.length,
+      coincidencia_exacta: false,
+      mensaje_para_asesor:
+        "El usuario no especificó qué busca. Muéstrale opciones y pregúntale " +
+        "qué tipo de práctica realiza (endodoncia, pulpotomía, kit completo, " +
+        "compatibilidad con Nissin).",
+      resultados: top
+    };
+  }
+
+  // Caso B: hay tokens significativos, hacemos scoring.
   const resultados = getCatalogoActivo()
     .map(p => {
-      const blob = (
+      const blob = normalizarTexto(
         p.nombre + " " +
         p.descripcion_corta + " " +
         p.keywords.join(" ") + " " +
         p.sku
-      ).toLowerCase();
+      );
+      const palabrasBlob = blob.split(/\s+/).filter(w => w.length >= 3);
 
-      // Score = número de tokens del query que aparecen en el blob.
-      const score = tokens.filter(t => blob.includes(t)).length;
-      // También damos un punto si el query completo aparece tal cual
-      const bonusFraseExacta = blob.includes(q) ? 1 : 0;
+      let score = 0;
+      const matchesTokens = [];
 
-      return { producto: p, score: score + bonusFraseExacta };
+      for (const token of tokens) {
+        // 1. Substring match (peso 3): "endo" en "endodoncia"
+        if (blob.includes(token)) {
+          score += 3;
+          matchesTokens.push({ token, tipo: "substring" });
+          continue;
+        }
+        // 2. Fuzzy match con palabras del blob (peso 1): "nisin" ~ "nissin"
+        // Solo aplicamos fuzzy a tokens y palabras con longitud >= 4
+        // (evita falsos positivos en tokens cortos).
+        if (token.length >= 4) {
+          const matchFuzzy = palabrasBlob.some(
+            w => w.length >= 4 && levenshtein(token, w) <= 1
+          );
+          if (matchFuzzy) {
+            score += 1;
+            matchesTokens.push({ token, tipo: "fuzzy" });
+          }
+        }
+      }
+
+      return { producto: p, score, matchesTokens };
     })
     .filter(r => r.score > 0)
     .sort((a, b) => b.score - a.score)
-    .slice(0, 5)
-    .map(r => ({
-      sku: r.producto.sku,
-      nombre: r.producto.nombre,
-      precio: centavosAPesos(r.producto.precio_centavos),
-      precio_regular: centavosAPesos(r.producto.precio_regular_centavos),
-      stock_disponible: r.producto.stock,
-      descripcion: r.producto.descripcion_corta
-    }));
+    .slice(0, 5);
+
+  if (resultados.length === 0) {
+    // Caso C: ningún producto matchó. NO nos rendimos: devolvemos top
+    // y le decimos al asesor que guíe.
+    const top = getCatalogoActivo().slice(0, 3).map(productoAFichaCorta);
+    return {
+      ok: true,
+      cantidad_resultados: top.length,
+      coincidencia_exacta: false,
+      mensaje_para_asesor:
+        `No hubo coincidencias para los términos: ${tokens.join(", ")}. ` +
+        `Estos son los productos más populares. Sugiérelos al usuario y ` +
+        `pídele que aclare qué tipo de práctica necesita.`,
+      resultados: top
+    };
+  }
 
   return {
     ok: true,
     cantidad_resultados: resultados.length,
-    resultados
+    coincidencia_exacta: true,
+    resultados: resultados.map(r => productoAFichaCorta(r.producto))
   };
 }
 
-/**
- * Devuelve el catálogo completo en versión simplificada para el LLM.
- * Útil cuando el usuario pregunta "qué tienen disponible" sin más detalle.
- */
 function listarCatalogo() {
-  const productos = getCatalogoActivo().map(p => ({
-    sku: p.sku,
-    nombre: p.nombre,
-    precio: centavosAPesos(p.precio_centavos),
-    stock_disponible: p.stock,
-    descripcion: p.descripcion_corta
-  }));
+  const productos = getCatalogoActivo().map(productoAFichaCorta);
   return {
     ok: true,
     cantidad_productos: productos.length,
@@ -352,12 +435,13 @@ function listarCatalogo() {
   };
 }
 
-// ------- EXPORTS -------
 module.exports = {
   calcularCotizacion,
   buscarProductos,
   listarCatalogo,
   // Exportados para tests:
   centavosAPesos,
-  validarYNormalizarItems
+  validarYNormalizarItems,
+  normalizarTexto,
+  levenshtein
 };
