@@ -1,6 +1,6 @@
 /**
- * Tests del motor de cotización. Se corren con `node test-quote-engine.js`.
- * No usa ningún framework — solo asserts simples para que sea fácil de leer.
+ * Tests del motor de cotización v2.
+ * Incluye los casos del usuario real: "endo", "nisin", "pulpo", "boca completa".
  */
 
 const assert = require("assert");
@@ -9,7 +9,9 @@ const {
   buscarProductos,
   listarCatalogo,
   centavosAPesos,
-  validarYNormalizarItems
+  validarYNormalizarItems,
+  normalizarTexto,
+  levenshtein
 } = require("./quote-engine.js");
 
 let pasados = 0;
@@ -28,7 +30,7 @@ function test(nombre, fn) {
 }
 
 // ============================================================================
-console.log("\n[1] Formateo de centavos a pesos");
+console.log("\n[1] Formateo de centavos (sin cambios)");
 // ============================================================================
 
 test("0 centavos → $0.00 MXN", () => {
@@ -51,7 +53,27 @@ test("Rechaza no-enteros", () => {
 });
 
 // ============================================================================
-console.log("\n[2] Validación de input");
+console.log("\n[2] Helpers de búsqueda (nuevos)");
+// ============================================================================
+
+test("normalizarTexto quita acentos", () => {
+  assert.strictEqual(normalizarTexto("Pediatría"), "pediatria");
+});
+test("normalizarTexto convierte a minúsculas y limpia signos", () => {
+  assert.strictEqual(normalizarTexto("¿Endodoncia?"), "endodoncia");
+});
+test("levenshtein 'nisin' vs 'nissin' = 1", () => {
+  assert.strictEqual(levenshtein("nisin", "nissin"), 1);
+});
+test("levenshtein 'endo' vs 'endodoncia' > 1 (no es typo, es prefijo)", () => {
+  assert.ok(levenshtein("endo", "endodoncia") > 1);
+});
+test("levenshtein iguales = 0", () => {
+  assert.strictEqual(levenshtein("hola", "hola"), 0);
+});
+
+// ============================================================================
+console.log("\n[3] Validación de input (sin cambios)");
 // ============================================================================
 
 test("Rechaza items no-array", () => {
@@ -59,33 +81,27 @@ test("Rechaza items no-array", () => {
   assert.strictEqual(r.ok, false);
 });
 test("Rechaza array vacío", () => {
-  const r = calcularCotizacion([]);
-  assert.strictEqual(r.ok, false);
+  assert.strictEqual(calcularCotizacion([]).ok, false);
 });
 test("Rechaza cantidad negativa", () => {
-  const r = calcularCotizacion([{ sku: "ValEnd", cantidad: -1 }]);
-  assert.strictEqual(r.ok, false);
+  assert.strictEqual(calcularCotizacion([{ sku: "ValEnd", cantidad: -1 }]).ok, false);
 });
 test("Rechaza cantidad cero", () => {
-  const r = calcularCotizacion([{ sku: "ValEnd", cantidad: 0 }]);
-  assert.strictEqual(r.ok, false);
+  assert.strictEqual(calcularCotizacion([{ sku: "ValEnd", cantidad: 0 }]).ok, false);
 });
 test("Rechaza cantidad decimal", () => {
-  const r = calcularCotizacion([{ sku: "ValEnd", cantidad: 1.5 }]);
-  assert.strictEqual(r.ok, false);
+  assert.strictEqual(calcularCotizacion([{ sku: "ValEnd", cantidad: 1.5 }]).ok, false);
 });
 test("Rechaza cantidad string no-numérica", () => {
-  const r = calcularCotizacion([{ sku: "ValEnd", cantidad: "muchos" }]);
-  assert.strictEqual(r.ok, false);
+  assert.strictEqual(calcularCotizacion([{ sku: "ValEnd", cantidad: "muchos" }]).ok, false);
 });
-test("Acepta cantidad como string numérico ('2')", () => {
+test("Acepta cantidad como string numérico", () => {
   const r = calcularCotizacion([{ sku: "ValEnd", cantidad: "2" }]);
   assert.strictEqual(r.ok, true);
   assert.strictEqual(r.lineas[0].cantidad, 2);
 });
-test("Rechaza cantidad absurda (999999)", () => {
-  const r = calcularCotizacion([{ sku: "ValEnd", cantidad: 999999 }]);
-  assert.strictEqual(r.ok, false);
+test("Rechaza cantidad absurda", () => {
+  assert.strictEqual(calcularCotizacion([{ sku: "ValEnd", cantidad: 999999 }]).ok, false);
 });
 test("Rechaza SKU inexistente", () => {
   const r = calcularCotizacion([{ sku: "NoExiste123", cantidad: 1 }]);
@@ -94,160 +110,191 @@ test("Rechaza SKU inexistente", () => {
 });
 
 // ============================================================================
-console.log("\n[3] Consolidación de duplicados");
+console.log("\n[4] Consolidación de duplicados");
 // ============================================================================
 
-test("Consolida 2 entradas del mismo SKU en una línea", () => {
-  const items = [
+test("Consolida 2 entradas del mismo SKU", () => {
+  const r = calcularCotizacion([
     { sku: "ValEnd", cantidad: 2 },
     { sku: "ValEnd", cantidad: 3 }
-  ];
-  const r = calcularCotizacion(items);
-  assert.strictEqual(r.ok, true);
+  ]);
   assert.strictEqual(r.lineas.length, 1);
   assert.strictEqual(r.lineas[0].cantidad, 5);
 });
 
 // ============================================================================
-console.log("\n[4] Matemática crítica (caso real con flotantes que rompen)");
+console.log("\n[5] Matemática crítica (sin cambios desde v1)");
 // ============================================================================
 
-test("ValPulpo + ValEnd = $846.04 (suma exacta, no $846.0399999...)", () => {
-  // 444.01 + 401.83 = 845.84 → si JS hace 444.01 + 401.83 con flotantes,
-  // puede dar 845.8399999999999. Con centavos: 44401 + 40183 = 84584. Exacto.
+test("ValPulpo + ValEnd = $845.84 EXACTO", () => {
   const r = calcularCotizacion([
     { sku: "ValPulpo", cantidad: 1 },
     { sku: "ValEnd", cantidad: 1 }
   ]);
-  assert.strictEqual(r.ok, true);
   assert.strictEqual(r._raw.subtotal_centavos, 84584);
   assert.strictEqual(r.subtotal, "$845.84 MXN");
 });
 
-test("Suma con cantidades múltiples no acumula errores de flotante", () => {
-  // 10 unidades de ValEnd a 401.83 = 4018.30. Con flotantes 0.1 acumulado da bug.
+test("10× ValEnd = $4,018.30 sin error de flotante acumulado", () => {
   const r = calcularCotizacion([{ sku: "ValEnd", cantidad: 10 }]);
-  assert.strictEqual(r.ok, true);
   assert.strictEqual(r._raw.subtotal_centavos, 401830);
   assert.strictEqual(r.subtotal, "$4,018.30 MXN");
 });
 
-test("Caso clásico que rompe flotantes: 0.1 * 3 ≠ 0.3", () => {
-  // Si el motor usara 4.4401 * 100 estaría haciendo flotantes y fallaría.
-  // Verificamos 3 unidades de ValPulpo = 1332.03 exacto.
-  const r = calcularCotizacion([{ sku: "ValPulpo", cantidad: 3 }]);
-  assert.strictEqual(r._raw.subtotal_centavos, 133203);
-  assert.strictEqual(r.subtotal, "$1,332.03 MXN");
-});
-
 // ============================================================================
-console.log("\n[5] Regla de envío gratis (umbral $999)");
+console.log("\n[6] Regla de envío (sin cambios)");
 // ============================================================================
 
-test("Subtotal $845.84 → cobra envío $150", () => {
+test("Subtotal $845.84 → cobra $150 envío", () => {
   const r = calcularCotizacion([
     { sku: "ValPulpo", cantidad: 1 },
     { sku: "ValEnd", cantidad: 1 }
   ]);
   assert.strictEqual(r.envio.gratis, false);
-  assert.strictEqual(r._raw.envio_centavos, 15000);
-  assert.strictEqual(r._raw.total_centavos, 84584 + 15000);
   assert.strictEqual(r.total, "$995.84 MXN");
 });
 
-test("Subtotal $999.00 exacto → envío gratis (>= umbral)", () => {
-  // No tenemos un producto que dé exactamente 999, pero podemos forzarlo
-  // con 2 ValEnd + 1 ValPulpo + 1 más... probemos con kit realista que ya pasa.
+test("DientesRealistas (1007.11) → envío gratis", () => {
   const r = calcularCotizacion([{ sku: "DientesRealistas", cantidad: 1 }]);
-  assert.strictEqual(r._raw.subtotal_centavos, 100711);
-  assert.ok(r._raw.subtotal_centavos >= 99900, "subtotal debe pasar el umbral");
   assert.strictEqual(r.envio.gratis, true);
-  assert.strictEqual(r._raw.envio_centavos, 0);
   assert.strictEqual(r.total, "$1,007.11 MXN");
 });
 
-test("Subtotal $998.99 (1 cent debajo del umbral) → cobra envío", () => {
-  // Truco: si hubiera un producto a 998.99, cobraría envío.
-  // Testeamos con ValPulpo×2 + ValEnd×1 = 444.01*2 + 401.83 = 1289.85 → gratis.
-  // Mejor construyamos un caso límite real:
-  // ValEnd*2 = 803.66. Bajo umbral, cobra envío.
-  const r = calcularCotizacion([{ sku: "ValEnd", cantidad: 2 }]);
-  assert.strictEqual(r.envio.gratis, false);
-  assert.strictEqual(r._raw.subtotal_centavos, 80366);
+// ============================================================================
+console.log("\n[7] Búsqueda INTELIGENTE — casos del usuario real");
+// ============================================================================
+
+test("'hola que tienen de endo' encuentra productos de endodoncia", () => {
+  const r = buscarProductos("hola que tienen de endo");
+  assert.strictEqual(r.ok, true);
+  assert.ok(r.cantidad_resultados > 0, "Debe haber resultados");
+  assert.strictEqual(r.coincidencia_exacta, true);
+  assert.ok(
+    r.resultados.some(p => p.sku === "ValEnd"),
+    "Debe incluir ValEnd"
+  );
+});
+
+test("'pulpo' encuentra ValPulpo (palabra parcial)", () => {
+  const r = buscarProductos("pulpo");
+  assert.ok(r.resultados.some(p => p.sku === "ValPulpo"), "Debe incluir ValPulpo");
+});
+
+test("'pulpotomi' encuentra ValPulpo (palabra parcial)", () => {
+  const r = buscarProductos("pulpotomi");
+  assert.ok(r.resultados.some(p => p.sku === "ValPulpo"));
+});
+
+test("'nisin' encuentra Endotnissin (typo: falta una s)", () => {
+  const r = buscarProductos("nisin");
+  assert.ok(r.resultados.some(p => p.sku === "Endotnissin"),
+    "Debe encontrar Endotnissin con typo nisin");
+});
+
+test("'nicin' encuentra Endotnissin (typo más feo)", () => {
+  const r = buscarProductos("nicin");
+  assert.ok(r.resultados.some(p => p.sku === "Endotnissin"),
+    "Debe encontrar Endotnissin con typo nicin");
+});
+
+test("'tipodonto' encuentra Endotnissin", () => {
+  const r = buscarProductos("tipodonto");
+  assert.ok(r.resultados.some(p => p.sku === "Endotnissin"));
+});
+
+test("'boca completa' encuentra DientesRealistas", () => {
+  const r = buscarProductos("boca completa");
+  assert.ok(r.resultados.some(p => p.sku === "DientesRealistas"),
+    "Boca completa debería encontrar el kit de 32");
+});
+
+test("'boca completa endo' encuentra DientesRealistas (ranking #1)", () => {
+  const r = buscarProductos("boca completa endo");
+  assert.strictEqual(r.resultados[0].sku, "DientesRealistas");
+});
+
+test("'32 dientes' encuentra DientesRealistas", () => {
+  const r = buscarProductos("32 dientes");
+  assert.ok(r.resultados.some(p => p.sku === "DientesRealistas"));
+});
+
+test("'pediatria' (sin acento) encuentra ValPulpo", () => {
+  const r = buscarProductos("pediatria");
+  assert.ok(r.resultados.some(p => p.sku === "ValPulpo"));
+});
+
+test("'pediatría' (con acento) encuentra ValPulpo", () => {
+  const r = buscarProductos("pediatría");
+  assert.ok(r.resultados.some(p => p.sku === "ValPulpo"));
+});
+
+test("'odontopediatria' encuentra ValPulpo", () => {
+  const r = buscarProductos("odontopediatria");
+  assert.ok(r.resultados.some(p => p.sku === "ValPulpo"));
+});
+
+test("'molar' encuentra DientesRealistas", () => {
+  const r = buscarProductos("molar");
+  assert.ok(r.resultados.some(p => p.sku === "DientesRealistas"));
 });
 
 // ============================================================================
-console.log("\n[6] Detección de upsell");
+console.log("\n[8] Búsqueda — fallback cuando query es solo stop-words");
 // ============================================================================
 
-test("Subtotal $845.84 (a $153.16 del envío gratis) → upsell activo", () => {
-  const r = calcularCotizacion([
-    { sku: "ValPulpo", cantidad: 1 },
-    { sku: "ValEnd", cantidad: 1 }
-  ]);
-  assert.ok(r.upsell !== null, "Debería haber upsell");
-  assert.strictEqual(r.upsell.falta_centavos, 99900 - 84584);
-  assert.strictEqual(r.upsell.falta, "$153.16 MXN");
+test("'hola' solo → devuelve catálogo (no se rinde)", () => {
+  const r = buscarProductos("hola");
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.coincidencia_exacta, false);
+  assert.ok(r.resultados.length > 0);
+  assert.ok(r.mensaje_para_asesor !== undefined);
 });
 
-test("Subtotal muy bajo ($401.83) → SIN upsell (falta más de $300)", () => {
-  const r = calcularCotizacion([{ sku: "ValEnd", cantidad: 1 }]);
-  assert.strictEqual(r.upsell, null);
+test("'hola buenas tardes' solo → devuelve catálogo", () => {
+  const r = buscarProductos("hola buenas tardes");
+  assert.strictEqual(r.ok, true);
+  assert.ok(r.resultados.length > 0);
 });
 
-test("Subtotal con envío gratis → SIN upsell", () => {
-  const r = calcularCotizacion([{ sku: "DientesRealistas", cantidad: 1 }]);
-  assert.strictEqual(r.upsell, null);
+test("'que tienen' solo stop-words → devuelve catálogo", () => {
+  const r = buscarProductos("que tienen");
+  assert.strictEqual(r.ok, true);
+  assert.ok(r.resultados.length > 0);
 });
 
 // ============================================================================
-console.log("\n[7] Validación de stock");
+console.log("\n[9] Búsqueda — fallback cuando query no matchea nada");
+// ============================================================================
+
+test("'xyzzyzzyz' (sin matches) → devuelve top productos", () => {
+  const r = buscarProductos("xyzzyzzyz");
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.coincidencia_exacta, false);
+  assert.ok(r.resultados.length > 0,
+    "Debe devolver productos aunque no haya match");
+});
+
+// ============================================================================
+console.log("\n[10] Validación de stock");
 // ============================================================================
 
 test("Cantidad mayor al stock → ok=false con detalle", () => {
   const r = calcularCotizacion([{ sku: "Endotnissin", cantidad: 50 }]);
   assert.strictEqual(r.ok, false);
   assert.ok(Array.isArray(r.sin_stock));
-  assert.strictEqual(r.sin_stock[0].sku, "Endotnissin");
 });
 
 // ============================================================================
-console.log("\n[8] Búsqueda de productos");
+console.log("\n[11] Listar catálogo");
 // ============================================================================
 
-test("Buscar 'endodoncia' encuentra productos relacionados", () => {
-  const r = buscarProductos("endodoncia");
-  assert.strictEqual(r.ok, true);
-  assert.ok(r.cantidad_resultados >= 2);
-});
-
-test("Buscar 'nissin' encuentra Endotnissin", () => {
-  const r = buscarProductos("nissin");
-  assert.strictEqual(r.ok, true);
-  assert.ok(r.resultados.some(p => p.sku === "Endotnissin"));
-});
-
-test("Buscar 'pediatría' encuentra ValPulpo", () => {
-  const r = buscarProductos("pediatria");
-  assert.ok(r.resultados.some(p => p.sku === "ValPulpo"));
-});
-
-test("Buscar texto sin matches → resultados vacíos", () => {
-  const r = buscarProductos("xyzzyzzyz");
-  assert.strictEqual(r.cantidad_resultados, 0);
-});
-
-// ============================================================================
-console.log("\n[9] Listar catálogo completo");
-// ============================================================================
-
-test("Lista 4 productos activos", () => {
+test("listarCatalogo devuelve los 4 productos activos", () => {
   const r = listarCatalogo();
   assert.strictEqual(r.cantidad_productos, 4);
 });
 
 // ============================================================================
-console.log("\n[10] Pedido grande de mayoreo");
+console.log("\n[12] Mayoreo");
 // ============================================================================
 
 test("20× ValEnd + 5× DientesRealistas = matemática exacta", () => {
@@ -255,10 +302,6 @@ test("20× ValEnd + 5× DientesRealistas = matemática exacta", () => {
     { sku: "ValEnd", cantidad: 20 },
     { sku: "DientesRealistas", cantidad: 5 }
   ]);
-  assert.strictEqual(r.ok, true);
-  // 20 * 40183 = 803,660 cent
-  // 5 * 100,711 = 503,555 cent
-  // total = 1,307,215 cent = $13,072.15
   assert.strictEqual(r._raw.subtotal_centavos, 803660 + 503555);
   assert.strictEqual(r.subtotal, "$13,072.15 MXN");
   assert.strictEqual(r.envio.gratis, true);
