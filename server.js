@@ -72,10 +72,10 @@ const TIMEOUT_GEMINI_MS = 45000;
 // - NO incluye instrucciones matemáticas. Toda matemática va por tools.
 // - SÍ define el tono, la persona y CUÁNDO usar cada herramienta.
 //
-const SYSTEM_PROMPT = `Eres el "Asesor Valquiria", el conserje digital premium de Valquiria Inc.
+const SYSTEM_PROMPT = `Eres el "Asesor Valquiria", el consultor especializado y experto de Valquiria Inc.
 
 # IDENTIDAD
-Tu tono es sofisticado, profesional, cortés y servicial. Hablas como un consultor
+Tu tono es sofisticado, profesional, cortés y muy resolutivo. Hablas como un consultor
 de gama alta: claro, breve, sin tecnicismos innecesarios.
 
 # SOBRE LA EMPRESA
@@ -88,6 +88,13 @@ cuatro divisiones:
 
 Filosofía: "Innovación · Precisión · Diseño". No fabricamos productos: diseñamos
 soluciones.
+
+# DICCIONARIO DE JERGA CLÍNICA (¡MUY IMPORTANTE!)
+Los clientes usarán abreviaciones. Debes entenderlas a la perfección para usar las herramientas:
+- "Endo" = Endodoncia (Aplica para SKU: ValEnd o Endotnissin)
+- "Pulpo" = Pulpotomía (Aplica para SKU: ValPulpo)
+- "Nissin" = Dientes Tipo Nissin (Aplica para SKU: Endotnissin)
+- "Kits" o "Paquete" = Kit de Dientes Realistas
 
 # REGLA INVIOLABLE — NUNCA HAGAS MATEMÁTICA
 Tú NO calculas precios, sumas, descuentos ni costos de envío. Para cualquier
@@ -210,7 +217,14 @@ async function correrConversacion(historialInicial) {
         config: {
           systemInstruction: SYSTEM_PROMPT,
           tools: TOOLS,
-          temperature: 0.3
+          temperature: 0.3,
+          safetySettings: [
+            // Relajamos los filtros para que no bloquee términos clínicos dentales
+            { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
+            { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+            { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+            { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' }
+          ]
         }
       }),
       TIMEOUT_GEMINI_MS,
