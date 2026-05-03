@@ -1,29 +1,22 @@
 /**
  * ============================================================================
- *  VALQUIRIA — BACKEND DEL ASESOR (server.js)
+ *  VALQUIRIA — BACKEND DEL ASESOR (server.js v2)
  * ============================================================================
- *  Orquesta la conversación entre el usuario y Gemini, intermediando con las
- *  herramientas de cotización. La pieza clave es el LOOP DE FUNCTION CALLING:
- *
- *    [usuario]  →  [Gemini]
- *                     ↓
- *           (¿pidió llamar a una función?)
- *                     ↓ sí
- *           [ejecutamos JS con matemática real]
- *                     ↓
- *               [Gemini de nuevo]
- *                     ↓
- *           (¿texto final o más funciones?)
- *
- *  Este loop tiene un tope duro de iteraciones para que NUNCA pueda volverse
- *  un bucle infinito que vacíe los tokens.
+ *  Cambios v2:
+ *  - System prompt proactivo: el bot deduce intenciones, tolera typos,
+ *    nunca se rinde, y siempre ofrece próximo paso.
+ *  - Limpieza de historial: descarta mensajes "model" iniciales antes de
+ *    que llegue el primero del usuario (la bienvenida del frontend).
+ *  - Fallback inteligente: cuando Gemini regresa vacío, hacemos UN segundo
+ *    intento forzando que llame a listar_catalogo.
+ *  - Logs detallados de function calls (visibles en Render Logs).
  * ============================================================================
  */
 
 const express = require("express");
 const cors = require("cors");
 require("dotenv").config();
-const { GoogleGenAI } = require("@google/genai");
+const { GoogleGenAI, FunctionCallingConfigMode } = require("@google/genai");
 
 const { TOOLS, ejecutarHerramienta } = require("./gemini-tools.js");
 
@@ -34,7 +27,6 @@ const port = process.env.PORT || 3000;
 // CONFIGURACIÓN
 // ----------------------------------------------------------------------------
 
-// CORS: solo dominios permitidos (ajusta esta lista a la URL real de tu sitio).
 const ORIGENES_PERMITIDOS = [
   "https://valquiriainc.com",
   "https://www.valquiriainc.com",
@@ -47,16 +39,14 @@ const ORIGENES_PERMITIDOS = [
 app.use(
   cors({
     origin: function (origin, callback) {
-      // Permitir requests sin origin (Postman, scripts internos)
       if (!origin) return callback(null, true);
       if (ORIGENES_PERMITIDOS.includes(origin)) return callback(null, true);
       return callback(new Error(`Origen no permitido por CORS: ${origin}`));
     }
   })
 );
-app.use(express.json({ limit: "100kb" })); // límite anti-abuso
+app.use(express.json({ limit: "100kb" }));
 
-// Cliente Gemini
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 const MODELO = process.env.GEMINI_MODEL || "gemini-2.5-flash";
@@ -64,65 +54,84 @@ const MAX_ITERACIONES_FUNCTION_CALL = 5;
 const TIMEOUT_GEMINI_MS = 45000;
 
 // ----------------------------------------------------------------------------
-// SYSTEM PROMPT
+// SYSTEM PROMPT (v2 — proactivo y resistente a errores ortográficos)
 // ----------------------------------------------------------------------------
-//
-// Reglas IMPORTANTES de diseño del prompt:
-// - NO incluye precios. Los precios viven solo en quote-engine.js.
-// - NO incluye instrucciones matemáticas. Toda matemática va por tools.
-// - SÍ define el tono, la persona y CUÁNDO usar cada herramienta.
-//
-const SYSTEM_PROMPT = `Eres el "Asesor Valquiria", el consultor especializado y experto de Valquiria Inc.
+const SYSTEM_PROMPT = `Eres el "Asesor Valquiria", el conserje digital premium de Valquiria Inc.
 
 # IDENTIDAD
-Tu tono es sofisticado, profesional, cortés y muy resolutivo. Hablas como un consultor
-de gama alta: claro, breve, sin tecnicismos innecesarios.
+Tono sofisticado, profesional, cortés y servicial — como un consultor de gama
+alta. Hablas claro, breve, sin tecnicismos innecesarios. Eres MUY proactivo:
+nunca dejas al usuario sin opciones ni próximos pasos.
 
 # SOBRE LA EMPRESA
-Valquiria Inc. es un holding de innovación y manufactura latinoamericano con
-cuatro divisiones:
+Valquiria Inc. es un holding latinoamericano con cuatro divisiones:
 1. Valquiria 3D — Manufactura aditiva (FDM y resina de alta resolución).
-2. Valquiria Dental — Material pedagógico para odontología (división activa con catálogo).
+2. Valquiria Dental — Material pedagógico para odontología (catálogo activo).
 3. Valquiria Pack — Empaques termoformados premium.
-4. Valquiria Lux — Iluminación y diseño con manufactura aditiva.
+4. Valquiria Lux — Iluminación con manufactura aditiva.
 
-Filosofía: "Innovación · Precisión · Diseño". No fabricamos productos: diseñamos
-soluciones.
-
-# DICCIONARIO DE JERGA CLÍNICA (¡MUY IMPORTANTE!)
-Los clientes usarán abreviaciones. Debes entenderlas a la perfección para usar las herramientas:
-- "Endo" = Endodoncia (Aplica para SKU: ValEnd o Endotnissin)
-- "Pulpo" = Pulpotomía (Aplica para SKU: ValPulpo)
-- "Nissin" = Dientes Tipo Nissin (Aplica para SKU: Endotnissin)
-- "Kits" o "Paquete" = Kit de Dientes Realistas
+Filosofía: "Innovación · Precisión · Diseño". No fabricamos productos:
+diseñamos soluciones.
 
 # REGLA INVIOLABLE — NUNCA HAGAS MATEMÁTICA
 Tú NO calculas precios, sumas, descuentos ni costos de envío. Para cualquier
-número que vaya a aparecer en tu respuesta usa SIEMPRE las herramientas:
+número que aparezca en tu respuesta usa SIEMPRE las herramientas:
 
 - buscar_productos(query): cuando el usuario describe lo que necesita.
-- listar_catalogo(): cuando pide ver todo lo disponible.
-- calcular_cotizacion(items): cuando hay que dar un total, parcial o final.
+- listar_catalogo(): cuando pide ver todo, o cuando NO entiendes su intención.
+- calcular_cotizacion(items): cuando hay que dar un total parcial o final.
 
-Si no usaste la herramienta, NO menciones precios. Si la herramienta falla
-(ok=false), explícale el problema al usuario con tus propias palabras y pídele
-que corrija.
+Si no usaste la herramienta, NO menciones precios.
+
+# REGLA DE ORO — NUNCA TE RINDAS
+JAMÁS respondas "no entendí", "no puedo ayudarte" o "reformula tu solicitud".
+Eres proactivo:
+
+1. **Tolera errores ortográficos.** Cuando un usuario escriba palabras
+   incompletas o mal escritas, deduce la intención y llama a buscar_productos.
+   Ejemplos:
+   - "endo" → "endodoncia"
+   - "pulpo" → "pulpotomía"
+   - "nisin" / "nicin" / "nissim" → "nissin"
+   - "pediatria" → odontopediatría
+   - "boca completa" / "32 dientes" / "kit avanzado" → kit ultrarealista
+
+2. **Si no estás seguro de la intención, llama a buscar_productos con la
+   palabra clave que más te suene.** La función ya tolera typos por dentro.
+
+3. **Si buscar_productos devuelve coincidencia_exacta=false, NO digas que no
+   encontraste.** Presenta los productos que vinieron y pregunta:
+   "Tenemos esto disponible en Valquiria Dental: [lista corta]. ¿Cuál se
+   acerca a lo que buscas, o prefieres que te describa alguno en detalle?"
+
+4. **Si el usuario solo saluda o pide ayuda en general** ("hola", "qué tienen",
+   "ayúdame"), llama a listar_catalogo y muéstrale las 4 áreas, preguntando
+   sobre qué tipo de práctica necesita.
+
+# CÓMO PRESENTAR PRODUCTOS
+Cuando muestres resultados de buscar_productos o listar_catalogo:
+- Lista breve, máximo 4 productos.
+- Para cada uno: nombre en **negritas**, precio, y una línea descriptiva.
+- Termina con una pregunta concreta que avance la conversación
+  ("¿Quieres que te cotice alguno?" / "¿Para qué tipo de práctica es?").
 
 # CÓMO PRESENTAR UNA COTIZACIÓN
-Cuando calcular_cotizacion devuelva ok=true, presenta el resultado con:
-- Una lista breve con cada producto, cantidad y subtotal.
-- El subtotal, el envío (indicando si es gratis), y el total final.
-- Si el campo "upsell" no es null, sugiere amablemente al usuario agregar otro
-  producto para superar el umbral de envío gratis. Solo una vez, sin presionar.
+Cuando calcular_cotizacion devuelva ok=true:
+- Lista breve con cada producto, cantidad y subtotal.
+- Subtotal, envío (indicando si es gratis), y **TOTAL FINAL en negritas**.
+- Si el campo "upsell" no es null, sugiere agregar otro producto para
+  superar el umbral de envío gratis. Solo una vez, sin presionar.
 
-Usa **negritas** Markdown solo para el TOTAL FINAL y para nombres de productos.
+Si calcular_cotizacion devuelve ok=false, explícale el problema al usuario
+con tus propias palabras (SKU no existe, sin stock, cantidad inválida) y
+pídele que corrija.
 
 # DERIVACIÓN A ESPECIALISTA
-Deriva al usuario a WhatsApp (+52 55 5467 5821) o ventas@valquiriadental.com cuando:
-- Pide mayoreo / precios por volumen (más de 20 piezas en una línea).
+Deriva a WhatsApp (+52 55 5467 5821) o ventas@valquiriadental.com cuando:
+- Pide mayoreo / volumen (más de 20 piezas en una línea).
 - Necesita factura, datos fiscales o condiciones de pago especiales.
-- Su pregunta técnica es muy específica (compatibilidad con un instrumento
-  particular, tiempos de entrega exactos, personalizaciones).
+- Su pregunta técnica es muy específica (compatibilidad puntual,
+  personalizaciones, tiempos exactos de entrega).
 
 # FORMATO
 Respuestas breves: 2-3 párrafos cortos máximo. El widget de chat es pequeño.
@@ -132,9 +141,6 @@ No uses emojis salvo cuando el usuario los use primero.`;
 // HELPERS
 // ----------------------------------------------------------------------------
 
-/**
- * Envuelve una promesa con timeout. Si tarda más de `ms`, rechaza.
- */
 function conTimeout(promise, ms, msg = "Timeout") {
   return Promise.race([
     promise,
@@ -143,9 +149,17 @@ function conTimeout(promise, ms, msg = "Timeout") {
 }
 
 /**
- * Valida y normaliza el historial que llega del frontend.
- * Forma esperada: [{ role: 'user'|'model', parts: [{ text: '...' }] }, ...]
+ * Limpia el historial: descarta mensajes 'model' al inicio (antes del primer
+ * 'user'). Es defensa para cuando el frontend agrega una bienvenida sintética.
  */
+function limpiarHistorial(messages) {
+  const idxPrimerUser = messages.findIndex(m => m.role === "user");
+  if (idxPrimerUser === -1) {
+    throw new Error("No hay ningún mensaje del usuario en el historial.");
+  }
+  return messages.slice(idxPrimerUser);
+}
+
 function validarHistorial(messages) {
   if (!Array.isArray(messages)) {
     throw new Error("El campo 'messages' debe ser un arreglo.");
@@ -154,7 +168,6 @@ function validarHistorial(messages) {
     throw new Error("El historial está vacío.");
   }
   if (messages.length > 60) {
-    // Tope para evitar context bombs
     throw new Error("El historial es demasiado largo. Reinicia la conversación.");
   }
   for (const m of messages) {
@@ -168,26 +181,18 @@ function validarHistorial(messages) {
   return messages;
 }
 
-/**
- * Extrae el texto final de una respuesta de Gemini.
- * Compatible con el SDK @google/genai (response.text es un getter).
- */
 function extraerTexto(response) {
-  if (typeof response?.text === "string") return response.text;
-  // Fallback: recorrer candidates manualmente
+  if (typeof response?.text === "string" && response.text.trim() !== "") {
+    return response.text;
+  }
   const partes = response?.candidates?.[0]?.content?.parts || [];
   return partes.map(p => p.text || "").join("").trim();
 }
 
-/**
- * Extrae las llamadas a función de la respuesta.
- */
 function extraerFunctionCalls(response) {
-  // El SDK expone response.functionCalls como array si hubo function calls.
   if (Array.isArray(response?.functionCalls) && response.functionCalls.length > 0) {
     return response.functionCalls;
   }
-  // Fallback manual:
   const partes = response?.candidates?.[0]?.content?.parts || [];
   return partes
     .filter(p => p.functionCall)
@@ -195,18 +200,10 @@ function extraerFunctionCalls(response) {
 }
 
 // ----------------------------------------------------------------------------
-// LOOP DE FUNCTION CALLING (el corazón)
+// LOOP DE FUNCTION CALLING
 // ----------------------------------------------------------------------------
 
-/**
- * Conduce la conversación con Gemini hasta obtener una respuesta de texto
- * final, ejecutando cualquier function call intermedio.
- *
- * @param {Array} historialInicial - el historial validado del frontend.
- * @returns {Promise<string>} - el texto final que se mostrará al usuario.
- */
 async function correrConversacion(historialInicial) {
-  // Trabajamos sobre una copia mutable del historial
   const contents = [...historialInicial];
 
   for (let iter = 0; iter < MAX_ITERACIONES_FUNCTION_CALL; iter++) {
@@ -217,14 +214,7 @@ async function correrConversacion(historialInicial) {
         config: {
           systemInstruction: SYSTEM_PROMPT,
           tools: TOOLS,
-          temperature: 0.3,
-          safetySettings: [
-            // Relajamos los filtros para que no bloquee términos clínicos dentales
-            { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
-            { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
-            { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
-            { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' }
-          ]
+          temperature: 0.5
         }
       }),
       TIMEOUT_GEMINI_MS,
@@ -233,13 +223,11 @@ async function correrConversacion(historialInicial) {
 
     const functionCalls = extraerFunctionCalls(response);
 
-    // Caso 1: Gemini quiere llamar una o más funciones
+    // Caso 1: Gemini quiere llamar funciones
     if (functionCalls.length > 0) {
-      // Agregamos el turno del modelo que contiene los functionCall
       const partesModelo = functionCalls.map(fc => ({ functionCall: fc }));
       contents.push({ role: "model", parts: partesModelo });
 
-      // Ejecutamos cada función y empaquetamos los resultados
       const partesRespuesta = [];
       for (const fc of functionCalls) {
         const resultado = ejecutarHerramienta({
@@ -247,9 +235,14 @@ async function correrConversacion(historialInicial) {
           args: fc.args || {}
         });
 
+        const argsStr = JSON.stringify(fc.args || {});
+        const okStr = resultado.ok ? "OK" : "ERR";
         console.log(
-          `[fn-call] iter=${iter} ${fc.name}(${JSON.stringify(fc.args)}) ` +
-          `-> ok=${resultado.ok}`
+          `[fn-call] iter=${iter} ${fc.name}(${argsStr}) -> ${okStr}` +
+          (resultado.cantidad_resultados !== undefined
+            ? ` (${resultado.cantidad_resultados} resultados, exacto=${resultado.coincidencia_exacta})`
+            : "") +
+          (resultado.error ? ` error="${resultado.error.slice(0, 80)}"` : "")
         );
 
         partesRespuesta.push({
@@ -260,34 +253,118 @@ async function correrConversacion(historialInicial) {
         });
       }
 
-      // Las functionResponses van como turno del usuario para el siguiente
-      // round-trip con Gemini.
       contents.push({ role: "user", parts: partesRespuesta });
-      continue; // siguiente iteración
+      continue;
     }
 
-    // Caso 2: Gemini devolvió texto final → terminamos
+    // Caso 2: texto final
     const texto = extraerTexto(response);
     if (texto && texto.trim() !== "") {
       return texto;
     }
 
-    // Caso 3: respuesta vacía sin function calls → algo extraño, abortamos
+    // Caso 3: respuesta vacía. Hacemos UN intento de rescate forzando
+    // que el modelo llame a listar_catalogo, así garantizamos que al
+    // menos vea opciones del catálogo.
+    console.warn(
+      `[fallback] iter=${iter}: respuesta vacía sin function calls. ` +
+      `Lanzando rescate con listar_catalogo forzada.`
+    );
+
+    const ultimoMensajeUsuario =
+      historialInicial[historialInicial.length - 1]?.parts
+        ?.map(p => p.text || "")
+        .join(" ")
+        .trim() || "";
+
+    const rescatePrompt = [
+      ...contents,
+      {
+        role: "user",
+        parts: [{
+          text:
+            "[Sistema] Tu respuesta anterior vino vacía. Llama listar_catalogo " +
+            "y, con sus resultados, redacta una respuesta proactiva que ofrezca " +
+            "opciones al usuario y haga una pregunta concreta para avanzar. " +
+            `El usuario originalmente escribió: "${ultimoMensajeUsuario}".`
+        }]
+      }
+    ];
+
+    const responseRescate = await conTimeout(
+      ai.models.generateContent({
+        model: MODELO,
+        contents: rescatePrompt,
+        config: {
+          systemInstruction: SYSTEM_PROMPT,
+          tools: TOOLS,
+          toolConfig: {
+            functionCallingConfig: {
+              mode: FunctionCallingConfigMode.ANY,
+              allowedFunctionNames: ["listar_catalogo"]
+            }
+          },
+          temperature: 0.5
+        }
+      }),
+      TIMEOUT_GEMINI_MS,
+      "Timeout en intento de rescate."
+    );
+
+    // Si el rescate forzó listar_catalogo, ejecutamos y hacemos una llamada
+    // final SIN tool config para que redacte texto natural.
+    const rescateFcs = extraerFunctionCalls(responseRescate);
+    if (rescateFcs.length > 0) {
+      const partesRescateModel = rescateFcs.map(fc => ({ functionCall: fc }));
+      const partesRescateResp = rescateFcs.map(fc => ({
+        functionResponse: {
+          name: fc.name,
+          response: ejecutarHerramienta({ name: fc.name, args: fc.args || {} })
+        }
+      }));
+
+      const responseFinal = await conTimeout(
+        ai.models.generateContent({
+          model: MODELO,
+          contents: [
+            ...contents,
+            { role: "model", parts: partesRescateModel },
+            { role: "user", parts: partesRescateResp }
+          ],
+          config: {
+            systemInstruction: SYSTEM_PROMPT,
+            tools: TOOLS,
+            temperature: 0.5
+          }
+        }),
+        TIMEOUT_GEMINI_MS,
+        "Timeout en respuesta final del rescate."
+      );
+
+      const textoFinal = extraerTexto(responseFinal);
+      if (textoFinal && textoFinal.trim() !== "") {
+        console.log(`[fallback] Rescate exitoso.`);
+        return textoFinal;
+      }
+    }
+
+    // Si hasta el rescate falló, devolvemos un fallback proactivo (no genérico)
+    console.warn(`[fallback] Rescate también vino vacío. Usando mensaje fijo.`);
     return (
-      "Lo siento, no pude generar una respuesta. ¿Podrías reformular " +
-      "tu solicitud? Si el problema persiste, escríbenos por WhatsApp."
+      "Cuéntame un poco más sobre lo que necesitas. Por ejemplo, ¿buscas " +
+      "material para **endodoncia**, **pulpotomía**, un **kit completo de " +
+      "32 dientes**, o algo compatible con **tipodonto Nissin**? También " +
+      "puedo mostrarte el catálogo completo si gustas."
     );
   }
 
-  // Si llegamos aquí, Gemini se quedó pidiendo funciones indefinidamente.
-  // Devolvemos un mensaje de fallback en lugar de seguir gastando tokens.
   console.warn(
     `[loop] Se alcanzó el tope de ${MAX_ITERACIONES_FUNCTION_CALL} iteraciones.`
   );
   return (
-    "Estoy teniendo dificultad para procesar esta solicitud. " +
-    "¿Podrías escribirla de otra forma, o prefieres que un especialista te " +
-    "atienda directamente por WhatsApp?"
+    "Estoy teniendo dificultad para procesar esta solicitud. ¿Podrías " +
+    "escribirla de otra forma, o prefieres que un especialista te atienda " +
+    "directamente por WhatsApp?"
   );
 }
 
@@ -305,7 +382,6 @@ app.get("/health", (req, res) => {
 
 app.post("/api/chat", async (req, res) => {
   try {
-    // Validación de la API key
     if (
       !process.env.GEMINI_API_KEY ||
       process.env.GEMINI_API_KEY === "tu_api_key_aqui"
@@ -317,15 +393,14 @@ app.post("/api/chat", async (req, res) => {
       });
     }
 
-    // Validación del historial
     let historial;
     try {
       historial = validarHistorial(req.body?.messages);
+      historial = limpiarHistorial(historial);
     } catch (e) {
       return res.status(400).json({ error: e.message });
     }
 
-    // Correr la conversación
     const reply = await correrConversacion(historial);
     return res.json({ reply });
   } catch (error) {
@@ -339,14 +414,10 @@ app.post("/api/chat", async (req, res) => {
   }
 });
 
-// ----------------------------------------------------------------------------
-// ARRANQUE
-// ----------------------------------------------------------------------------
-
 app.listen(port, () => {
-  console.log(`[Valquiria Backend] Activo en puerto ${port}`);
-  console.log(`[Valquiria Backend] Modelo: ${MODELO}`);
+  console.log(`[Valquiria Backend v2] Activo en puerto ${port}`);
+  console.log(`[Valquiria Backend v2] Modelo: ${MODELO}`);
   console.log(
-    `[Valquiria Backend] Orígenes CORS permitidos: ${ORIGENES_PERMITIDOS.join(", ")}`
+    `[Valquiria Backend v2] Orígenes CORS permitidos: ${ORIGENES_PERMITIDOS.join(", ")}`
   );
 });
