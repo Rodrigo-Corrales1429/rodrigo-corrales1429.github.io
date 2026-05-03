@@ -1,15 +1,20 @@
 {
   "name": "valquiria-inc",
-  "version": "1.0.0",
+  "version": "2.0.0",
+  "description": "Backend del Asesor Valquiria con function calling de Gemini",
   "main": "server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node test-quote-engine.js && node test-tools-dispatcher.js",
+    "test:engine": "node test-quote-engine.js",
+    "test:tools": "node test-tools-dispatcher.js"
   },
-  "keywords": [],
-  "author": "",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": ["valquiria", "asesor", "gemini", "function-calling"],
+  "author": "Valquiria Inc.",
   "license": "ISC",
-  "description": "",
   "dependencies": {
     "@google/genai": "^1.46.0",
     "cors": "^2.8.6",
