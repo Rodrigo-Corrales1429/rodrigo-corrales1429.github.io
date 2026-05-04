@@ -7,6 +7,7 @@
     "precio_promocion": 444.01,
     "stock": 23,
     "activo": true,
+    "imagen": "https://res.cloudinary.com/dyzgyuixk/image/upload/f_auto,q_auto/pulpo_frybuu",
     "keywords": [
       "pulpotomia", "pulpotomía", "pulpo", "pulpotomi", "pulpotomias",
       "pediatria", "pediatría", "pediatrico", "pediátrico", "pediatricos",
@@ -26,6 +27,7 @@
     "precio_promocion": 401.83,
     "stock": 27,
     "activo": true,
+    "imagen": "https://res.cloudinary.com/dyzgyuixk/image/upload/f_auto,q_auto/endo_ahtc7k",
     "keywords": [
       "endodoncia", "endodonzia", "endodoncias", "endo", "endodoncista",
       "endodontista", "endodontico", "endodóntico",
@@ -46,6 +48,7 @@
     "precio_promocion": 1007.11,
     "stock": 15,
     "activo": true,
+    "imagen": "https://res.cloudinary.com/dyzgyuixk/image/upload/f_auto,q_auto/realistas_dxfhrr",
     "keywords": [
       "kit completo", "kit avanzado", "kit realista", "kit ultra realista",
       "32 dientes", "32 piezas", "treintaidos dientes",
@@ -66,8 +69,9 @@
     "precio_promocion": 719.58,
     "stock": 10,
     "activo": true,
+    "imagen": "https://res.cloudinary.com/dyzgyuixk/image/upload/f_auto,q_auto/endonissin_b0hlmi",
     "keywords": [
-      "nissin", "nisin", "nicin", "nissim", "nissan", "nissn", "nisi",
+      "nissin", "nisin", "nicin", "nissim", "nissan", "nissn",
       "tipodonto", "tipodonto nissin", "tipo nissin",
       "compatible nissin", "para nissin", "tipodonto compatible",
       "endodoncia nissin", "limpieza nissin",
