@@ -316,6 +316,7 @@ function productoAFichaCorta(p) {
   return {
     sku: p.sku,
     nombre: p.nombre,
+    imagen: p.imagen,
     precio: centavosAPesos(p.precio_centavos),
     precio_regular: centavosAPesos(p.precio_regular_centavos),
     stock_disponible: p.stock,
