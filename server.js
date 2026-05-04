@@ -1,15 +1,16 @@
 /**
  * ============================================================================
- *  VALQUIRIA — BACKEND DEL ASESOR (server.js v2)
+ *  VALQUIRIA — BACKEND DEL ASESOR (server.js v3)
  * ============================================================================
- *  Cambios v2:
- *  - System prompt proactivo: el bot deduce intenciones, tolera typos,
- *    nunca se rinde, y siempre ofrece próximo paso.
- *  - Limpieza de historial: descarta mensajes "model" iniciales antes de
- *    que llegue el primero del usuario (la bienvenida del frontend).
- *  - Fallback inteligente: cuando Gemini regresa vacío, hacemos UN segundo
- *    intento forzando que llame a listar_catalogo.
- *  - Logs detallados de function calls (visibles en Render Logs).
+ *  Cambios v3:
+ *  - El endpoint /api/chat ahora devuelve { reply, products, cotizacion }.
+ *    - reply: el texto del bot (como antes).
+ *    - products: lista de productos con imagen para que el frontend
+ *      renderice tarjetas visuales debajo del mensaje.
+ *    - cotizacion: el último cálculo de cotización (si lo hubo) por si el
+ *      frontend quiere renderizar un resumen visual estructurado.
+ *  - Solo se devuelven productos cuando el bot llamó buscar_productos o
+ *    listar_catalogo (no cuando solo cotizó). Esto evita saturar el chat.
  * ============================================================================
  */
 
@@ -19,6 +20,8 @@ require("dotenv").config();
 const { GoogleGenAI, FunctionCallingConfigMode } = require("@google/genai");
 
 const { TOOLS, ejecutarHerramienta } = require("./gemini-tools.js");
+const { getProductoPorSku } = require("./catalog.js");
+const { centavosAPesos } = require("./quote-engine.js");
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -54,7 +57,7 @@ const MAX_ITERACIONES_FUNCTION_CALL = 5;
 const TIMEOUT_GEMINI_MS = 45000;
 
 // ----------------------------------------------------------------------------
-// SYSTEM PROMPT (v2 — proactivo y resistente a errores ortográficos)
+// SYSTEM PROMPT (v3 — con instrucciones sobre tarjetas visuales)
 // ----------------------------------------------------------------------------
 const SYSTEM_PROMPT = `Eres el "Asesor Valquiria", el conserje digital premium de Valquiria Inc.
 
@@ -83,6 +86,18 @@ número que aparezca en tu respuesta usa SIEMPRE las herramientas:
 
 Si no usaste la herramienta, NO menciones precios.
 
+# IMÁGENES Y TARJETAS — IMPORTANTE
+Cuando llames buscar_productos o listar_catalogo, el sistema mostrará
+automáticamente al usuario tarjetas visuales con foto, nombre, precio y un
+botón "Cotizar este" debajo de tu mensaje. Por eso:
+
+- NUNCA incluyas URLs de imágenes en tu respuesta.
+- NO repitas demasiados detalles que ya están en la tarjeta.
+- Sé BREVE en la introducción ("Tenemos estas opciones para tu práctica:")
+  y deja que las tarjetas hagan el trabajo visual.
+- Termina con una pregunta concreta o una invitación a que el usuario dé
+  clic en "Cotizar este".
+
 # REGLA DE ORO — NUNCA TE RINDAS
 JAMÁS respondas "no entendí", "no puedo ayudarte" o "reformula tu solicitud".
 Eres proactivo:
@@ -100,20 +115,12 @@ Eres proactivo:
    palabra clave que más te suene.** La función ya tolera typos por dentro.
 
 3. **Si buscar_productos devuelve coincidencia_exacta=false, NO digas que no
-   encontraste.** Presenta los productos que vinieron y pregunta:
-   "Tenemos esto disponible en Valquiria Dental: [lista corta]. ¿Cuál se
-   acerca a lo que buscas, o prefieres que te describa alguno en detalle?"
+   encontraste.** Presenta los productos que vinieron y pregunta cuál se
+   acerca a lo que el usuario busca.
 
 4. **Si el usuario solo saluda o pide ayuda en general** ("hola", "qué tienen",
-   "ayúdame"), llama a listar_catalogo y muéstrale las 4 áreas, preguntando
+   "ayúdame"), llama a listar_catalogo y muéstrale las opciones, preguntando
    sobre qué tipo de práctica necesita.
-
-# CÓMO PRESENTAR PRODUCTOS
-Cuando muestres resultados de buscar_productos o listar_catalogo:
-- Lista breve, máximo 4 productos.
-- Para cada uno: nombre en **negritas**, precio, y una línea descriptiva.
-- Termina con una pregunta concreta que avance la conversación
-  ("¿Quieres que te cotice alguno?" / "¿Para qué tipo de práctica es?").
 
 # CÓMO PRESENTAR UNA COTIZACIÓN
 Cuando calcular_cotizacion devuelva ok=true:
@@ -127,14 +134,18 @@ con tus propias palabras (SKU no existe, sin stock, cantidad inválida) y
 pídele que corrija.
 
 # DERIVACIÓN A ESPECIALISTA
-Deriva a WhatsApp (+52 55 5467 5821) o ventas@valquiriadental.com cuando:
+Deriva a WhatsApp (+52 55 5467 5821) o ventas@valquiriadental.com SOLO cuando:
 - Pide mayoreo / volumen (más de 20 piezas en una línea).
 - Necesita factura, datos fiscales o condiciones de pago especiales.
 - Su pregunta técnica es muy específica (compatibilidad puntual,
   personalizaciones, tiempos exactos de entrega).
 
+NO derives cuando el usuario solo quiere comprar uno o pocos productos
+estándar — eso lo cotizas tú directamente.
+
 # FORMATO
 Respuestas breves: 2-3 párrafos cortos máximo. El widget de chat es pequeño.
+Usa **negritas** Markdown solo para nombres de productos y para totales.
 No uses emojis salvo cuando el usuario los use primero.`;
 
 // ----------------------------------------------------------------------------
@@ -148,10 +159,6 @@ function conTimeout(promise, ms, msg = "Timeout") {
   ]);
 }
 
-/**
- * Limpia el historial: descarta mensajes 'model' al inicio (antes del primer
- * 'user'). Es defensa para cuando el frontend agrega una bienvenida sintética.
- */
 function limpiarHistorial(messages) {
   const idxPrimerUser = messages.findIndex(m => m.role === "user");
   if (idxPrimerUser === -1) {
@@ -199,12 +206,40 @@ function extraerFunctionCalls(response) {
     .map(p => p.functionCall);
 }
 
+/**
+ * Construye una "tarjeta de producto" lista para que el frontend la renderice.
+ * Incluye solo lo necesario para la tarjeta visual (no la descripción larga).
+ */
+function tarjetaProducto(sku) {
+  const p = getProductoPorSku(sku);
+  if (!p) return null;
+  return {
+    sku: p.sku,
+    nombre: p.nombre,
+    imagen: p.imagen,
+    precio: centavosAPesos(p.precio_centavos),
+    precio_regular: centavosAPesos(p.precio_regular_centavos),
+    descripcion: p.descripcion_corta
+  };
+}
+
 // ----------------------------------------------------------------------------
 // LOOP DE FUNCTION CALLING
 // ----------------------------------------------------------------------------
 
+/**
+ * Devuelve { reply, products, cotizacion } donde:
+ * - reply: el texto que dirá el bot.
+ * - products: array de tarjetas a mostrar (puede estar vacío).
+ * - cotizacion: la última cotización exitosa (puede ser null).
+ */
 async function correrConversacion(historialInicial) {
   const contents = [...historialInicial];
+
+  // SKUs que el bot mencionó en su última operación de búsqueda/listado.
+  // Estos son los que el frontend renderizará como tarjetas.
+  let skusParaTarjetas = [];
+  let ultimaCotizacion = null;
 
   for (let iter = 0; iter < MAX_ITERACIONES_FUNCTION_CALL; iter++) {
     const response = await conTimeout(
@@ -223,7 +258,6 @@ async function correrConversacion(historialInicial) {
 
     const functionCalls = extraerFunctionCalls(response);
 
-    // Caso 1: Gemini quiere llamar funciones
     if (functionCalls.length > 0) {
       const partesModelo = functionCalls.map(fc => ({ functionCall: fc }));
       contents.push({ role: "model", parts: partesModelo });
@@ -245,6 +279,20 @@ async function correrConversacion(historialInicial) {
           (resultado.error ? ` error="${resultado.error.slice(0, 80)}"` : "")
         );
 
+        // ---- Recolectar SKUs para tarjetas visuales ----
+        // Solo de buscar_productos y listar_catalogo. NO de calcular_cotizacion
+        // (cuando se cotiza, el bot ya da los totales en texto y no queremos
+        // duplicar tarjetas visuales).
+        if (resultado.ok) {
+          if (fc.name === "buscar_productos" && Array.isArray(resultado.resultados)) {
+            skusParaTarjetas = resultado.resultados.map(p => p.sku);
+          } else if (fc.name === "listar_catalogo" && Array.isArray(resultado.productos)) {
+            skusParaTarjetas = resultado.productos.map(p => p.sku);
+          } else if (fc.name === "calcular_cotizacion" && Array.isArray(resultado.lineas)) {
+            ultimaCotizacion = resultado;
+          }
+        }
+
         partesRespuesta.push({
           functionResponse: {
             name: fc.name,
@@ -257,15 +305,19 @@ async function correrConversacion(historialInicial) {
       continue;
     }
 
-    // Caso 2: texto final
     const texto = extraerTexto(response);
     if (texto && texto.trim() !== "") {
-      return texto;
+      return {
+        reply: texto,
+        products: skusParaTarjetas
+          .map(sku => tarjetaProducto(sku))
+          .filter(Boolean)
+          .slice(0, 4),  // tope visual: máximo 4 tarjetas
+        cotizacion: ultimaCotizacion
+      };
     }
 
-    // Caso 3: respuesta vacía. Hacemos UN intento de rescate forzando
-    // que el modelo llame a listar_catalogo, así garantizamos que al
-    // menos vea opciones del catálogo.
+    // Caso: respuesta vacía → rescate forzando listar_catalogo
     console.warn(
       `[fallback] iter=${iter}: respuesta vacía sin function calls. ` +
       `Lanzando rescate con listar_catalogo forzada.`
@@ -311,17 +363,24 @@ async function correrConversacion(historialInicial) {
       "Timeout en intento de rescate."
     );
 
-    // Si el rescate forzó listar_catalogo, ejecutamos y hacemos una llamada
-    // final SIN tool config para que redacte texto natural.
     const rescateFcs = extraerFunctionCalls(responseRescate);
     if (rescateFcs.length > 0) {
       const partesRescateModel = rescateFcs.map(fc => ({ functionCall: fc }));
-      const partesRescateResp = rescateFcs.map(fc => ({
-        functionResponse: {
-          name: fc.name,
-          response: ejecutarHerramienta({ name: fc.name, args: fc.args || {} })
+      const partesRescateResp = [];
+
+      for (const fc of rescateFcs) {
+        const resultado = ejecutarHerramienta({ name: fc.name, args: fc.args || {} });
+        if (
+          resultado.ok &&
+          fc.name === "listar_catalogo" &&
+          Array.isArray(resultado.productos)
+        ) {
+          skusParaTarjetas = resultado.productos.map(p => p.sku);
         }
-      }));
+        partesRescateResp.push({
+          functionResponse: { name: fc.name, response: resultado }
+        });
+      }
 
       const responseFinal = await conTimeout(
         ai.models.generateContent({
@@ -344,28 +403,40 @@ async function correrConversacion(historialInicial) {
       const textoFinal = extraerTexto(responseFinal);
       if (textoFinal && textoFinal.trim() !== "") {
         console.log(`[fallback] Rescate exitoso.`);
-        return textoFinal;
+        return {
+          reply: textoFinal,
+          products: skusParaTarjetas
+            .map(sku => tarjetaProducto(sku))
+            .filter(Boolean)
+            .slice(0, 4),
+          cotizacion: ultimaCotizacion
+        };
       }
     }
 
-    // Si hasta el rescate falló, devolvemos un fallback proactivo (no genérico)
     console.warn(`[fallback] Rescate también vino vacío. Usando mensaje fijo.`);
-    return (
-      "Cuéntame un poco más sobre lo que necesitas. Por ejemplo, ¿buscas " +
-      "material para **endodoncia**, **pulpotomía**, un **kit completo de " +
-      "32 dientes**, o algo compatible con **tipodonto Nissin**? También " +
-      "puedo mostrarte el catálogo completo si gustas."
-    );
+    return {
+      reply:
+        "Cuéntame un poco más sobre lo que necesitas. Por ejemplo, ¿buscas " +
+        "material para **endodoncia**, **pulpotomía**, un **kit completo de " +
+        "32 dientes**, o algo compatible con **tipodonto Nissin**? También " +
+        "puedo mostrarte el catálogo completo si gustas.",
+      products: [],
+      cotizacion: null
+    };
   }
 
   console.warn(
     `[loop] Se alcanzó el tope de ${MAX_ITERACIONES_FUNCTION_CALL} iteraciones.`
   );
-  return (
-    "Estoy teniendo dificultad para procesar esta solicitud. ¿Podrías " +
-    "escribirla de otra forma, o prefieres que un especialista te atienda " +
-    "directamente por WhatsApp?"
-  );
+  return {
+    reply:
+      "Estoy teniendo dificultad para procesar esta solicitud. ¿Podrías " +
+      "escribirla de otra forma, o prefieres que un especialista te atienda " +
+      "directamente por WhatsApp?",
+    products: [],
+    cotizacion: null
+  };
 }
 
 // ----------------------------------------------------------------------------
@@ -373,7 +444,7 @@ async function correrConversacion(historialInicial) {
 // ----------------------------------------------------------------------------
 
 app.get("/", (req, res) => {
-  res.json({ status: "ok", service: "Valquiria Asesor Backend" });
+  res.json({ status: "ok", service: "Valquiria Asesor Backend v3" });
 });
 
 app.get("/health", (req, res) => {
@@ -401,8 +472,8 @@ app.post("/api/chat", async (req, res) => {
       return res.status(400).json({ error: e.message });
     }
 
-    const reply = await correrConversacion(historial);
-    return res.json({ reply });
+    const { reply, products, cotizacion } = await correrConversacion(historial);
+    return res.json({ reply, products, cotizacion });
   } catch (error) {
     console.error("[/api/chat] Error:", error);
     const esTimeout = /Timeout|tiempo/i.test(error.message || "");
@@ -415,9 +486,9 @@ app.post("/api/chat", async (req, res) => {
 });
 
 app.listen(port, () => {
-  console.log(`[Valquiria Backend v2] Activo en puerto ${port}`);
-  console.log(`[Valquiria Backend v2] Modelo: ${MODELO}`);
+  console.log(`[Valquiria Backend v3] Activo en puerto ${port}`);
+  console.log(`[Valquiria Backend v3] Modelo: ${MODELO}`);
   console.log(
-    `[Valquiria Backend v2] Orígenes CORS permitidos: ${ORIGENES_PERMITIDOS.join(", ")}`
+    `[Valquiria Backend v3] Orígenes CORS permitidos: ${ORIGENES_PERMITIDOS.join(", ")}`
   );
 });
