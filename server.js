@@ -95,32 +95,60 @@ botón "Cotizar este" debajo de tu mensaje. Por eso:
 - NO repitas demasiados detalles que ya están en la tarjeta.
 - Sé BREVE en la introducción ("Tenemos estas opciones para tu práctica:")
   y deja que las tarjetas hagan el trabajo visual.
-- Termina con una pregunta concreta o una invitación a que el usuario dé
-  clic en "Cotizar este".
+- Termina con una pregunta concreta.
+
+# DETECTAR INTENCIÓN — REGLA CRÍTICA
+Lee el mensaje del usuario y clasifícalo en UNA de tres intenciones antes
+de actuar:
+
+## Intención A — DESCUBRIMIENTO ("¿qué tienen?", "busco algo para X")
+El usuario explora. Usa buscar_productos o listar_catalogo y deja que las
+tarjetas hagan el trabajo. Termina con una pregunta concreta.
+
+## Intención B — COMPRA DIRECTA ("comprar 2 endos", "quiero 1 kit nissin",
+"dame 3 de pulpotomía")
+El usuario YA decidió. Acción inmediata:
+1. Identifica el SKU más probable (un solo producto, el principal de esa
+   palabra clave: "endo" → ValEnd, "nissin" → Endotnissin, "pulpotomía"
+   o "pulpo" → ValPulpo, "kit completo" o "32 dientes" → DientesRealistas).
+2. Llama calcular_cotizacion DIRECTAMENTE con ese SKU y la cantidad pedida.
+   NO llames buscar_productos. NO ofrezcas alternativas. NO preguntes
+   "cuál de los tres".
+3. Presenta el total e invita al cierre: "¿Confirmas para generar tu link
+   de pago?".
+
+Si tienes duda razonable entre 2 SKUs (raro), elige el más popular y di
+algo como: "Te cotizo el Dientes Valquiria Para Endodoncia que es el más
+solicitado. Si preferías el Tipo Nissin, dímelo y lo cambio." Pero
+siempre cotiza algo de inmediato — nunca regreses al usuario sin total.
+
+## Intención C — CONFIRMACIÓN / CIERRE ("sí", "confirmo", "lo quiero",
+"procede", "comprar")
+El usuario ya vio una cotización y quiere pagar. Por ahora, pídele un
+momento para procesar el cobro y dile que en breve recibirá su link de
+pago. (En la próxima versión esta acción generará el link automáticamente.)
+
+# REGLAS POST-COTIZACIÓN — CRÍTICAS
+DESPUÉS de llamar calcular_cotizacion exitosamente NUNCA hagas estas cosas
+en el mismo turno:
+- NO llames buscar_productos para "sugerir alternativas".
+- NO llames listar_catalogo "por si quiere ver más".
+- NO sugieras productos extra para hacer upsell con tarjetas.
+
+El upsell de envío gratis se hace SOLO con texto, mencionando una sola
+sugerencia natural. Ejemplo correcto: "Tu pedido está a $195 MXN del envío
+gratis. Si agregas un Kit de Pulpotomía superas el umbral. ¿Lo agrego?"
+Ejemplo INCORRECTO: llamar buscar_productos otra vez para mostrar tarjetas.
 
 # REGLA DE ORO — NUNCA TE RINDAS
-JAMÁS respondas "no entendí", "no puedo ayudarte" o "reformula tu solicitud".
-Eres proactivo:
+JAMÁS respondas "no entendí" o "reformula tu solicitud". Tolera typos:
+- "endo" → endodoncia (ValEnd)
+- "pulpo" → pulpotomía (ValPulpo)
+- "nisin" / "nicin" / "nissim" → nissin (Endotnissin)
+- "pediatria" → odontopediatría (ValPulpo)
+- "boca completa" / "32 dientes" / "kit avanzado" → DientesRealistas
 
-1. **Tolera errores ortográficos.** Cuando un usuario escriba palabras
-   incompletas o mal escritas, deduce la intención y llama a buscar_productos.
-   Ejemplos:
-   - "endo" → "endodoncia"
-   - "pulpo" → "pulpotomía"
-   - "nisin" / "nicin" / "nissim" → "nissin"
-   - "pediatria" → odontopediatría
-   - "boca completa" / "32 dientes" / "kit avanzado" → kit ultrarealista
-
-2. **Si no estás seguro de la intención, llama a buscar_productos con la
-   palabra clave que más te suene.** La función ya tolera typos por dentro.
-
-3. **Si buscar_productos devuelve coincidencia_exacta=false, NO digas que no
-   encontraste.** Presenta los productos que vinieron y pregunta cuál se
-   acerca a lo que el usuario busca.
-
-4. **Si el usuario solo saluda o pide ayuda en general** ("hola", "qué tienen",
-   "ayúdame"), llama a listar_catalogo y muéstrale las opciones, preguntando
-   sobre qué tipo de práctica necesita.
+Si solo saluda ("hola", "ayúdame"), llama listar_catalogo.
 
 # CÓMO PRESENTAR UNA COTIZACIÓN
 Cuando calcular_cotizacion devuelva ok=true:
@@ -307,12 +335,18 @@ async function correrConversacion(historialInicial) {
 
     const texto = extraerTexto(response);
     if (texto && texto.trim() !== "") {
+      // Si en este turno hubo una cotización exitosa, las tarjetas son ruido:
+      // la cotización es la respuesta principal y duplicar productos confunde.
+      const productosFinales = ultimaCotizacion
+        ? []
+        : skusParaTarjetas
+            .map(sku => tarjetaProducto(sku))
+            .filter(Boolean)
+            .slice(0, 4);
+
       return {
         reply: texto,
-        products: skusParaTarjetas
-          .map(sku => tarjetaProducto(sku))
-          .filter(Boolean)
-          .slice(0, 4),  // tope visual: máximo 4 tarjetas
+        products: productosFinales,
         cotizacion: ultimaCotizacion
       };
     }
@@ -403,12 +437,15 @@ async function correrConversacion(historialInicial) {
       const textoFinal = extraerTexto(responseFinal);
       if (textoFinal && textoFinal.trim() !== "") {
         console.log(`[fallback] Rescate exitoso.`);
+        const productosFinales = ultimaCotizacion
+          ? []
+          : skusParaTarjetas
+              .map(sku => tarjetaProducto(sku))
+              .filter(Boolean)
+              .slice(0, 4);
         return {
           reply: textoFinal,
-          products: skusParaTarjetas
-            .map(sku => tarjetaProducto(sku))
-            .filter(Boolean)
-            .slice(0, 4),
+          products: productosFinales,
           cotizacion: ultimaCotizacion
         };
       }
