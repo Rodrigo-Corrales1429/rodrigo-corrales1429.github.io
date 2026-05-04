@@ -101,6 +101,12 @@ function cargarCatalogo() {
     if (typeof p.descripcion !== "string") {
       throw new Error(`productos.json: SKU "${p.sku}" no tiene "descripcion".`);
     }
+    if (typeof p.imagen !== "string" || !/^https?:\/\//.test(p.imagen)) {
+      throw new Error(
+        `productos.json: SKU "${p.sku}" debe tener "imagen" como URL ` +
+        `(http:// o https://). Recibido: ${JSON.stringify(p.imagen)}`
+      );
+    }
 
     return {
       id: p.id,
@@ -112,6 +118,7 @@ function cargarCatalogo() {
       precio_regular_centavos: pesosACentavos(p.precio_regular),
       stock: p.stock,
       activo: p.activo,
+      imagen: p.imagen,
       keywords: p.keywords,
       descripcion: p.descripcion,
       // Versión corta autogenerada para el chat (primeras ~200 chars de descripción)
