@@ -1475,7 +1475,18 @@
         border-color: var(--gold);
         color: var(--white);
     }
-        
+
+        /* ========================================
+       ESTILOS FASE 3: ACTIVE STATE EN EL MENÚ
+    ======================================== */
+    .nav-links a.active {
+        color: var(--gold) !important;
+    }
+
+    .nav-links a.active::after {
+        width: 100% !important;
+        background: var(--gold);
+    }
     </style>
 </head>
 
@@ -2228,6 +2239,42 @@
                 initFiltrosCatalogo();
             }
         });
+        // ========================================
+    // FASE 3: ACTIVE STATE EN EL MENÚ (Scroll Spy)
+    // ========================================
+    function initActiveNav() {
+        const sections = document.querySelectorAll('section[id]');
+        const navLinks = document.querySelectorAll('.nav-links a');
+
+        if (!sections.length || !navLinks.length) return;
+
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    const currentId = entry.target.getAttribute('id');
+
+                    // Quitar clase active de todos los links
+                    navLinks.forEach(link => link.classList.remove('active'));
+
+                    // Agregar clase active al link correspondiente
+                    const activeLink = document.querySelector(`.nav-links a[href="#${currentId}"]`);
+                    if (activeLink) {
+                        activeLink.classList.add('active');
+                    }
+                }
+            });
+        }, {
+            threshold: 0.3,
+            rootMargin: "-80px 0px -40% 0px"
+        });
+
+        sections.forEach(section => observer.observe(section));
+    }
+
+    // Inicializar el Active State cuando cargue la página
+    window.addEventListener("load", () => {
+        initActiveNav();
+    });
     </script>
 </body>
 
