@@ -1417,6 +1417,64 @@
         color: var(--white-dim);
         white-space: pre-line;
     }
+
+        /* ========================================
+       ESTILOS FASE 2: HERO MEJORADO
+    ======================================== */
+    .hero-content {
+        max-width: 900px;
+    }
+
+    .hero-title {
+        font-size: clamp(3.2rem, 8.5vw, 7rem);
+        line-height: 1.05;
+        margin-bottom: 8px;
+    }
+
+    .hero-cta {
+        display: flex;
+        gap: 16px;
+        justify-content: center;
+        margin-top: 48px;
+        flex-wrap: wrap;
+    }
+
+    .btn-primary,
+    .btn-secondary {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 14px 32px;
+        font-size: 0.8rem;
+        letter-spacing: 0.15em;
+        text-transform: uppercase;
+        text-decoration: none;
+        border-radius: 6px;
+        transition: all 0.3s ease;
+        font-weight: 500;
+    }
+
+    .btn-primary {
+        background: var(--gold);
+        color: var(--black);
+    }
+
+    .btn-primary:hover {
+        background: var(--gold-light);
+        transform: translateY(-2px);
+    }
+
+    .btn-secondary {
+        background: transparent;
+        color: var(--white);
+        border: 1px solid rgba(201, 168, 76, 0.5);
+    }
+
+    .btn-secondary:hover {
+        background: rgba(201, 168, 76, 0.1);
+        border-color: var(--gold);
+        color: var(--white);
+    }
         
     </style>
 </head>
@@ -1451,20 +1509,30 @@
         <a href="#contacto" onclick="closeMobile()">Contacto</a>
     </div>
 
-    <!-- Hero -->
+    <!-- Hero Mejorado -->
     <section class="hero">
         <div class="hero-bg"></div>
         <div class="hero-grain"></div>
         <div class="hero-lines"></div>
+    
         <div class="hero-content">
             <img src="isotipo_gold.svg" alt="Valquiria Inc." class="hero-logo">
+        
             <h1 class="hero-title">
-                Valquiria
+                Valquiria<br>
                 <span>Inc.</span>
             </h1>
+        
             <div class="hero-divider"></div>
+        
             <p class="hero-tagline">Innovación · Precisión · Diseño</p>
+        
+            <div class="hero-cta">
+                <a href="#catalogo" class="btn-primary">Ver Catálogo</a>
+                <a href="#" class="btn-secondary" onclick="document.getElementById('asesorBtn').click(); return false;">Hablar con el Asesor</a>
+            </div>
         </div>
+
         <div class="hero-scroll">
             <span>Explorar</span>
             <div class="scroll-line"></div>
