@@ -1540,7 +1540,7 @@
         
             <div class="hero-cta">
                 <a href="#catalogo" class="btn-primary">Ver Catálogo</a>
-                <a href="#" class="btn-secondary" onclick="toggleChat(); return false;">Hablar con el Asesor</a>
+                <a href="#" class="btn-secondary" id="heroAsesorBtn">Hablar con el Asesor</a>
             </div>
         </div>
 
@@ -2275,6 +2275,17 @@
     window.addEventListener("load", () => {
         initActiveNav();
     });
+
+        // ========================================
+    // FASE 2 - FIX: Botón del Hero que abre el Asesor
+    // ========================================
+    const heroAsesorBtn = document.getElementById('heroAsesorBtn');
+    if (heroAsesorBtn) {
+        heroAsesorBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            toggleChat();
+        });
+    }
     </script>
 </body>
 
