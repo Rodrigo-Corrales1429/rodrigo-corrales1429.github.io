@@ -1850,16 +1850,24 @@
 
         document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
 
-        // Smooth scroll for anchor links
-        document.querySelectorAll('a[href^="#"]').forEach(a => {
-            a.addEventListener('click', (e) => {
+            // Smooth scroll for anchor links
+    document.querySelectorAll('a[href^="#"]').forEach(a => {
+        a.addEventListener('click', (e) => {
+            const targetHref = a.getAttribute('href');
+        
+            // Evitamos que intente buscar un ID inválido si el enlace es solo "#"
+            if (targetHref === '#') {
                 e.preventDefault();
-                const target = document.querySelector(a.getAttribute('href'));
-                if (target) {
-                    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                }
-            });
+                return;
+            }
+
+            e.preventDefault();
+            const target = document.querySelector(targetHref);
+            if (target) {
+                target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
         });
+    });
 
         // ==================== ASESOR VALQUIRIA V3 ====================
         const asesorBtn = document.getElementById('asesorBtn');
