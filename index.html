@@ -1,2300 +1,1053 @@
 <!DOCTYPE html>
 <html lang="es">
-
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Valquiria Inc. — Innovación · Precisión · Diseño</title>
-    <meta name="description"
-        content="Valquiria Inc. — Holding de innovación: impresión 3D, material dental pedagógico, empaques termoformados, lámparas y más.">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link
-        href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400&family=Montserrat:wght@200;300;400;500;600;700&display=swap"
-        rel="stylesheet">
-    <style>
-        *,
-        *::before,
-        *::after {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        :root {
-            --gold: #C9A84C;
-            --gold-light: #E8D48B;
-            --gold-dark: #8B6914;
-            --black: #0A0A0A;
-            --black-soft: #111111;
-            --black-card: #141414;
-            --white: #F5F0E8;
-            --white-dim: #A09882;
-            --gray: #2A2A2A;
-            --font-display: 'Cormorant Garamond', Georgia, serif;
-            --font-body: 'Montserrat', sans-serif;
-        }
-
-        html {
-            scroll-behavior: smooth;
-        }
-
-        body {
-            font-family: var(--font-body);
-            background: var(--black);
-            color: var(--white);
-            overflow-x: hidden;
-            -webkit-font-smoothing: antialiased;
-        }
-
-        /* ── PRELOADER ── */
-        .preloader {
-            position: fixed;
-            inset: 0;
-            z-index: 9999;
-            background: var(--black);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: opacity 0.8s ease, visibility 0.8s ease;
-        }
-
-        .preloader.hidden {
-            opacity: 0;
-            visibility: hidden;
-        }
-
-        .preloader-ring {
-            width: 60px;
-            height: 60px;
-            border: 2px solid transparent;
-            border-top-color: var(--gold);
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-        }
-
-        @keyframes spin {
-            to {
-                transform: rotate(360deg);
-            }
-        }
-
-        /* ── NAV ── */
-        nav {
-            position: fixed;
-            top: 0;
-            width: 100%;
-            z-index: 100;
-            padding: 24px 48px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            background: transparent;
-            transition: background 0.4s ease, backdrop-filter 0.4s ease, padding 0.4s ease;
-        }
-
-        nav.scrolled {
-            background: rgba(10, 10, 10, 0.85);
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
-            padding: 16px 48px;
-        }
-
-        .nav-logo {
-            font-family: var(--font-display);
-            font-size: 1.4rem;
-            font-weight: 600;
-            letter-spacing: 0.15em;
-            color: var(--gold);
-            text-decoration: none;
-            text-transform: uppercase;
-        }
-
-        .nav-links {
-            display: flex;
-            gap: 36px;
-            list-style: none;
-        }
-
-        .nav-links a {
-            font-family: var(--font-body);
-            font-size: 0.7rem;
-            font-weight: 500;
-            letter-spacing: 0.2em;
-            text-transform: uppercase;
-            color: var(--white-dim);
-            text-decoration: none;
-            transition: color 0.3s ease;
-            position: relative;
-        }
-
-        .nav-links a::after {
-            content: '';
-            position: absolute;
-            bottom: -4px;
-            left: 0;
-            width: 0;
-            height: 1px;
-            background: var(--gold);
-            transition: width 0.3s ease;
-        }
-
-        .nav-links a:hover {
-            color: var(--white);
-        }
-
-        .nav-links a:hover::after {
-            width: 100%;
-        }
-
-        .hamburger {
-            display: none;
-            cursor: pointer;
-            flex-direction: column;
-            gap: 5px;
-        }
-
-        .hamburger span {
-            width: 24px;
-            height: 1.5px;
-            background: var(--gold);
-            transition: all 0.3s ease;
-        }
-
-        .hamburger.active span:nth-child(1) {
-            transform: rotate(45deg) translate(4px, 4px);
-        }
-
-        .hamburger.active span:nth-child(2) {
-            opacity: 0;
-        }
-
-        .hamburger.active span:nth-child(3) {
-            transform: rotate(-45deg) translate(5px, -5px);
-        }
-
-        .mobile-menu {
-            display: none;
-            position: fixed;
-            inset: 0;
-            z-index: 99;
-            background: rgba(10, 10, 10, 0.97);
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            gap: 40px;
-        }
-
-        .mobile-menu.open {
-            display: flex;
-        }
-
-        .mobile-menu a {
-            font-family: var(--font-display);
-            font-size: 2rem;
-            font-weight: 400;
-            letter-spacing: 0.1em;
-            color: var(--white);
-            text-decoration: none;
-            opacity: 0;
-            transform: translateY(20px);
-            animation: fadeSlideIn 0.5s ease forwards;
-        }
-
-        .mobile-menu a:nth-child(1) { animation-delay: 0.1s; }
-        .mobile-menu a:nth-child(2) { animation-delay: 0.2s; }
-        .mobile-menu a:nth-child(3) { animation-delay: 0.3s; }
-        .mobile-menu a:nth-child(4) { animation-delay: 0.4s; }
-        .mobile-menu a:nth-child(5) { animation-delay: 0.5s; }
-
-        /* ── HERO ── */
-        .hero {
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            position: relative;
-            overflow: hidden;
-        }
-
-        .hero-bg {
-            position: absolute;
-            inset: 0;
-            background: radial-gradient(ellipse at 50% 40%, rgba(201, 168, 76, 0.06) 0%, transparent 60%),
-                radial-gradient(ellipse at 20% 80%, rgba(201, 168, 76, 0.03) 0%, transparent 50%),
-                var(--black);
-        }
-
-        .hero-grain {
-            position: absolute;
-            inset: 0;
-            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
-            opacity: 0.5;
-        }
-
-        .hero-lines {
-            position: absolute;
-            inset: 0;
-            overflow: hidden;
-        }
-
-        .hero-lines::before,
-        .hero-lines::after {
-            content: '';
-            position: absolute;
-            width: 1px;
-            height: 200px;
-            background: linear-gradient(to bottom, transparent, var(--gold), transparent);
-            opacity: 0.08;
-        }
-
-        .hero-lines::before {
-            left: 15%;
-            top: 10%;
-            animation: float 8s ease-in-out infinite;
-        }
-
-        .hero-lines::after {
-            right: 20%;
-            bottom: 10%;
-            animation: float 8s ease-in-out 4s infinite;
-        }
-
-        @keyframes float {
-            0%, 100% { transform: translateY(0); opacity: 0.08; }
-            50% { transform: translateY(-40px); opacity: 0.15; }
-        }
-
-        .hero-content {
-            position: relative;
-            z-index: 2;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            text-align: center;
-            padding: 0 24px;
-        }
-
-        .hero-logo {
-            width: 110px;
-            height: auto;
-            margin-bottom: 20px;
-            opacity: 0;
-            animation: fadeIn 1.2s ease 0.3s forwards;
-            filter: drop-shadow(0 0 18px rgba(201, 168, 76, 0.18));
-        }
-
-        .hero-title {
-            font-family: var(--font-display);
-            font-size: clamp(3rem, 8vw, 6.5rem);
-            font-weight: 300;
-            letter-spacing: 0.25em;
-            text-transform: uppercase;
-            color: var(--white);
-            line-height: 1.1;
-            opacity: 0;
-            animation: fadeSlideIn 1s ease 0.6s forwards;
-        }
-
-        .hero-title span {
-            display: block;
-            font-size: 0.25em;
-            letter-spacing: 0.5em;
-            color: var(--gold);
-            font-family: var(--font-body);
-            font-weight: 400;
-            margin-top: 8px;
-        }
-
-        .hero-divider {
-            width: 60px;
-            height: 1px;
-            background: var(--gold);
-            margin: 40px 0;
-            opacity: 0;
-            animation: expandWidth 1s ease 1s forwards;
-        }
-
-        .hero-tagline {
-            font-family: var(--font-body);
-            font-size: 0.75rem;
-            font-weight: 300;
-            letter-spacing: 0.35em;
-            text-transform: uppercase;
-            color: var(--white-dim);
-            opacity: 0;
-            animation: fadeSlideIn 1s ease 1.2s forwards;
-        }
-
-        .hero-scroll {
-            position: absolute;
-            bottom: 40px;
-            left: 50%;
-            transform: translateX(-50%);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 8px;
-            opacity: 0;
-            animation: fadeIn 1s ease 2s forwards;
-        }
-
-        .hero-scroll span {
-            font-size: 0.6rem;
-            letter-spacing: 0.3em;
-            text-transform: uppercase;
-            color: var(--white-dim);
-            font-weight: 300;
-        }
-
-        .scroll-line {
-            width: 1px;
-            height: 40px;
-            background: linear-gradient(to bottom, var(--gold), transparent);
-            animation: scrollPulse 2s ease-in-out infinite;
-        }
-
-        @keyframes scrollPulse {
-            0%, 100% { opacity: 1; transform: scaleY(1); }
-            50% { opacity: 0.3; transform: scaleY(0.6); }
-        }
-
-        @keyframes fadeIn { to { opacity: 1; } }
-        @keyframes fadeSlideIn { to { opacity: 1; transform: translateY(0); } }
-        @keyframes expandWidth { from { width: 0; } to { width: 60px; opacity: 1; } }
-
-        /* ── SECTIONS SHARED ── */
-        section {
-            padding: 120px 48px;
-            position: relative;
-        }
-
-        .section-label {
-            font-family: var(--font-body);
-            font-size: 0.6rem;
-            font-weight: 500;
-            letter-spacing: 0.4em;
-            text-transform: uppercase;
-            color: var(--gold);
-            margin-bottom: 20px;
-        }
-
-        .section-title {
-            font-family: var(--font-display);
-            font-size: clamp(2rem, 4vw, 3.5rem);
-            font-weight: 300;
-            letter-spacing: 0.08em;
-            line-height: 1.2;
-            margin-bottom: 24px;
-            color: var(--white);
-        }
-
-        .section-text {
-            font-size: 0.9rem;
-            font-weight: 300;
-            line-height: 1.8;
-            color: var(--white-dim);
-            max-width: 560px;
-        }
-
-        /* ── ABOUT ── */
-        .about {
-            display: flex;
-            align-items: center;
-            gap: 80px;
-            max-width: 1200px;
-            margin: 0 auto;
-        }
-
-        .about-left { flex: 1; }
-        .about-right { flex: 1; position: relative; }
-
-        .about-visual {
-            width: 100%;
-            aspect-ratio: 4/5;
-            background: linear-gradient(135deg, var(--black-card), var(--gray));
-            border: 1px solid rgba(201, 168, 76, 0.1);
-            position: relative;
-            overflow: hidden;
-        }
-
-        .about-visual::before {
-            content: '';
-            position: absolute;
-            inset: 20px;
-            border: 1px solid rgba(201, 168, 76, 0.08);
-        }
-
-        .about-visual-inner {
-            position: absolute;
-            inset: 0;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .about-visual-inner svg {
-            width: 60%;
-            opacity: 0.08;
-        }
-
-        .about-stats {
-            display: flex;
-            gap: 40px;
-            margin-top: 48px;
-        }
-
-        .stat-number {
-            font-family: var(--font-display);
-            font-size: 2.5rem;
-            font-weight: 300;
-            color: var(--gold);
-        }
-
-        .stat-label {
-            font-size: 0.65rem;
-            letter-spacing: 0.2em;
-            text-transform: uppercase;
-            color: var(--white-dim);
-            font-weight: 400;
-            margin-top: 4px;
-        }
-
-        /* ── DIVISIONS ── */
-        #divisiones {
-            max-width: 1200px;
-            margin: 0 auto;
-        }
-
-        .divisions-header {
-            text-align: center;
-            margin-bottom: 80px;
-        }
-
-        .divisions-header .section-text {
-            margin: 0 auto;
-        }
-
-        .divisions-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 24px;
-        }
-
-        .division-card {
-            background: var(--black-card);
-            border: 1px solid rgba(201, 168, 76, 0.06);
-            padding: 48px 36px;
-            position: relative;
-            overflow: hidden;
-            transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
-            cursor: default;
-        }
-
-        .division-card::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 2px;
-            background: linear-gradient(to right, transparent, var(--gold), transparent);
-            opacity: 0;
-            transition: opacity 0.5s ease;
-        }
-
-        .division-card:hover {
-            border-color: rgba(201, 168, 76, 0.15);
-            transform: translateY(-4px);
-        }
-
-        .division-card:hover::before {
-            opacity: 1;
-        }
-
-        .division-icon {
-            width: 48px;
-            height: 48px;
-            margin-bottom: 28px;
-            color: var(--gold);
-        }
-
-        .division-name {
-            font-family: var(--font-display);
-            font-size: 1.6rem;
-            font-weight: 400;
-            letter-spacing: 0.05em;
-            margin-bottom: 8px;
-        }
-
-        .division-sub {
-            font-size: 0.65rem;
-            font-weight: 500;
-            letter-spacing: 0.25em;
-            text-transform: uppercase;
-            color: var(--gold);
-            margin-bottom: 20px;
-        }
-
-        .division-desc {
-            font-size: 0.85rem;
-            font-weight: 300;
-            line-height: 1.7;
-            color: var(--white-dim);
-        }
-
-        .division-tag {
-            display: inline-block;
-            margin-top: 24px;
-            font-size: 0.6rem;
-            font-weight: 500;
-            letter-spacing: 0.2em;
-            text-transform: uppercase;
-            color: var(--gold);
-            border: 1px solid rgba(201, 168, 76, 0.2);
-            padding: 6px 16px;
-            transition: all 0.3s ease;
-        }
-
-        .division-card:hover .division-tag {
-            background: rgba(201, 168, 76, 0.08);
-        }
-
-        /* ── PHILOSOPHY ── */
-        .philosophy {
-            max-width: 900px;
-            margin: 0 auto;
-            text-align: center;
-        }
-
-        .philosophy-quote {
-            font-family: var(--font-display);
-            font-size: clamp(1.5rem, 3.5vw, 2.8rem);
-            font-weight: 300;
-            font-style: italic;
-            line-height: 1.5;
-            color: var(--white);
-            margin-bottom: 32px;
-            position: relative;
-        }
-
-        .philosophy-quote::before {
-            content: '"';
-            position: absolute;
-            top: -40px;
-            left: 50%;
-            transform: translateX(-50%);
-            font-size: 6rem;
-            font-style: normal;
-            color: var(--gold);
-            opacity: 0.15;
-            font-family: var(--font-display);
-        }
-
-        .philosophy-author {
-            font-size: 0.7rem;
-            letter-spacing: 0.3em;
-            text-transform: uppercase;
-            color: var(--gold);
-            font-weight: 500;
-        }
-
-        /* ── CONTACT ── */
-        #contacto {
-            max-width: 700px;
-            margin: 0 auto;
-            text-align: center;
-        }
-
-        .contact-links {
-            display: flex;
-            gap: 32px;
-            justify-content: center;
-            margin-top: 48px;
-            flex-wrap: wrap;
-        }
-
-        .contact-link {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            font-size: 0.8rem;
-            font-weight: 300;
-            color: var(--white-dim);
-            text-decoration: none;
-            transition: color 0.3s ease;
-            letter-spacing: 0.05em;
-        }
-
-        .contact-link:hover {
-            color: var(--gold);
-        }
-
-        .contact-link svg {
-            width: 18px;
-            height: 18px;
-            color: var(--gold);
-        }
-
-        .contact-cta {
-            display: inline-block;
-            margin-top: 48px;
-            padding: 16px 48px;
-            font-family: var(--font-body);
-            font-size: 0.7rem;
-            font-weight: 500;
-            letter-spacing: 0.25em;
-            text-transform: uppercase;
-            color: var(--black);
-            background: linear-gradient(135deg, var(--gold-light), var(--gold), var(--gold-dark));
-            text-decoration: none;
-            transition: all 0.4s ease;
-            position: relative;
-            overflow: hidden;
-        }
-
-        .contact-cta:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 12px 40px rgba(201, 168, 76, 0.2);
-        }
-
-        /* ── FOOTER ── */
-        footer {
-            padding: 48px;
-            border-top: 1px solid rgba(201, 168, 76, 0.06);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            font-size: 0.65rem;
-            color: var(--white-dim);
-            letter-spacing: 0.15em;
-            font-weight: 300;
-        }
-
-        footer a {
-            color: var(--white-dim);
-            text-decoration: none;
-        }
-
-        footer a:hover {
-            color: var(--gold);
-        }
-
-        /* ── REVEAL ANIMATION ── */
-        .reveal {
-            opacity: 0;
-            transform: translateY(40px);
-            transition: opacity 0.8s ease, transform 0.8s ease;
-        }
-
-        .reveal.visible {
-            opacity: 1;
-            transform: translateY(0);
-        }
-
-        /* ── SEPARATOR ── */
-        .sep {
-            width: 100%;
-            max-width: 1200px;
-            margin: 0 auto;
-            height: 1px;
-            background: linear-gradient(to right, transparent, rgba(201, 168, 76, 0.12), transparent);
-        }
-
-        /* ── RESPONSIVE ── */
-        @media (max-width: 900px) {
-            nav { padding: 20px 24px; }
-            nav.scrolled { padding: 14px 24px; }
-            .nav-links { display: none; }
-            .hamburger { display: flex; }
-            section { padding: 80px 24px; }
-            .about { flex-direction: column; gap: 48px; }
-            .about-right { max-width: 400px; width: 100%; }
-            .divisions-grid { grid-template-columns: 1fr; }
-            .about-stats { gap: 24px; }
-            footer { flex-direction: column; gap: 16px; text-align: center; }
-        }
-
-        @media (max-width: 480px) {
-            .hero-logo { width: 120px; }
-            .contact-links { flex-direction: column; align-items: center; }
-        }
-
-        /* ── ASESOR VALQUIRIA (CONCIERGE) ── */
-        .asesor-wrapper {
-            position: fixed;
-            bottom: 30px;
-            right: 30px;
-            z-index: 1000;
-            font-family: var(--font-body);
-        }
-
-        .asesor-btn {
-            width: 60px;
-            height: 60px;
-            border-radius: 50%;
-            background: var(--black-soft);
-            border: 1px solid rgba(201, 168, 76, 0.4);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            box-shadow: 0 4px 20px rgba(201, 168, 76, 0.15), inset 0 0 15px rgba(201, 168, 76, 0.05);
-            transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-            position: relative;
-            outline: none;
-        }
-
-        .asesor-btn::before {
-            content: '';
-            position: absolute;
-            inset: -4px;
-            border-radius: 50%;
-            border: 1px solid var(--gold);
-            opacity: 0;
-            transform: scale(0.9);
-            transition: all 0.4s ease;
-        }
-
-        .asesor-btn:hover {
-            transform: translateY(-4px);
-            box-shadow: 0 8px 25px rgba(201, 168, 76, 0.25), inset 0 0 20px rgba(201, 168, 76, 0.1);
-            border-color: rgba(201, 168, 76, 0.6);
-        }
-
-        .asesor-btn:hover::before {
-            opacity: 0.3;
-            transform: scale(1.1);
-            animation: pulse-ring 2s infinite cubic-bezier(0.215, 0.61, 0.355, 1);
-        }
-
-        @keyframes pulse-ring {
-            0% { transform: scale(0.9); opacity: 0.5; }
-            100% { transform: scale(1.3); opacity: 0; }
-        }
-
-        .asesor-btn svg {
-            width: 24px;
-            height: 24px;
-            color: var(--gold);
-            transition: transform 0.4s ease, opacity 0.4s ease;
-        }
-
-        .asesor-btn.open .asesor-btn-main-icon {
-            transform: rotate(90deg) scale(0);
-            opacity: 0;
-            position: absolute;
-        }
-
-        .asesor-btn-close-icon {
-            position: absolute;
-            width: 24px;
-            height: 24px;
-            color: var(--gold);
-            transform: rotate(-90deg) scale(0);
-            opacity: 0;
-        }
-
-        .asesor-btn.open .asesor-btn-close-icon {
-            transform: rotate(0) scale(1);
-            opacity: 1;
-        }
-
-        .asesor-panel {
-            position: absolute;
-            bottom: 80px;
-            right: 0;
-            width: 360px;
-            height: 560px;
-            max-height: calc(100vh - 120px);
-            background: rgba(12, 12, 12, 0.85);
-            backdrop-filter: blur(24px);
-            -webkit-backdrop-filter: blur(24px);
-            border: 1px solid rgba(201, 168, 76, 0.15);
-            border-radius: 16px;
-            box-shadow: 0 24px 48px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.03) inset;
-            display: flex;
-            flex-direction: column;
-            opacity: 0;
-            visibility: hidden;
-            transform: translateY(20px) scale(0.98);
-            transform-origin: bottom right;
-            transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
-            overflow: hidden;
-            z-index: 999;
-        }
-
-        .asesor-panel.open {
-            opacity: 1;
-            visibility: visible;
-            transform: translateY(0) scale(1);
-        }
-
-        .asesor-header {
-            padding: 20px 24px;
-            border-bottom: 1px solid rgba(201, 168, 76, 0.1);
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            background: linear-gradient(to right, rgba(20, 20, 20, 0.4), rgba(26, 26, 26, 0.4));
-        }
-
-        .asesor-avatar {
-            width: 36px;
-            height: 36px;
-            border-radius: 50%;
-            background: rgba(201, 168, 76, 0.08);
-            border: 1px solid rgba(201, 168, 76, 0.3);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            box-shadow: 0 0 10px rgba(201, 168, 76, 0.1);
-        }
-
-        .asesor-avatar svg {
-            width: 18px;
-            height: 18px;
-            color: var(--gold);
-        }
-
-        .asesor-header-info {
-            display: flex;
-            flex-direction: column;
-        }
-
-        .asesor-header-title {
-            font-family: var(--font-display);
-            color: var(--gold);
-            font-size: 1.2rem;
-            font-weight: 500;
-            letter-spacing: 0.05em;
-            line-height: 1.2;
-        }
-
-        .asesor-header-status {
-            font-size: 0.6rem;
-            color: var(--white-dim);
-            text-transform: uppercase;
-            letter-spacing: 0.15em;
-            display: flex;
-            align-items: center;
-            gap: 5px;
-            margin-top: 2px;
-        }
-
-        .asesor-header-status::before {
-            content: '';
-            width: 4px;
-            height: 4px;
-            background: var(--gold);
-            border-radius: 50%;
-            box-shadow: 0 0 6px var(--gold);
-        }
-
-        .asesor-body {
-            flex: 1;
-            padding: 24px;
-            overflow-y: auto;
-            display: flex;
-            flex-direction: column;
-            gap: 16px;
-            scroll-behavior: smooth;
-        }
-
-        .asesor-body::-webkit-scrollbar {
-            width: 4px;
-        }
-
-        .asesor-body::-webkit-scrollbar-track {
-            background: transparent;
-        }
-
-        .asesor-body::-webkit-scrollbar-thumb {
-            background: rgba(201, 168, 76, 0.2);
-            border-radius: 4px;
-        }
-
-        .chat-msg {
-            max-width: 85%;
-            font-size: 0.8rem;
-            line-height: 1.6;
-            animation: msgFadeIn 0.4s ease forwards;
-            opacity: 0;
-            transform: translateY(10px);
-            letter-spacing: 0.02em;
-        }
-
-        @keyframes msgFadeIn {
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        .chat-msg.system {
-            align-self: flex-start;
-            background: rgba(30, 30, 30, 0.6);
-            border: 1px solid rgba(255, 255, 255, 0.05);
-            color: var(--white);
-            padding: 12px 16px;
-            border-radius: 2px 12px 12px 12px;
-        }
-
-        .chat-msg.system b {
-            color: var(--gold);
-            font-weight: 500;
-        }
-
-        .chat-msg.user {
-            align-self: flex-end;
-            background: rgba(201, 168, 76, 0.08);
-            border: 1px solid rgba(201, 168, 76, 0.2);
-            color: var(--gold-light);
-            padding: 10px 14px;
-            border-radius: 12px 2px 12px 12px;
-        }
-
-        /* ── PRODUCT CARDS (NUEVO) ── */
-        .product-cards {
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-            margin-top: 4px;
-            align-self: flex-start;
-            width: 100%;
-            max-width: 290px;
-            animation: msgFadeIn 0.5s ease 0.15s forwards;
-            opacity: 0;
-        }
-
-        .product-card {
-            background: rgba(20, 20, 20, 0.7);
-            border: 1px solid rgba(201, 168, 76, 0.15);
-            border-radius: 12px;
-            overflow: hidden;
-            transition: all 0.3s ease;
-        }
-
-        .product-card:hover {
-            border-color: rgba(201, 168, 76, 0.45);
-            transform: translateY(-2px);
-            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
-        }
-
-        .product-card-img {
-            width: 100%;
-            aspect-ratio: 4/3;
-            object-fit: cover;
-            background: rgba(0, 0, 0, 0.3);
-            display: block;
-        }
-
-        .product-card-body {
-            padding: 12px 14px;
-        }
-
-        .product-card-name {
-            font-family: var(--font-display);
-            font-size: 1rem;
-            font-weight: 500;
-            color: var(--gold-light);
-            letter-spacing: 0.02em;
-            line-height: 1.25;
-            margin-bottom: 6px;
-        }
-
-        .product-card-price-row {
-            display: flex;
-            align-items: baseline;
-            gap: 8px;
-            margin-bottom: 10px;
-        }
-
-        .product-card-price {
-            font-size: 0.85rem;
-            font-weight: 600;
-            color: var(--gold);
-            letter-spacing: 0.02em;
-        }
-
-        .product-card-price-regular {
-            font-size: 0.7rem;
-            color: var(--white-dim);
-            text-decoration: line-through;
-            opacity: 0.7;
-        }
-
-        .product-card-btn {
-            width: 100%;
-            padding: 9px 12px;
-            background: linear-gradient(135deg, rgba(201, 168, 76, 0.15), rgba(139, 105, 20, 0.15));
-            border: 1px solid rgba(201, 168, 76, 0.5);
-            border-radius: 6px;
-            color: var(--gold-light);
-            font-family: var(--font-body);
-            font-size: 0.65rem;
-            font-weight: 500;
-            letter-spacing: 0.18em;
-            text-transform: uppercase;
-            cursor: pointer;
-            transition: all 0.3s ease;
-        }
-
-        .product-card-btn:hover {
-            background: linear-gradient(135deg, rgba(201, 168, 76, 0.3), rgba(139, 105, 20, 0.3));
-            border-color: var(--gold);
-            color: var(--white);
-        }
-
-        .product-card-btn:active {
-            transform: scale(0.98);
-        }
-
-        .product-card-btn:disabled {
-            opacity: 0.4;
-            cursor: not-allowed;
-        }
-        /* ── END PRODUCT CARDS ── */
-
-        .chat-typing {
-            display: flex;
-            gap: 4px;
-            padding: 12px 16px;
-            background: rgba(30, 30, 30, 0.4);
-            border-radius: 2px 12px 12px 12px;
-            align-self: flex-start;
-            width: fit-content;
-            animation: msgFadeIn 0.3s ease forwards;
-        }
-
-        .typing-dot {
-            width: 5px;
-            height: 5px;
-            background: var(--gold);
-            border-radius: 50%;
-            animation: typingPulse 1.4s infinite ease-in-out both;
-        }
-
-        .typing-dot:nth-child(1) { animation-delay: -0.32s; }
-        .typing-dot:nth-child(2) { animation-delay: -0.16s; }
-
-        @keyframes typingPulse {
-            0%, 80%, 100% { transform: scale(0); opacity: 0.3; }
-            40% { transform: scale(1); opacity: 1; }
-        }
-
-        .asesor-footer {
-            padding: 16px 20px;
-            border-top: 1px solid rgba(255, 255, 255, 0.05);
-            background: rgba(10, 10, 10, 0.6);
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            position: relative;
-        }
-
-        .asesor-input-wrapper {
-            flex: 1;
-            position: relative;
-            display: flex;
-            align-items: center;
-            background: rgba(20, 20, 20, 0.6);
-            border: 1px solid rgba(201, 168, 76, 0.2);
-            border-radius: 20px;
-            padding: 2px 4px 2px 16px;
-            transition: all 0.3s ease;
-        }
-
-        .asesor-input-wrapper:focus-within {
-            border-color: rgba(201, 168, 76, 0.6);
-            background: rgba(26, 26, 26, 0.8);
-            box-shadow: 0 0 12px rgba(201, 168, 76, 0.1);
-        }
-
-        .asesor-input {
-            flex: 1;
-            background: transparent;
-            border: none;
-            color: var(--white);
-            font-family: var(--font-body);
-            font-size: 0.8rem;
-            outline: none;
-            padding: 10px 0;
-            width: 100%;
-        }
-
-        .asesor-input::placeholder {
-            color: rgba(160, 152, 130, 0.4);
-        }
-
-        .asesor-input:disabled {
-            opacity: 0.5;
-        }
-
-        .asesor-send {
-            background: var(--gold);
-            border: none;
-            cursor: pointer;
-            color: var(--black);
-            width: 32px;
-            height: 32px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.3s ease;
-            opacity: 0.5;
-            pointer-events: none;
-            flex-shrink: 0;
-        }
-
-        .asesor-send.active {
-            opacity: 1;
-            pointer-events: auto;
-            box-shadow: 0 2px 8px rgba(201, 168, 76, 0.3);
-        }
-
-        .asesor-send.active:hover {
-            transform: scale(1.05);
-            background: var(--gold-light);
-        }
-
-        .asesor-send svg {
-            width: 14px;
-            height: 14px;
-            position: relative;
-            left: 1px;
-        }
-
-        .asesor-header-actions {
-            margin-left: auto;
-            display: flex;
-        }
-
-        .asesor-restart {
-            background: transparent;
-            border: none;
-            color: var(--white-dim);
-            cursor: pointer;
-            padding: 8px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.3s ease;
-        }
-
-        .asesor-restart:hover {
-            color: var(--gold);
-            background: rgba(201, 168, 76, 0.1);
-            transform: rotate(180deg);
-        }
-
-        @media (max-width: 480px) {
-            .asesor-wrapper { bottom: 20px; right: 20px; }
-            .asesor-panel { width: calc(100vw - 40px); height: 80vh; bottom: 70px; }
-            .product-cards { max-width: 100%; }
-        }
-
-        /* ========================================
-               ESTILOS FASE 1: CATÁLOGO
-            ======================================== */
-    #catalogo {
-        max-width: 1280px;
-        margin: 0 auto;
-    }
-
-    .catalogo-header {
-        text-align: center;
-        margin-bottom: 48px;
-    }
-
-    .catalogo-filtros {
-        display: flex;
-        justify-content: center;
-        gap: 12px;
-        flex-wrap: wrap;
-        margin-bottom: 40px;
-    }
-
-    .filtro-btn {
-        background: transparent;
-        border: 1px solid rgba(201, 168, 76, 0.3);
-        color: var(--white-dim);
-        padding: 10px 24px;
-        font-size: 0.75rem;
-        letter-spacing: 0.1em;
-        text-transform: uppercase;
-        border-radius: 999px;
-        cursor: pointer;
-        transition: all 0.3s ease;
-    }
-
-    .filtro-btn:hover {
-        border-color: var(--gold);
-        color: var(--white);
-    }
-
-    .filtro-btn.active {
-        background: var(--gold);
-        color: var(--black);
-        border-color: var(--gold);
-    }
-
-    .catalogo-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-        gap: 24px;
-    }
-
-    .producto-card {
-        background: var(--black-card);
-        border: 1px solid rgba(201, 168, 76, 0.08);
-        border-radius: 16px;
-        overflow: hidden;
-        transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), 
-                    box-shadow 0.4s ease,
-                    border-color 0.3s ease;
-    }
-
-    .producto-card:hover {
-        transform: translateY(-6px);
-        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
-        border-color: rgba(201, 168, 76, 0.2);
-    }
-
-    .producto-img {
-        width: 100%;
-        aspect-ratio: 4 / 3;
-        object-fit: cover;
-        background: #111;
-    }
-
-    .producto-body {
-        padding: 24px;
-    }
-
-    .producto-nombre {
-        font-family: var(--font-display);
-        font-size: 1.25rem;
-        font-weight: 500;
-        line-height: 1.3;
-        margin-bottom: 12px;
-        color: var(--white);
-    }
-
-    .producto-precios {
-        display: flex;
-        align-items: baseline;
-        gap: 10px;
-        margin-bottom: 16px;
-    }
-
-    .producto-precio {
-        font-size: 1.35rem;
-        font-weight: 600;
-        color: var(--gold);
-    }
-
-    .producto-precio-regular {
-        font-size: 0.95rem;
-        color: var(--white-dim);
-        text-decoration: line-through;
-        opacity: 0.7;
-    }
-
-    .producto-stock {
-        font-size: 0.7rem;
-        color: var(--white-dim);
-        margin-bottom: 20px;
-    }
-
-    .producto-acciones {
-        display: flex;
-        gap: 10px;
-    }
-
-    .btn-cotizar,
-    .btn-detalles {
-        flex: 1;
-        padding: 12px 16px;
-        font-size: 0.75rem;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-        border-radius: 8px;
-        cursor: pointer;
-        transition: all 0.3s ease;
-        font-weight: 500;
-    }
-
-    .btn-cotizar {
-        background: var(--gold);
-        color: var(--black);
-        border: none;
-    }
-
-    .btn-cotizar:hover {
-        background: var(--gold-light);
-    }
-
-    .btn-detalles {
-        background: transparent;
-        color: var(--white);
-        border: 1px solid rgba(201, 168, 76, 0.4);
-    }
-
-    .btn-detalles:hover {
-        background: rgba(201, 168, 76, 0.08);
-        border-color: var(--gold);
-    }
-
-    .catalogo-nota {
-        text-align: center;
-        margin-top: 48px;
-        font-size: 0.85rem;
-        color: var(--white-dim);
-    }
-
-    .catalogo-nota a {
-        color: var(--gold);
-        text-decoration: underline;
-    }
-
-    /* Modal */
-    .modal {
-        position: fixed;
-        inset: 0;
-        background: rgba(0, 0, 0, 0.85);
-        display: none;
-        align-items: center;
-        justify-content: center;
-        z-index: 2000;
-        padding: 20px;
-    }
-
-    .modal.open {
-        display: flex;
-    }
-
-    .modal-content {
-        background: var(--black-card);
-        max-width: 720px;
-        width: 100%;
-        border-radius: 16px;
-        border: 1px solid rgba(201, 168, 76, 0.15);
-        overflow: hidden;
-    }
-
-    .modal-header {
-        padding: 24px 32px;
-        border-bottom: 1px solid rgba(201, 168, 76, 0.1);
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-    }
-
-    .modal-close {
-        background: none;
-        border: none;
-        color: var(--white-dim);
-        font-size: 1.5rem;
-        cursor: pointer;
-        line-height: 1;
-    }
-
-    .modal-body {
-        padding: 32px;
-        max-height: 60vh;
-        overflow-y: auto;
-    }
-
-    .modal-body h3 {
-        font-family: var(--font-display);
-        font-size: 1.6rem;
-        margin-bottom: 16px;
-    }
-
-    .modal-body p {
-        line-height: 1.75;
-        color: var(--white-dim);
-        white-space: pre-line;
-    }
-
-        /* ========================================
-       ESTILOS FASE 2: HERO MEJORADO
-    ======================================== */
-    .hero-content {
-        max-width: 900px;
-    }
-
-    .hero-title {
-        font-size: clamp(3.2rem, 8.5vw, 7rem);
-        line-height: 1.05;
-        margin-bottom: 8px;
-    }
-
-    .hero-cta {
-        display: flex;
-        gap: 16px;
-        justify-content: center;
-        margin-top: 48px;
-        flex-wrap: wrap;
-    }
-
-    .btn-primary,
-    .btn-secondary {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        padding: 14px 32px;
-        font-size: 0.8rem;
-        letter-spacing: 0.15em;
-        text-transform: uppercase;
-        text-decoration: none;
-        border-radius: 6px;
-        transition: all 0.3s ease;
-        font-weight: 500;
-    }
-
-    .btn-primary {
-        background: var(--gold);
-        color: var(--black);
-    }
-
-    .btn-primary:hover {
-        background: var(--gold-light);
-        transform: translateY(-2px);
-    }
-
-    .btn-secondary {
-        background: transparent;
-        color: var(--white);
-        border: 1px solid rgba(201, 168, 76, 0.5);
-    }
-
-    .btn-secondary:hover {
-        background: rgba(201, 168, 76, 0.1);
-        border-color: var(--gold);
-        color: var(--white);
-    }
-
-        /* ========================================
-       ESTILOS FASE 3: ACTIVE STATE EN EL MENÚ
-    ======================================== */
-    .nav-links a.active {
-        color: var(--gold) !important;
-    }
-
-    .nav-links a.active::after {
-        width: 100% !important;
-        background: var(--gold);
-    }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Valquiria Inc. — Manufactura aditiva en México</title>
+<meta name="description" content="Holding mexicano de manufactura aditiva. Valquiria Dental, 3D, Pack, Lux e IA. Modelos anatómicos dentales con nervio sintético, prototipado, empaque termoformado e iluminación impresa.">
+<meta name="theme-color" content="#060606">
+<link rel="canonical" href="https://valquiriainc.com/">
+
+<!-- ══ SEGURIDAD ══
+     GitHub Pages sirve archivos estáticos y no deja poner cabeceras propias,
+     así que la política va en <meta>. Es la lista blanca de TODO lo que este
+     sitio puede cargar o contactar: si mañana alguien inyecta un <script> de
+     otro dominio —por un asset comprometido o por texto del Asesor que se
+     colara sin escapar—, el navegador lo bloquea antes de ejecutarlo.
+
+     'unsafe-inline' en script-src es obligatorio aquí: el importmap de
+     three.js y el JSON-LD son inline y no hay build que les ponga un hash.
+     Aun así la política sigue valiendo, porque lo que corta de raíz es la
+     carga desde un origen ajeno.
+
+     `frame-ancestors` no se declara: en <meta> el navegador lo ignora, y
+     dejarlo escrito da una falsa sensación de estar protegido contra
+     clickjacking. Esa sí necesita cabecera de servidor.
+
+     connect-src incluye el backend del Asesor. Si el servidor cambia de
+     dirección —al pasar Render a plan de paga, por ejemplo— hay que
+     actualizarlo AQUÍ además de en CFG.backend, o el chat quedará mudo con
+     un error de CSP en consola.
+
+     Dos permisos que existen SOLO por la valquiria y que no son opcionales:
+
+     · 'wasm-unsafe-eval' en script-src. El .glb viene comprimido con Draco y
+       su decodificador es WebAssembly; sin este permiso el navegador se niega
+       a compilarlo y la malla nunca carga. Es el token estrecho a propósito:
+       habilita WebAssembly y nada más — 'unsafe-eval', que también funcionaría,
+       abriría además eval() y Function(), que es justo lo que no queremos.
+     · blob: en connect-src. GLTFLoader extrae las tres texturas PBR que van
+       dentro del .glb como URLs blob: y las pide por fetch. Sin esto la malla
+       carga pero llega sin color, sin normales y sin rugosidad — gris.
+
+     Un navegador demasiado viejo para 'wasm-unsafe-eval' ignora el token, se
+     queda sin Draco y cae solo a la valquiria procedural. Degradar, no
+     romperse. -->
+<meta http-equiv="Content-Security-Policy" content="
+  default-src 'self';
+  base-uri 'self';
+  object-src 'none';
+  form-action 'self' https://wa.me;
+  script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://unpkg.com blob:;
+  worker-src 'self' blob:;
+  style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+  font-src 'self' https://fonts.gstatic.com;
+  img-src 'self' data: blob: https://res.cloudinary.com;
+  connect-src 'self' blob: https://unpkg.com https://rodrigo-corrales1429-github-io.onrender.com;
+  upgrade-insecure-requests">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<link rel="icon" type="image/svg+xml" href="assets/isotipo_gold.svg">
+<link rel="alternate icon" href="favicon.ico" sizes="16x16 32x32 48x48">
+<link rel="apple-touch-icon" href="assets/isotipo_gold.svg">
+
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Valquiria Inc.">
+<meta property="og:title" content="Valquiria Inc. — Manufactura aditiva">
+<meta property="og:description" content="Manufactura aditiva y automatización con IA. Cinco divisiones, una plataforma.">
+<meta property="og:url" content="https://valquiriainc.com/">
+<meta property="og:locale" content="es_MX">
+<meta name="twitter:card" content="summary_large_image">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://res.cloudinary.com">
+<!-- unpkg sirve three.js, que es la dependencia más pesada del sitio y la
+     única sin la que no hay nada que ver. Abrir el TLS con antelación ahorra
+     el saludo completo —DNS, TCP, TLS— del camino crítico. -->
+<link rel="preconnect" href="https://unpkg.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300&family=Montserrat:wght@200;300;400;500&family=IBM+Plex+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/valquiria.css?v=60">
+
+<!-- ══ MAPA DE IMPORTACIÓN ══
+     three.js moderno como módulo. La versión importa: a partir de r152 la
+     gestión de color es correcta de fábrica (espacio lineal de trabajo, salida
+     sRGB), y eso es la diferencia entre una armadura que parece plástico y una
+     que parece marfil. El mapa deja que escena.js y modelo.js escriban
+     `from 'three'` sin empaquetador.
+
+     ── VA AQUÍ ARRIBA, Y NO ES UN DETALLE DE ESTILO ──
+     Este bloque tiene que estar ANTES de cualquier cosa que cargue un módulo
+     — incluidos los `modulepreload` de abajo. Un mapa de importación solo
+     vale para las resoluciones que ocurren después de que el navegador lo ha
+     leído; en cuanto empieza a resolver un módulo, el mapa deja de poder
+     registrarse.
+
+     Estuvo al final del <body> mientras los `modulepreload` estaban aquí, y
+     el resultado fue que el navegador se ponía a resolver los imports de
+     escena.js sin conocer todavía el nombre «three». La consola decía
+     «Failed to resolve module specifier "three"», no cargaba ni una línea de
+     la aplicación y el visitante se quedaba mirando el preloader para
+     siempre. El sitio no arrancaba: ni en local ni publicado.
+
+     Si algún día añades otro `modulepreload` o un `<script type="module">`,
+     compruébalo: tiene que ir por debajo de este bloque. -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.170.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.170.0/examples/jsm/"
+  }
+}
+</script>
+
+<!-- ══ CAMINO CRÍTICO ══
+     La valquiria es lo que el visitante está esperando, y hasta ahora era lo
+     ÚLTIMO en pedirse: el navegador tenía que bajar y analizar app.js, de ahí
+     descubrir escena.js, y solo entonces salía la petición del .glb. Cuatro
+     viajes en serie antes de empezar lo más pesado.
+
+     `preload` lo arranca con el HTML, en paralelo con todo lo demás, y
+     `modulepreload` hace lo mismo con los módulos que hoy se descubren tarde.
+     No cambia lo que se descarga: cambia CUÁNDO empieza.
+
+     El `crossorigin` del .glb NO es opcional y no es lo que parece. Un
+     preload que no casa exactamente en modo de credenciales con la petición
+     real no se reutiliza: se descarga el archivo DOS veces, y el "arreglo"
+     sale peor que no hacer nada. Aquí el que casa es `crossorigin`, aunque el
+     archivo sea del mismo origen — con el atributo, el modo de credenciales
+     del preload es «same-origin», que es justo con el que three pide el
+     modelo; sin el atributo sería «include» y no casaría.
+
+     No es teoría: sin el atributo, Chrome avisa en consola con «A preload for
+     … is not used because the request credentials mode does not match». Si
+     algún día tocas esta línea, comprueba ahí que el aviso no vuelve. -->
+<link rel="preload" href="assets/valquiria.glb" as="fetch" crossorigin>
+<link rel="modulepreload" href="assets/js/escena.js?v=60">
+<link rel="modulepreload" href="assets/js/figuras.js?v=60">
+<link rel="modulepreload" href="assets/js/modelo.js?v=60">
+
+<script type="application/ld+json">
+{
+  "@context":"https://schema.org",
+  "@type":"Organization",
+  "name":"Valquiria Inc.",
+  "url":"https://valquiriainc.com/",
+  "logo":"https://valquiriainc.com/assets/isotipo_gold.svg",
+  "description":"Holding mexicano de manufactura aditiva con cinco divisiones: Dental, 3D, Pack, Lux e IA.",
+  "areaServed":"MX",
+  "contactPoint":{
+    "@type":"ContactPoint",
+    "telephone":"+52-55-5467-5821",
+    "contactType":"sales",
+    "availableLanguage":["es"]
+  }
+}
+</script>
 </head>
-
 <body>
-    <!-- Preloader -->
-    <div class="preloader">
-        <div class="preloader-ring"></div>
+
+<!-- ══ PRELOADER ══ -->
+<div id="pre">
+  <div id="pre-mark">VALQUIRIA</div>
+  <div id="pre-bar"><div id="pre-fill"></div></div>
+  <div id="pre-txt">Calibrando plataforma</div>
+  <div id="pre-aviso" hidden></div>
+</div>
+
+<!-- ══ RED DE SEGURIDAD DEL ARRANQUE ══
+     El preloader lo tapa TODO y solo lo quita el JavaScript. Eso significa que
+     cualquier fallo del JS —no importa cuál— deja al visitante mirando
+     «Calibrando plataforma» para siempre, sin un texto, sin un teléfono, sin
+     manera de saber que la página no está simplemente lenta. Un sitio que se
+     cuelga en silencio es peor que uno que no carga: el visitante no sabe si
+     esperar o irse.
+
+     Este script es CLÁSICO a propósito, no un módulo. Es justo el caso que
+     tiene que cubrir: si los módulos no cargan, un módulo tampoco podría
+     rescatar nada. Va aquí arriba, sin dependencias y sin sintaxis moderna,
+     para que corra aunque todo lo demás falle.
+
+     Dos relojes:
+     · 9 s — si app.js ni siquiera empezó a evaluarse, el problema es de carga
+       (red caída, unpkg inalcanzable, navegador sin módulos).
+     · 30 s — app.js arrancó pero nunca terminó. Se abre igual: más vale la
+       página sin la figura que una espera sin final.
+
+     El caso file:// se detecta al instante y no espera nada, porque no hay
+     nada que esperar: abrir el index con doble clic sirve el archivo con
+     origen nulo y el navegador se niega a cargar módulos ES por CORS. No es un
+     fallo del sitio y no se arregla desde el sitio — hace falta servirlo. -->
+<script>
+(function () {
+  var ARCHIVO = location.protocol === 'file:';
+  var rescatado = false;
+
+  function rescate(motivo) {
+    if (rescatado) return;
+    rescatado = true;
+
+    var pre = document.getElementById('pre');
+    var aviso = document.getElementById('pre-aviso');
+
+    /* Sin JS de la aplicación no hay router, así que las secciones que se
+       revelan son las que se sostienen solas: la portada y el contacto. El
+       pie de página ya está siempre visible con WhatsApp y los legales. */
+    var vistas = ['v-hub', 'v-contacto'];
+    for (var i = 0; i < vistas.length; i++) {
+      var v = document.getElementById(vistas[i]);
+      if (v) v.className += ' on';
+    }
+    /* El titular del hub se revela con la impresión, que aquí no ocurre. */
+    var lineas = document.querySelectorAll('#v-hub .ln, #v-hub [data-at]');
+    for (var j = 0; j < lineas.length; j++) lineas[j].className += ' built';
+
+    if (motivo === 'archivo' && aviso) {
+      aviso.innerHTML =
+        '<strong>Esta página necesita un servidor.</strong>' +
+        '<span>Abrirla con doble clic la sirve como archivo local, y el ' +
+        'navegador bloquea por seguridad los módulos de JavaScript que la ' +
+        'construyen. No es un fallo del sitio: publicada en valquiriainc.com ' +
+        'funciona.</span>' +
+        '<span>Para verla en tu equipo, en la Terminal:</span>' +
+        '<code>python3 -m http.server 5173</code>' +
+        '<span>desde esta carpeta, y luego abre ' +
+        '<b>http://localhost:5173</b></span>';
+      aviso.hidden = false;
+      if (pre) pre.className += ' fallo';
+      return;             // el preloader se queda, pero ahora explica por qué
+    }
+
+    if (pre) pre.className += ' gone';
+  }
+
+  if (ARCHIVO) {
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', function () { rescate('archivo'); });
+    } else rescate('archivo');
+    return;
+  }
+
+  var relojCarga = setTimeout(function () { rescate('carga'); }, 9000);
+  setTimeout(function () {
+    var pre = document.getElementById('pre');
+    if (pre && pre.className.indexOf('gone') < 0) rescate('lento');
+  }, 30000);
+
+  /* app.js llama a esto en cuanto se evalúa: prueba de que los módulos
+     llegaron. Lo que tarde a partir de ahí es trabajo, no un fallo. */
+  window.__vqArranco = function () { clearTimeout(relojCarga); };
+})();
+</script>
+
+<canvas id="escena" aria-hidden="true"></canvas>
+
+<!-- ══ NAV ══ -->
+<nav id="nav">
+  <a href="#/" class="brand" aria-label="Valquiria Inc., inicio">
+    <img class="brand-mark" src="assets/isotipo_gold.svg" alt="" aria-hidden="true">
+    <span class="brand-txt">Valquiria</span>
+  </a>
+  <div class="nav-right">
+    <ul class="nav-links">
+      <li><a href="#/" data-ruta="/">Inicio</a></li>
+      <li><a href="#/catalogo" data-ruta="/catalogo">Catálogo</a></li>
+      <li><a href="#/ia" data-ruta="/ia">Valquiria IA</a></li>
+      <li><a href="#/filosofia" data-ruta="/filosofia">Filosofía</a></li>
+      <li><a href="#/contacto" data-ruta="/contacto">Contacto</a></li>
+    </ul>
+    <button class="nav-cart" id="cart-btn" aria-label="Abrir carrito">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 7h12l-1.2 11.2a2 2 0 0 1-2 1.8H9.2a2 2 0 0 1-2-1.8L6 7Z"/><path d="M9 7V5.5a3 3 0 0 1 6 0V7"/></svg>
+      <span id="cart-n">0</span>
+    </button>
+    <button id="burger" aria-label="Abrir menú" aria-expanded="false"><i></i><i></i></button>
+  </div>
+</nav>
+
+<!-- ══ MENÚ MÓVIL ══ -->
+<div id="menu">
+  <ul>
+    <li><a href="#/" data-ruta="/">Inicio</a></li>
+    <li><a href="#/catalogo" data-ruta="/catalogo">Catálogo</a></li>
+    <li><a href="#/dental" data-ruta="/dental">Valquiria Dental</a></li>
+    <li><a href="#/ia" data-ruta="/ia">Valquiria IA</a></li>
+    <li><a href="#/3d" data-ruta="/3d">Valquiria 3D</a></li>
+    <li><a href="#/pack" data-ruta="/pack">Valquiria Pack</a></li>
+    <li><a href="#/lux" data-ruta="/lux">Valquiria Lux</a></li>
+    <li><a href="#/filosofia" data-ruta="/filosofia">Filosofía</a></li>
+    <li><a href="#/contacto" data-ruta="/contacto">Contacto</a></li>
+  </ul>
+  <div class="menu-legal">
+    <a href="#/privacidad" data-ruta="/privacidad">Aviso de privacidad</a>
+    <a href="#/terminos" data-ruta="/terminos">Términos de uso</a>
+  </div>
+</div>
+
+<!-- ══ RIEL DE IMPRESIÓN ══ -->
+<div id="riel" aria-hidden="true">
+  <div id="riel-track"><div id="riel-fill"></div><div id="riel-head"></div></div>
+  <div id="riel-meta">
+    <div id="riel-lectura">
+      <div id="riel-z">0.00 mm</div>
+      <div id="riel-capa">Capa 000</div>
+    </div>
+    <div id="riel-sec-wrap"><div id="riel-sec">Impresión</div></div>
+  </div>
+</div>
+
+<main id="app">
+
+  <!-- ═══ HUB ═══ -->
+  <section class="vista" id="v-hub">
+    <div class="hub">
+      <div class="hub-copy">
+        <div class="eyebrow"><span class="mono">Valquiria Inc. · Manufactura aditiva</span></div>
+        <h1>
+          <span class="ln" data-at="0.20"><span>Lo que se</span></span>
+          <span class="ln" data-at="0.48"><span>diseña bien,</span></span>
+          <span class="ln" data-at="0.74"><span><em>se sostiene.</em></span></span>
+        </h1>
+        <p class="sub" data-at="0.88">
+          Somos un holding de manufactura en México. Cada división empieza igual:
+          un archivo, una plataforma, y capas de 100 micras que se apilan hasta
+          que la idea pesa en la mano.
+        </p>
+        <div class="acts" data-at="0.94">
+          <a class="btn" href="#/catalogo"><span>Ver el catálogo</span></a>
+          <button class="btn ia abrir-asesor"><span>Hablar con el Asesor</span></button>
+        </div>
+      </div>
+      <div class="hub-stage"></div>
+
+      <!-- Portales: la rejilla de divisiones -->
+      <nav class="portales" aria-label="Divisiones de Valquiria">
+        <a class="portal" href="#/dental" data-estado="activa" style="--av:1">
+          <span class="portal-n">División 02</span>
+          <h3>Dental</h3>
+          <p>Modelos anatómicos con nervio sintético.</p>
+          <span class="portal-est">Activa</span>
+        </a>
+        <a class="portal es-ia" href="#/ia" data-estado="beta" style="--av:.94">
+          <span class="portal-n">División 05</span>
+          <h3>Valquiria IA</h3>
+          <p>Consultoría y automatización con inteligencia artificial.</p>
+          <span class="portal-est">En beta</span>
+        </a>
+        <a class="portal" href="#/3d" data-estado="obra" style="--av:.62">
+          <span class="portal-n">División 01</span>
+          <h3>3D</h3>
+          <p>Prototipado y producción en serie.</p>
+          <span class="portal-est">En impresión</span>
+        </a>
+        <a class="portal" href="#/pack" data-estado="obra" style="--av:.55">
+          <span class="portal-n">División 03</span>
+          <h3>Pack</h3>
+          <p>Empaque termoformado a la medida.</p>
+          <span class="portal-est">En impresión</span>
+        </a>
+        <a class="portal" href="#/lux" data-estado="obra" style="--av:.68">
+          <span class="portal-n">División 04</span>
+          <h3>Lux</h3>
+          <p>Iluminación donde la capa es el material.</p>
+          <span class="portal-est">En impresión</span>
+        </a>
+      </nav>
     </div>
 
-    <!-- Navigation -->
-    <nav id="navbar">
-        <a href="#" class="nav-logo">Valquiria</a>
-        <ul class="nav-links">
-            <li><a href="#nosotros">Nosotros</a></li>
-            <li><a href="#divisiones">Divisiones</a></li>
-            <li><a href="#catalogo">Catálogo</a></li>
-            <li><a href="#filosofia">Filosofía</a></li>
-            <li><a href="#contacto">Contacto</a></li>
+    <div class="spec">
+      <div><b>Diseñamos, no surtimos</b><p>Cada pieza nace de un archivo propio. Si no existe el modelo, lo hacemos.</p></div>
+      <div><b>Resina de alta resolución</b><p>Detalle que aguanta el uso real, no solo la foto del catálogo.</p></div>
+      <div><b>Producción en México</b><p>Sin intermediarios entre el diseño y lo que te llega.</p></div>
+    </div>
+  </section>
+
+  <!-- ═══ DENTAL ═══ -->
+  <section class="vista" id="v-dental">
+    <div class="div-vista" data-lado="izq">
+      <div class="div-copy">
+        <a class="volver" href="#/">← Todas las divisiones</a>
+        <div class="eyebrow"><span class="mono">División 02 · Valquiria Dental</span></div>
+        <h2>La anatomía se aprende tocándola.</h2>
+        <p class="sub built">
+          Modelos anatómicos dentales con nervio sintético que responde como el
+          de un paciente real. Hechos para estudiantes que necesitan repetir, y
+          para docentes que necesitan que la práctica se parezca a la clínica.
+        </p>
+        <ul class="caps">
+          <li>Nervio sintético con comportamiento cercano al tejido real.</li>
+          <li>Anatomía interna completa: cámara, conductos y ápice.</li>
+          <li>Compatibles con tipodonto Nissin y con fantoma estándar.</li>
+          <li>Precio de mayoreo para universidades y distribuidores.</li>
         </ul>
-        <div class="hamburger" id="hamburger" aria-label="Menú">
-            <span></span><span></span><span></span>
+        <div class="acts built">
+          <a class="btn" href="#/catalogo"><span>Ver los 4 modelos</span></a>
+          <button class="btn ghost abrir-asesor"><span>Pedir por el Asesor</span></button>
         </div>
-    </nav>
+        <div class="estado">
+          <div class="estado-bar full"><i></i></div>
+          <p><b>Impresión completa</b> · <span data-capas></span></p>
+        </div>
+      </div>
+      <div class="div-stage"></div>
+    </div>
+  </section>
 
-    <!-- Mobile Menu -->
-    <div class="mobile-menu" id="mobileMenu">
-        <a href="#nosotros" onclick="closeMobile()">Nosotros</a>
-        <a href="#divisiones" onclick="closeMobile()">Divisiones</a>
-        <a href="#catalogo" onclick="closeMobile()">Catálogo</a>
-        <a href="#filosofia" onclick="closeMobile()">Filosofía</a>
-        <a href="#contacto" onclick="closeMobile()">Contacto</a>
+  <!-- ═══ VALQUIRIA IA ═══ -->
+  <section class="vista es-ia" id="v-ia">
+    <div class="div-vista" data-lado="der">
+      <div class="div-copy">
+        <a class="volver" href="#/">← Todas las divisiones</a>
+        <div class="eyebrow"><span class="mono">División 05 · Valquiria IA</span></div>
+        <h2>Inteligencia artificial que entra a operación.</h2>
+        <p class="sub built">
+          Diseñamos y ponemos a trabajar sistemas de IA dentro de procesos que
+          ya existen. No vendemos demostraciones: entregamos algo que opera
+          todos los días, que se puede medir y que alguien de tu equipo puede
+          usar sin saber programar.
+        </p>
+        <div class="acts built">
+          <button class="btn ia abrir-asesor"><span>Probar el Asesor</span></button>
+          <a class="btn ghost" href="#/contacto"><span>Hablemos de tu proceso</span></a>
+        </div>
+        <div class="estado">
+          <div class="estado-bar"><i></i></div>
+          <p><b>En beta</b> · <span data-capas></span></p>
+        </div>
+      </div>
+      <div class="div-stage"></div>
     </div>
 
-    <!-- Hero Mejorado -->
-    <section class="hero">
-        <div class="hero-bg"></div>
-        <div class="hero-grain"></div>
-        <div class="hero-lines"></div>
-    
-        <div class="hero-content">
-            <img src="isotipo_gold.svg" alt="Valquiria Inc." class="hero-logo">
-        
-            <h1 class="hero-title">
-                Valquiria<br>
-                <span>Inc.</span>
-            </h1>
-        
-            <div class="hero-divider"></div>
-        
-            <p class="hero-tagline">Innovación · Precisión · Diseño</p>
-        
-            <div class="hero-cta">
-                <a href="#catalogo" class="btn-primary">Ver Catálogo</a>
-                <a href="#" class="btn-secondary" id="heroAsesorBtn">Hablar con el Asesor</a>
-            </div>
+    <!-- El detalle va en su propio bloque, con fondo sólido: si se queda
+         dentro del panel de la figura, el texto largo termina pasando por
+         encima de la pieza al hacer scroll. -->
+    <div class="div-extra">
+      <ul class="caps">
+        <li><strong>Atención y agenda automatizadas.</strong> Agentes que responden por WhatsApp o desde tu sitio, resuelven dudas, agendan y dan seguimiento — dentro de las reglas de tu negocio, no improvisando.</li>
+        <li><strong>Procesos administrativos.</strong> Lo repetitivo: clasificar correspondencia, extraer datos de documentos, preparar reportes, avisar de pendientes y escalar lo que necesita a una persona.</li>
+        <li><strong>Visión por computadora.</strong> Inspección visual y control de calidad sobre piezas y líneas de producción.</li>
+        <li><strong>Análisis de datos de operación.</strong> Detección de anomalías y comportamientos fuera de patrón en la información que tu operación ya genera.</li>
+        <li><strong>Consultoría.</strong> Dónde conviene aplicar IA en tu empresa y —sobre todo— dónde no. A veces la respuesta correcta es una regla bien escrita, no un modelo.</li>
+      </ul>
+      <div class="prosa" style="margin-top:34px">
+        <p>
+          Trabajamos al revés de lo habitual: primero medimos el proceso, luego
+          decidimos qué automatizar. Nunca comprometemos una precisión que no
+          hayamos verificado en tus propias condiciones de operación, y todo lo
+          que entregamos deja registro de lo que hizo y por qué.
+        </p>
+        <div class="aviso">
+          <p>
+            <strong>El asesor de este sitio es nuestra propia muestra.</strong>
+            Entiende lo que le pides aunque lo escribas rápido, arma el pedido,
+            lo coloca en tu carrito, calcula el total —el servidor hace la
+            aritmética, no el modelo— y cierra con link de pago o por WhatsApp.
+            Lo mismo que construimos para otros.
+          </p>
         </div>
-
-        <div class="hero-scroll">
-            <span>Explorar</span>
-            <div class="scroll-line"></div>
-        </div>
-    </section>
-
-    <div class="sep"></div>
-
-    <!-- About -->
-    <section id="nosotros">
-        <div class="about">
-            <div class="about-left reveal">
-                <p class="section-label">Quiénes Somos</p>
-                <h2 class="section-title">Creamos con propósito,<br>fabricamos con excelencia</h2>
-                <p class="section-text">
-                    Valquiria Inc. es un holding de innovación y manufactura con sede en Latinoamérica.
-                    Reunimos bajo un mismo techo capacidades de impresión 3D, diseño de producto,
-                    empaques termoformados, material pedagógico y más — siempre con un estándar de
-                    calidad que desafía lo convencional.
-                </p>
-                <div class="about-stats">
-                    <div class="stat">
-                        <div class="stat-number">5+</div>
-                        <div class="stat-label">Divisiones</div>
-                    </div>
-                    <div class="stat">
-                        <div class="stat-number">∞</div>
-                        <div class="stat-label">Posibilidades</div>
-                    </div>
-                    <div class="stat">
-                        <div class="stat-number">1</div>
-                        <div class="stat-label">Estándar</div>
-                    </div>
-                </div>
-            </div>
-            <div class="about-right reveal">
-                <div class="about-visual">
-                    <div class="about-visual-inner">
-                        <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <path d="M50 5 L95 27.5 L95 72.5 L50 95 L5 72.5 L5 27.5 Z" stroke="currentColor"
-                                stroke-width="0.5" fill="none" color="#C9A84C" />
-                            <path d="M50 20 L80 35 L80 65 L50 80 L20 65 L20 35 Z" stroke="currentColor"
-                                stroke-width="0.3" fill="none" color="#C9A84C" />
-                            <path d="M50 35 L65 42.5 L65 57.5 L50 65 L35 57.5 L35 42.5 Z" stroke="currentColor"
-                                stroke-width="0.3" fill="none" color="#C9A84C" />
-                        </svg>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <div class="sep"></div>
-
-    <!-- Divisions -->
-    <section id="divisiones">
-        <div class="divisions-header reveal">
-            <p class="section-label">Nuestras Divisiones</p>
-            <h2 class="section-title">Un ecosistema de innovación</h2>
-            <p class="section-text">
-                Cada división opera con identidad propia pero comparte el ADN de Valquiria:
-                rigor técnico, diseño impecable y pasión por lo extraordinario.
-            </p>
-        </div>
-        <div class="divisions-grid">
-            <div class="division-card reveal">
-                <svg class="division-icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5"
-                    stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M24 4L44 16V32L24 44L4 32V16L24 4Z" />
-                    <path d="M24 4V44" />
-                    <path d="M4 16L24 28L44 16" />
-                </svg>
-                <h3 class="division-name">Valquiria 3D</h3>
-                <p class="division-sub">Manufactura Aditiva</p>
-                <p class="division-desc">
-                    Servicio profesional de impresión 3D. Prototipado rápido, piezas funcionales
-                    y producción en serie con tecnología FDM y resina de alta resolución.
-                </p>
-                <span class="division-tag">Próximamente</span>
-            </div>
-            <div class="division-card reveal">
-                <svg class="division-icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5"
-                    stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M14 8C10 8 6 12 6 18C6 30 16 38 20 42C22 44 24 40 24 36" />
-                    <path d="M34 8C38 8 42 12 42 18C42 30 32 38 28 42C26 44 24 40 24 36" />
-                </svg>
-                <h3 class="division-name">Valquiria Dental</h3>
-                <p class="division-sub">Material Pedagógico</p>
-                <p class="division-desc">
-                    Modelos anatómicos dentales, guías de estudio y material educativo de alta
-                    fidelidad para universidades y profesionales de la odontología.
-                </p>
-                <span class="division-tag">Próximamente</span>
-            </div>
-            <div class="division-card reveal">
-                <svg class="division-icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5"
-                    stroke-linecap="round" stroke-linejoin="round">
-                    <rect x="6" y="14" width="36" height="28" rx="2" />
-                    <path d="M6 22H42" />
-                    <path d="M18 14V6H30V14" />
-                </svg>
-                <h3 class="division-name">Valquiria Pack</h3>
-                <p class="division-sub">Empaques Termoformados</p>
-                <p class="division-desc">
-                    Diseño y producción de empaques termoformados personalizados para productos
-                    que necesitan presentación premium y protección superior.
-                </p>
-                <span class="division-tag">Próximamente</span>
-            </div>
-            <div class="division-card reveal">
-                <svg class="division-icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5"
-                    stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M24 4V8" />
-                    <path d="M24 40V44" />
-                    <path d="M8 24H4" />
-                    <path d="M44 24H40" />
-                    <circle cx="24" cy="24" r="10" />
-                    <path d="M10 10L13 13" />
-                    <path d="M35 35L38 38" />
-                    <path d="M38 10L35 13" />
-                    <path d="M13 35L10 38" />
-                </svg>
-                <h3 class="division-name">Valquiria Lux</h3>
-                <p class="division-sub">Iluminación & Diseño</p>
-                <p class="division-desc">
-                    Lámparas de diseño y piezas de iluminación que fusionan manufactura aditiva
-                    con estética contemporánea. Cada pieza es una obra funcional.
-                </p>
-                <span class="division-tag">Próximamente</span>
-            </div>
-        </div>
-    </section>
-
-        <!-- ========================================
-         FASE 1: CATÁLOGO VISIBLE
-    ======================================== -->
-    <section id="catalogo">
-        <div class="catalogo-header reveal">
-            <p class="section-label">Nuestros Productos</p>
-            <h2 class="section-title">Material pedagógico de alta fidelidad</h2>
-            <p class="section-text" style="margin: 0 auto; max-width: 620px;">
-                Diseñados para estudiantes y docentes que buscan la máxima 
-                realismo en sus prácticas de odontología.
-            </p>
-        </div>
-
-        <!-- Filtros -->
-        <div class="catalogo-filtros">
-            <button class="filtro-btn active" data-filter="all">Todos</button>
-            <button class="filtro-btn" data-filter="endodoncia">Endodoncia</button>
-            <button class="filtro-btn" data-filter="pediatria">Odontopediatría</button>
-            <button class="filtro-btn" data-filter="kit">Kits Completos</button>
-        </div>
-
-        <!-- Grid de productos -->
-        <div class="catalogo-grid" id="catalogoGrid">
-            <!-- Las tarjetas se generan con JavaScript -->
-        </div>
-
-        <div class="catalogo-nota reveal">
-            <p>¿Necesitas algo específico o mayoreo? 
-               <a href="#" onclick="document.getElementById('asesorBtn').click(); return false;">Habla con nuestro Asesor Valquiria</a>
-            </p>
-        </div>
-    </section>
-    
-    <div class="sep"></div>
-
-    <!-- Philosophy -->
-    <section id="filosofia">
-        <div class="philosophy reveal">
-            <p class="section-label">Nuestra Filosofía</p>
-            <p class="philosophy-quote">
-                No fabricamos productos. Diseñamos soluciones que inspiran,
-                con la precisión que exige la excelencia.
-            </p>
-            <p class="philosophy-author">— Valquiria Inc.</p>
-        </div>
-    </section>
-
-    <div class="sep"></div>
-
-    <!-- Contact -->
-    <section id="contacto">
-        <div class="reveal">
-            <p class="section-label">Contacto</p>
-            <h2 class="section-title">Hablemos de tu próximo proyecto</h2>
-            <p class="section-text" style="margin: 0 auto;">
-                ¿Tienes una idea que necesita cobrar forma? Nos encantaría escucharte.
-            </p>
-            <div class="contact-links">
-                <a href="mailto:ventas@valquiriadental.com" class="contact-link">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                        <rect x="2" y="4" width="20" height="16" rx="2" />
-                        <path d="M22 4L12 13L2 4" />
-                    </svg>
-                    ventas@valquiriadental.com
-                </a>
-                <a href="https://wa.me/525554675821" target="_blank" class="contact-link">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
-                    </svg>
-                    WhatsApp
-                </a>
-            </div>
-            <a href="mailto:ventas@valquiriadental.com" class="contact-cta">Iniciar Conversación</a>
-        </div>
-    </section>
-
-    <!-- Asesor Valquiria (Concierge Digital V3) -->
-    <div class="asesor-wrapper" id="asesorWrapper">
-        <div class="asesor-panel" id="asesorPanel">
-            <div class="asesor-header">
-                <div class="asesor-avatar">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
-                        stroke-linejoin="round">
-                        <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
-                    </svg>
-                </div>
-                <div class="asesor-header-info">
-                    <span class="asesor-header-title">Asesor Valquiria</span>
-                    <span class="asesor-header-status">Consultor Premium</span>
-                </div>
-                <div class="asesor-header-actions">
-                    <button class="asesor-restart" id="asesorRestart" aria-label="Reiniciar conversación"
-                        title="Reiniciar conversación">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
-                            <path d="M3 3v5h5"></path>
-                        </svg>
-                    </button>
-                </div>
-            </div>
-            <div class="asesor-body" id="asesorBody"></div>
-            <div class="asesor-footer">
-                <div class="asesor-input-wrapper">
-                    <input type="text" class="asesor-input" id="asesorInput" placeholder="Describe lo que necesitas..."
-                        autocomplete="off">
-                    <button class="asesor-send" id="asesorSend" aria-label="Enviar mensaje">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                            stroke-linecap="round" stroke-linejoin="round">
-                            <line x1="22" y1="2" x2="11" y2="13"></line>
-                            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-                        </svg>
-                    </button>
-                </div>
-            </div>
-        </div>
-        <button class="asesor-btn" id="asesorBtn" aria-label="Abrir Asesor">
-            <svg class="asesor-btn-main-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2">
-                <path d="M12 2L14.5 9.5L22 12L14.5 14.5L12 22L9.5 14.5L2 12L9.5 9.5L12 2Z" />
-            </svg>
-            <svg class="asesor-btn-close-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
-                stroke-linecap="round" stroke-linejoin="round">
-                <line x1="18" y1="6" x2="6" y2="18"></line>
-                <line x1="6" y1="6" x2="18" y2="18"></line>
-            </svg>
-        </button>
+      </div>
     </div>
+  </section>
+
+  <!-- ═══ 3D ═══ -->
+  <section class="vista" id="v-3d">
+    <div class="div-vista" data-lado="izq">
+      <div class="div-copy">
+        <a class="volver" href="#/">← Todas las divisiones</a>
+        <div class="eyebrow"><span class="mono">División 01 · Valquiria 3D</span></div>
+        <h2>Prototipos que existen mañana.</h2>
+        <p class="sub built">
+          Impresión 3D profesional: prototipado rápido, piezas funcionales y
+          producción en serie con FDM y resina de alta resolución. La división
+          está en construcción — la pieza que ves también.
+        </p>
+        <ul class="caps">
+          <li>FDM para piezas funcionales y resina para detalle fino.</li>
+          <li>Del archivo a la pieza en obra, con tolerancias medidas.</li>
+          <li>Series cortas sin costo de molde.</li>
+        </ul>
+        <div class="acts built">
+          <button class="btn ghost abrir-asesor"><span>Avísame cuando abra</span></button>
+        </div>
+        <div class="estado">
+          <div class="estado-bar"><i></i></div>
+          <p><b>En impresión</b> · <span data-capas></span></p>
+        </div>
+      </div>
+      <div class="div-stage"></div>
+    </div>
+  </section>
+
+  <!-- ═══ PACK ═══ -->
+  <section class="vista" id="v-pack">
+    <div class="div-vista" data-lado="der">
+      <div class="div-copy">
+        <a class="volver" href="#/">← Todas las divisiones</a>
+        <div class="eyebrow"><span class="mono">División 03 · Valquiria Pack</span></div>
+        <h2>El empaque es la primera pieza que toca el cliente.</h2>
+        <p class="sub built">
+          Empaques termoformados a la medida, para productos que necesitan
+          presentación premium y protección real. Molde propio, cavidad propia,
+          ninguna caja genérica.
+        </p>
+        <ul class="caps">
+          <li>Cavidad diseñada sobre el modelo real del producto.</li>
+          <li>Molde propio: no adaptamos un blíster de catálogo.</li>
+          <li>Prototipo de empaque antes de comprometer el tiraje.</li>
+        </ul>
+        <div class="acts built">
+          <button class="btn ghost abrir-asesor"><span>Avísame cuando abra</span></button>
+        </div>
+        <div class="estado">
+          <div class="estado-bar"><i></i></div>
+          <p><b>En impresión</b> · <span data-capas></span></p>
+        </div>
+      </div>
+      <div class="div-stage"></div>
+    </div>
+  </section>
+
+  <!-- ═══ LUX ═══ -->
+  <section class="vista" id="v-lux">
+    <div class="div-vista" data-lado="izq">
+      <div class="div-copy">
+        <a class="volver" href="#/">← Todas las divisiones</a>
+        <div class="eyebrow"><span class="mono">División 04 · Valquiria Lux</span></div>
+        <h2>Luz impresa, capa sobre capa.</h2>
+        <p class="sub built">
+          Lámparas y piezas de iluminación donde la capa deja de ser un defecto
+          y se vuelve el material. Cada anillo que ves en la pantalla es una
+          capa real de impresión.
+        </p>
+        <ul class="caps">
+          <li>La capa como textura: el defecto convertido en acabado.</li>
+          <li>Piezas únicas o series cortas para interiorismo.</li>
+          <li>Materiales traslúcidos calibrados para luz cálida.</li>
+        </ul>
+        <div class="acts built">
+          <button class="btn ghost abrir-asesor"><span>Avísame cuando abra</span></button>
+        </div>
+        <div class="estado">
+          <div class="estado-bar"><i></i></div>
+          <p><b>En impresión</b> · <span data-capas></span></p>
+        </div>
+      </div>
+      <div class="div-stage"></div>
+    </div>
+  </section>
+
+  <!-- ═══ CATÁLOGO ═══ -->
+  <section class="vista" id="v-catalogo">
+    <div class="seccion">
+      <div class="sec-head">
+        <span class="mono">Catálogo · Valquiria Dental</span>
+        <h2>Las piezas también se imprimen al llegar.</h2>
+        <p>
+          El mismo cabezal que construyó la valquiria construye cada tarjeta. No
+          es adorno: es la manera en que este sitio dice lo que hace. Precios en
+          pesos mexicanos, envío gratis a partir de $999.
+        </p>
+      </div>
+      <div class="grid" id="grid"></div>
+      <div class="nota">
+        <p>¿Mayoreo, distribución o un modelo a medida?</p>
+        <button class="link-oro abrir-asesor">Habla con el Asesor Valquiria →</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ FILOSOFÍA ═══ -->
+  <section class="vista" id="v-filosofia">
+    <div class="seccion">
+      <div class="sec-head">
+        <span class="mono">Filosofía</span>
+        <h2>Innovación · Precisión · Diseño</h2>
+      </div>
+      <div class="prosa">
+        <h3>No fabricamos productos: diseñamos soluciones</h3>
+        <p>
+          Valquiria nació de una observación simple. En México se compra mucho
+          material importado que casi resuelve el problema: el diente de práctica
+          que no tiene nervio, el empaque que casi ajusta, la pieza que llega en
+          seis semanas. Casi resolver es no resolver.
+        </p>
+        <p>
+          Por eso cada división empieza en el mismo lugar: un archivo propio. Si
+          el modelo no existe, lo modelamos. Si el molde no existe, lo hacemos.
+          Lo que llega al cliente salió de un diseño que podemos defender línea
+          por línea, no de un catálogo ajeno con nuestro logo encima.
+        </p>
+
+        <h3>La capa como firma</h3>
+        <p>
+          La manufactura aditiva construye sumando: capa sobre capa, cien micras
+          a la vez. Es lento comparado con inyectar plástico, y es honesto de una
+          forma que la inyección no puede ser — cada pieza guarda el registro de
+          cómo se hizo.
+        </p>
+        <p>
+          Este sitio funciona igual. Las figuras que ves no son imágenes: son
+          funciones matemáticas que se muestrean y se imprimen frente a ti, capa
+          por capa, cada vez que entras a una sección. Lo que la empresa hace con
+          resina, la página lo hace con puntos.
+        </p>
+
+        <h3>Una división en obra se dice en obra</h3>
+        <p>
+          Tres de nuestras cinco divisiones todavía no abren. En vez de esconderlo
+          detrás de un «próximamente», la pieza de cada división se imprime hasta
+          donde llegó su desarrollo real y ahí se detiene. Dental llega al cien
+          por ciento porque está vendiendo. Las otras no, y se nota.
+        </p>
+
+        <h3>Lo que no hacemos</h3>
+        <p>
+          No vendemos material clínico para uso en pacientes. Nuestros modelos
+          dentales son <strong>material didáctico y de práctica</strong>: sirven
+          para aprender un procedimiento antes de hacerlo con una persona
+          enfrente, y esa distinción no es letra chica, es el punto.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ CONTACTO ═══ -->
+  <section class="vista" id="v-contacto">
+    <div class="seccion">
+      <div class="sec-head">
+        <span class="mono">Contacto</span>
+        <h2>Hablemos del pedido, no del formulario.</h2>
+        <p>
+          Para comprar uno o pocos productos, el Asesor te cotiza y cierra en el
+          momento. Para mayoreo, factura o un modelo a medida, escríbenos
+          directo: contesta una persona.
+        </p>
+      </div>
+      <div class="contacto-grid">
+        <div class="contacto-card">
+          <b>WhatsApp</b>
+          <a href="https://wa.me/525554675821" target="_blank" rel="noopener">+52 55 5467 5821</a>
+          <small>Pedidos, mayoreo y seguimiento. Lunes a viernes, 9:00 a 18:00 h (CDMX).</small>
+        </div>
+        <div class="contacto-card">
+          <b>Correo</b>
+          <a href="mailto:ventas@valquiriadental.com">ventas@valquiriadental.com</a>
+          <small>Cotizaciones formales, facturación y convenios con universidades.</small>
+        </div>
+        <div class="contacto-card">
+          <b>Asesor Valquiria</b>
+          <p><button class="link-oro abrir-asesor">Abrir el asesor →</button></p>
+          <small>Disponible siempre. Arma tu pedido, lo cotiza y te da el link de pago.</small>
+        </div>
+        <div class="contacto-card">
+          <b>Proyectos de IA</b>
+          <a href="mailto:ventas@valquiriadental.com?subject=Proyecto%20de%20IA">Cuéntanos tu proceso</a>
+          <small>Automatización, agentes de atención, visión por computadora y consultoría. Empezamos revisando lo que ya haces antes de proponer nada.</small>
+        </div>
+        <div class="contacto-card">
+          <b>Distribución</b>
+          <p>Programa de distribuidores</p>
+          <small>Margen para el sector dental y condiciones por volumen. Pregunta por él en WhatsApp.</small>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ GRACIAS (retorno de Mercado Pago) ═══ -->
+  <section class="vista" id="v-gracias">
+    <div class="seccion">
+      <div class="sec-head">
+        <span class="mono">Pedido recibido</span>
+        <h2>Gracias. Tu pedido ya está con nosotros.</h2>
+        <p>
+          En cuanto Mercado Pago confirme el pago te escribimos por correo con
+          el número de guía. Si algo no cuadra, escríbenos y lo resolvemos con
+          una persona, no con un formulario.
+        </p>
+      </div>
+      <div class="prosa">
+        <h3>Lo que sigue</h3>
+        <ul>
+          <li>Recibes el comprobante de Mercado Pago en tu correo.</li>
+          <li>Preparamos y empacamos tu pedido en las siguientes 24 a 48 horas hábiles.</li>
+          <li>Te mandamos el número de guía en cuanto sale.</li>
+        </ul>
+        <p style="margin-top:22px">
+          ¿Necesitas factura o quieres cambiar algo del pedido? Escríbenos por
+          <a href="https://wa.me/525554675821" target="_blank" rel="noopener">WhatsApp</a>
+          o a <a href="mailto:ventas@valquiriadental.com">ventas@valquiriadental.com</a>
+          con tu folio a la mano.
+        </p>
+      </div>
+      <div class="nota">
+        <p>Mientras tanto, el resto del catálogo sigue ahí.</p>
+        <a class="link-oro" href="#/catalogo">Volver al catálogo →</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ AVISO DE PRIVACIDAD ═══ -->
+  <section class="vista" id="v-privacidad">
+    <div class="seccion">
+      <div class="sec-head">
+        <span class="mono">Legal</span>
+        <h2>Aviso de privacidad</h2>
+      </div>
+      <div class="prosa">
+        <p class="fecha">Última actualización: 9 de agosto de 2026</p>
+
+        <h3>1. Responsable del tratamiento</h3>
+        <p>
+          <strong>Valquiria Inc.</strong> (en lo sucesivo «Valquiria»), con
+          domicilio para oír y recibir notificaciones en la Ciudad de México,
+          México, y canal oficial de contacto en
+          <a href="mailto:ventas@valquiriadental.com">ventas@valquiriadental.com</a>,
+          es responsable del tratamiento de tus datos personales conforme a la
+          Ley Federal de Protección de Datos Personales en Posesión de los
+          Particulares (LFPDPPP), su Reglamento y los Lineamientos del Aviso de
+          Privacidad. Los datos de identificación fiscal completos constan en
+          todo comprobante fiscal que emitimos y están disponibles a solicitud
+          en el correo de contacto.
+        </p>
+
+        <h3>2. Datos personales que recabamos</h3>
+        <p>Según cómo interactúes con el sitio, podemos recabar:</p>
+        <ul>
+          <li><strong>De identificación y contacto:</strong> nombre, teléfono, correo electrónico.</li>
+          <li><strong>De entrega:</strong> domicilio de envío, referencias, código postal.</li>
+          <li><strong>De facturación:</strong> RFC, razón social, régimen fiscal y uso de CFDI, únicamente si solicitas factura.</li>
+          <li><strong>De la conversación con el Asesor:</strong> el texto que escribes en el chat y los productos que consultas o agregas al carrito.</li>
+          <li><strong>Técnicos:</strong> dirección IP, tipo de navegador, dispositivo y páginas visitadas.</li>
+        </ul>
+        <p>
+          <strong>No recabamos datos personales sensibles</strong> ni datos
+          financieros directamente. Los pagos se procesan íntegramente en la
+          plataforma de Mercado Pago: <strong>Valquiria nunca ve, recibe ni
+          almacena los números de tu tarjeta</strong>.
+        </p>
+
+        <h3>3. Finalidades del tratamiento</h3>
+        <p><strong>Finalidades primarias</strong> (necesarias para la relación contigo):</p>
+        <ul>
+          <li>Atender tus consultas y cotizar los productos que solicitas.</li>
+          <li>Procesar, facturar, enviar y dar seguimiento a tu pedido.</li>
+          <li>Atender aclaraciones, garantías y devoluciones.</li>
+          <li>Cumplir obligaciones fiscales y legales aplicables.</li>
+        </ul>
+        <p><strong>Finalidades secundarias</strong> (no necesarias; puedes negarte sin que afecte tu pedido):</p>
+        <ul>
+          <li>Enviarte promociones, novedades del catálogo y contenido educativo.</li>
+          <li>Elaborar estadísticas internas y mejorar el sitio y el Asesor.</li>
+        </ul>
+        <p>
+          Para negarte a las finalidades secundarias basta con escribir a
+          <a href="mailto:ventas@valquiriadental.com">ventas@valquiriadental.com</a>
+          con el asunto «Limitación de uso». Tu negativa no es motivo para negarte
+          los servicios que contrataste.
+        </p>
+
+        <h3>4. El Asesor Valquiria y el uso de inteligencia artificial</h3>
+        <p>
+          El Asesor de este sitio funciona con un modelo de lenguaje operado por
+          <strong>Google LLC</strong> (Gemini API). Esto significa que
+          <strong>el texto que escribas en el chat se transmite a servidores de
+          Google, que pueden ubicarse fuera de México</strong>, para generar la
+          respuesta. Esa transferencia es necesaria para prestarte el servicio y
+          está prevista en el artículo 37 de la LFPDPPP.
+        </p>
+        <p>
+          Por esa razón te pedimos <strong>no escribir en el chat datos
+          sensibles, contraseñas, números de tarjeta ni información clínica de
+          pacientes identificables</strong>. Si necesitas compartir algo así,
+          hazlo por los canales directos de contacto.
+        </p>
+        <p>
+          Las respuestas del Asesor se generan automáticamente y pueden contener
+          errores. Los precios, totales y disponibilidad que muestra provienen de
+          nuestro catálogo y se recalculan en nuestro servidor, pero
+          <strong>ninguna respuesta del Asesor constituye una oferta vinculante
+          hasta que se confirma el pedido</strong>.
+        </p>
+
+        <h3>5. Transferencias de datos</h3>
+        <p>Compartimos datos únicamente con quienes hacen posible el servicio:</p>
+        <ul>
+          <li><strong>Google LLC</strong> — procesamiento de las conversaciones del Asesor (Gemini API) y entrega de las tipografías del sitio (Google Fonts), que al cargarse transmiten tu dirección IP a servidores de Google.</li>
+          <li><strong>Cloudinary Ltd.</strong> — entrega de las imágenes del catálogo; recibe tu dirección IP al cargarlas.</li>
+          <li><strong>Mercado Pago (DineroMail México / Mercado Libre)</strong> — procesamiento de pagos.</li>
+          <li><strong>Meta Platforms</strong> — únicamente si eliges continuar por WhatsApp.</li>
+          <li><strong>Paqueterías</strong> — nombre, domicilio y teléfono, para entregarte el pedido.</li>
+          <li><strong>Autoridades competentes</strong> — cuando exista requerimiento fundado y motivado.</li>
+        </ul>
+        <p>
+          No vendemos, alquilamos ni comercializamos tus datos personales con
+          terceros para fines publicitarios.
+        </p>
+
+        <h3>6. Derechos ARCO</h3>
+        <p>
+          Tienes derecho a <strong>Acceder</strong> a tus datos, <strong>Rectificarlos</strong>
+          si son inexactos, <strong>Cancelarlos</strong> cuando consideres que no
+          son necesarios y <strong>Oponerte</strong> a su tratamiento, así como a
+          revocar tu consentimiento.
+        </p>
+        <p>
+          Envía tu solicitud a
+          <a href="mailto:ventas@valquiriadental.com">ventas@valquiriadental.com</a>
+          incluyendo: tu nombre y un medio para contactarte, los documentos que
+          acrediten tu identidad (o la representación legal), la descripción clara
+          de los datos y del derecho que ejerces. Responderemos en un plazo máximo
+          de <strong>20 días hábiles</strong> y, de resultar procedente, la haremos
+          efectiva dentro de los <strong>15 días hábiles</strong> siguientes.
+        </p>
+
+        <h3>7. Cookies y tecnologías de rastreo</h3>
+        <p>
+          Usamos almacenamiento local del navegador para conservar tu carrito
+          entre visitas. Es funcional y no se comparte con terceros. Puedes
+          borrarlo desde la configuración de tu navegador; perderás el contenido
+          del carrito y nada más.
+        </p>
+
+        <h3>8. Conservación de los datos</h3>
+        <p>
+          Conservamos los datos de pedidos durante el plazo que exige la
+          legislación fiscal y mercantil (cinco años). Las conversaciones con el
+          Asesor se conservan solo mientras dura tu sesión en el navegador.
+        </p>
+
+        <h3>9. Cambios a este aviso</h3>
+        <p>
+          Podemos actualizar este aviso por cambios legales o en nuestros
+          servicios. La versión vigente siempre estará publicada en esta página
+          con su fecha de actualización. Si el cambio es sustancial, lo
+          notificaremos por el correo que nos hayas proporcionado.
+        </p>
+
+        <h3>10. Autoridad</h3>
+        <p>
+          Si consideras que tu derecho a la protección de datos ha sido
+          vulnerado, puedes acudir ante la autoridad garante en materia de
+          protección de datos personales que resulte competente conforme a la
+          legislación vigente.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ TÉRMINOS ═══ -->
+  <section class="vista" id="v-terminos">
+    <div class="seccion">
+      <div class="sec-head">
+        <span class="mono">Legal</span>
+        <h2>Términos y condiciones de uso</h2>
+      </div>
+      <div class="prosa">
+        <p class="fecha">Última actualización: 9 de agosto de 2026</p>
+
+        <h3>1. Aceptación</h3>
+        <p>
+          Al navegar valquiriainc.com, usar el Asesor o realizar un pedido
+          aceptas estos términos. Si no estás de acuerdo, no uses el sitio.
+        </p>
+
+        <h3>2. Naturaleza de los productos — importante</h3>
+        <p>
+          Los productos de <strong>Valquiria Dental son material didáctico y de
+          práctica</strong>, diseñados para el entrenamiento de estudiantes y
+          profesionales de la odontología.
+        </p>
+        <ul>
+          <li><strong>No son dispositivos médicos</strong> ni insumos para uso clínico en pacientes.</li>
+          <li><strong>No deben implantarse, colocarse ni utilizarse en seres humanos ni en animales</strong> bajo ninguna circunstancia.</li>
+          <li>No sustituyen la formación supervisada ni el criterio de un profesional titulado.</li>
+        </ul>
+        <p>
+          El uso distinto al didáctico es responsabilidad exclusiva de quien lo
+          realiza y libera a Valquiria de cualquier responsabilidad derivada.
+        </p>
+
+        <h3>3. Precios, disponibilidad y errores</h3>
+        <p>
+          Los precios están en <strong>pesos mexicanos (MXN)</strong> e incluyen
+          IVA salvo indicación contraria. Pueden cambiar sin previo aviso; el
+          precio aplicable es el vigente al momento de confirmar el pedido.
+        </p>
+        <p>
+          El inventario mostrado es orientativo. Si un producto se agota entre tu
+          pedido y su confirmación, te avisaremos y podrás elegir entre esperar
+          la reposición o recibir el reembolso íntegro.
+        </p>
+        <p>
+          Si por un error evidente de captura o de sistema se publica un precio
+          notoriamente incorrecto, Valquiria puede cancelar el pedido y
+          reembolsar lo pagado, informándotelo de inmediato.
+        </p>
+
+        <h3>4. El Asesor Valquiria</h3>
+        <p>
+          El Asesor es una herramienta automatizada basada en inteligencia
+          artificial. Puede sugerir productos, calcular cotizaciones y generar
+          links de pago.
+        </p>
+        <ul>
+          <li>Sus respuestas <strong>pueden contener errores</strong> y no constituyen asesoría profesional, clínica, fiscal ni legal.</li>
+          <li>Todos los importes se calculan en nuestro servidor a partir del catálogo vigente; el modelo de lenguaje no realiza operaciones aritméticas.</li>
+          <li>Una cotización <strong>no es una oferta vinculante</strong> hasta que confirmas el pedido y se acredita el pago.</li>
+          <li>Nos reservamos el derecho de suspender el acceso ante un uso abusivo o automatizado del Asesor.</li>
+        </ul>
+
+        <h3>5. Pedidos y pagos</h3>
+        <p>
+          Los pagos se procesan a través de <strong>Mercado Pago</strong>, sujetos
+          a sus propios términos. Valquiria no almacena datos de tarjetas. Un
+          pedido se considera firme cuando la plataforma confirma el pago.
+        </p>
+
+        <h3>6. Envíos</h3>
+        <p>
+          Enviamos a toda la República Mexicana. El envío es
+          <strong>gratuito en compras iguales o mayores a $999.00 MXN</strong>;
+          por debajo de ese monto aplica un costo de $150.00 MXN.
+        </p>
+        <p>
+          Los tiempos de entrega son estimados y dependen de la paquetería. Los
+          retrasos imputables al transportista, al clima o a caso fortuito no dan
+          lugar a cancelación ni a indemnización.
+        </p>
+
+        <h3>7. Devoluciones y garantía</h3>
+        <p>
+          Si el producto llega dañado o no corresponde con lo solicitado,
+          repórtalo dentro de los <strong>cinco días naturales</strong>
+          siguientes a la entrega, con fotografías, al correo de contacto.
+          Repondremos la pieza o reembolsaremos el importe.
+        </p>
+        <p>
+          Por su naturaleza, <strong>no se aceptan devoluciones de productos ya
+          utilizados en práctica</strong> (perforados, instrumentados o
+          modificados), salvo defecto de fabricación comprobable.
+        </p>
+
+        <h3>8. Propiedad intelectual</h3>
+        <p>
+          La marca Valquiria, el isotipo, los modelos tridimensionales, las
+          figuras generadas en este sitio, los textos y el código son propiedad
+          de Valquiria o se usan con licencia. Queda prohibida su reproducción,
+          escaneo, ingeniería inversa o redistribución sin autorización escrita.
+        </p>
+
+        <h3>9. Limitación de responsabilidad</h3>
+        <p>
+          El sitio se ofrece «tal cual». Valquiria no garantiza que esté libre de
+          interrupciones o errores, y no responde por daños indirectos,
+          incidentales o consecuenciales derivados de su uso. En todo caso, la
+          responsabilidad máxima de Valquiria se limita al importe efectivamente
+          pagado por el pedido de que se trate.
+        </p>
+        <p>Nada en esta cláusula limita los derechos que la legislación mexicana de protección al consumidor te reconoce como irrenunciables.</p>
+
+        <h3>10. Ley aplicable y jurisdicción</h3>
+        <p>
+          Estos términos se rigen por las leyes de los Estados Unidos Mexicanos.
+          Para cualquier controversia, las partes se someten a la competencia de
+          la Procuraduría Federal del Consumidor (PROFECO) en vía conciliatoria
+          y, en su caso, a los tribunales competentes de la
+          <strong>Ciudad de México</strong>, renunciando a cualquier otro fuero.
+        </p>
+
+        <h3>11. Contacto</h3>
+        <p>
+          Dudas sobre estos términos:
+          <a href="mailto:ventas@valquiriadental.com">ventas@valquiriadental.com</a>
+          o WhatsApp <a href="https://wa.me/525554675821" target="_blank" rel="noopener">+52 55 5467 5821</a>.
+        </p>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div class="foot-grid">
+    <div>
+      <span class="mono">Valquiria Inc. · Manufactura aditiva · México</span>
+    </div>
+    <div class="foot-links">
+      <a href="#/catalogo">Catálogo</a>
+      <a href="#/ia">Valquiria IA</a>
+      <a href="#/filosofia">Filosofía</a>
+      <a href="#/contacto">Contacto</a>
+      <a href="#/privacidad">Aviso de privacidad</a>
+      <a href="#/terminos">Términos de uso</a>
+      <a href="https://wa.me/525554675821" target="_blank" rel="noopener">WhatsApp</a>
+    </div>
+  </div>
+  <div class="foot-fin">
+    <span class="mono">© <span id="anio">2026</span> Valquiria Inc. — Los modelos dentales son material didáctico, no dispositivos médicos.</span>
+  </div>
+</footer>
+
+<!-- ══ CARRITO ══ -->
+<div id="velo"></div>
+<aside id="drawer" aria-label="Carrito" aria-hidden="true">
+  <div class="drawer-head">
+    <h3>Tu carrito</h3>
+    <button class="cerrar" id="drawer-x" aria-label="Cerrar carrito">
+      <svg viewBox="0 0 24 24"><path d="M5 5l14 14M19 5L5 19"/></svg>
+    </button>
+  </div>
+  <div id="drawer-items"></div>
+  <div class="drawer-pie" id="drawer-pie"></div>
+</aside>
+
+<!-- ══ ASESOR ══ -->
+<button id="asesor-btn" aria-label="Abrir el Asesor Valquiria" aria-expanded="false">
+  <img src="assets/isotipo_gold.svg" alt="" aria-hidden="true">
+  <span id="asesor-punto"></span>
+</button>
+
+<section id="asesor" aria-label="Asesor Valquiria" aria-hidden="true">
+  <div class="asesor-head">
+    <img src="assets/isotipo_gold.svg" alt="" aria-hidden="true">
+    <div class="asesor-id">
+      <b>Asesor Valquiria</b>
+      <small>En línea · Valquiria IA</small>
+    </div>
+    <button class="cerrar" id="asesor-x" aria-label="Cerrar asesor">
+      <svg viewBox="0 0 24 24"><path d="M5 5l14 14M19 5L5 19"/></svg>
+    </button>
+  </div>
+  <div id="asesor-log" role="log" aria-live="polite"></div>
+  <div class="asesor-pie">
+    <form class="asesor-form" id="asesor-form">
+      <textarea id="asesor-in" rows="1" placeholder="Pídeme lo que necesitas…"
+                aria-label="Mensaje para el asesor" maxlength="900"></textarea>
+      <button id="asesor-send" type="submit" aria-label="Enviar">
+        <svg viewBox="0 0 24 24"><path d="M3.4 20.4 21 12 3.4 3.6 3.4 10l12.6 2-12.6 2z"/></svg>
+      </button>
+    </form>
+    <p class="asesor-legal">
+      Respuestas generadas por IA; pueden contener errores.
+      No escribas datos de tarjeta ni información de pacientes.
+      <a href="#/privacidad">Aviso de privacidad</a>
+    </p>
+  </div>
+</section>
+
+<div id="toast" role="status" aria-live="polite">
+  <div class="who">Asesor Valquiria</div><p id="toast-msg"></p>
+</div>
+
+<script type="module" src="assets/js/app.js?v=60"></script>
 
-    <!-- Footer -->
-    <footer>
-        <span>© 2025 Valquiria Inc. Todos los derechos reservados.</span>
-        <span>Innovación · Precisión · Diseño</span>
-    </footer>
-
-    <script>
-        // Preloader
-        window.addEventListener('load', () => {
-            setTimeout(() => {
-                document.querySelector('.preloader').classList.add('hidden');
-            }, 800);
-        });
-
-        // Nav scroll
-        const nav = document.getElementById('navbar');
-        window.addEventListener('scroll', () => {
-            nav.classList.toggle('scrolled', window.scrollY > 60);
-        });
-
-        // Hamburger
-        const hamburger = document.getElementById('hamburger');
-        const mobileMenu = document.getElementById('mobileMenu');
-        hamburger.addEventListener('click', () => {
-            hamburger.classList.toggle('active');
-            mobileMenu.classList.toggle('open');
-            document.body.style.overflow = mobileMenu.classList.contains('open') ? 'hidden' : '';
-        });
-        function closeMobile() {
-            hamburger.classList.remove('active');
-            mobileMenu.classList.remove('open');
-            document.body.style.overflow = '';
-        }
-
-        // Reveal on scroll
-        const observer = new IntersectionObserver((entries) => {
-            entries.forEach(entry => {
-                if (entry.isIntersecting) {
-                    entry.target.classList.add('visible');
-                }
-            });
-        }, { threshold: 0.15, rootMargin: '0px 0px -40px 0px' });
-
-        document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
-
-            // Smooth scroll for anchor links
-    document.querySelectorAll('a[href^="#"]').forEach(a => {
-        a.addEventListener('click', (e) => {
-            const targetHref = a.getAttribute('href');
-        
-            // Evitamos que intente buscar un ID inválido si el enlace es solo "#"
-            if (targetHref === '#') {
-                e.preventDefault();
-                return;
-            }
-
-            e.preventDefault();
-            const target = document.querySelector(targetHref);
-            if (target) {
-                target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            }
-        });
-    });
-
-        // ==================== ASESOR VALQUIRIA V3 ====================
-        const asesorBtn = document.getElementById('asesorBtn');
-        const asesorPanel = document.getElementById('asesorPanel');
-        const asesorBody = document.getElementById('asesorBody');
-        const asesorInput = document.getElementById('asesorInput');
-        const asesorSend = document.getElementById('asesorSend');
-        const asesorRestart = document.getElementById('asesorRestart');
-
-        const BACKEND_URL = 'https://rodrigo-corrales1429-github-io.onrender.com/api/chat';
-
-        let isChatOpen = false;
-        let isFirstOpen = true;
-        let isTyping = false;
-        let chatHistory = [];
-
-        // ---------- Core ----------
-        function toggleChat() {
-            isChatOpen = !isChatOpen;
-            asesorBtn.classList.toggle('open');
-            asesorPanel.classList.toggle('open');
-
-            if (isChatOpen) {
-                if (isFirstOpen) {
-                    isFirstOpen = false;
-                    sendInitialWelcomeMessage();
-                } else {
-                    setTimeout(() => asesorInput.focus(), 300);
-                }
-            } else {
-                asesorInput.blur();
-            }
-        }
-
-        function closeChat() {
-            if (isChatOpen) toggleChat();
-        }
-
-        asesorBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            toggleChat();
-        });
-
-        document.addEventListener('click', (e) => {
-            if (isChatOpen && !asesorPanel.contains(e.target) && !asesorBtn.contains(e.target)) {
-                closeChat();
-            }
-        });
-
-        asesorRestart.addEventListener('click', () => {
-            asesorBody.innerHTML = '';
-            asesorInput.value = '';
-            asesorInput.disabled = false;
-            chatHistory = [];
-            updateSendButtonState();
-            sendInitialWelcomeMessage();
-        });
-
-        asesorInput.addEventListener('input', updateSendButtonState);
-        asesorInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter' && asesorInput.value.trim() !== '' && !isTyping) {
-                handleUserInput(asesorInput.value.trim());
-            }
-        });
-
-        asesorSend.addEventListener('click', () => {
-            if (asesorInput.value.trim() !== '' && !isTyping) {
-                handleUserInput(asesorInput.value.trim());
-            }
-        });
-
-        function updateSendButtonState() {
-            if (asesorInput.value.trim() !== '') {
-                asesorSend.classList.add('active');
-            } else {
-                asesorSend.classList.remove('active');
-            }
-        }
-
-        // ---------- Rendering ----------
-        function escapeHtml(s) {
-            return String(s)
-                .replace(/&/g, '&amp;')
-                .replace(/</g, '&lt;')
-                .replace(/>/g, '&gt;')
-                .replace(/"/g, '&quot;')
-                .replace(/'/g, '&#39;');
-        }
-
-        function parseMarkdown(text) {
-            // Escape primero para evitar XSS, luego aplicamos formato
-            let html = escapeHtml(text);
-            html = html.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
-            html = html.replace(/\*(.+?)\*/g, '<i>$1</i>');
-            html = html.replace(/\n/g, '<br>');
-            return html;
-        }
-
-        function createTypingIndicator() {
-            const div = document.createElement('div');
-            div.className = 'chat-typing';
-            div.innerHTML = '<div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>';
-            return div;
-        }
-
-        function renderMessage(text, sender) {
-            const div = document.createElement('div');
-            div.className = `chat-msg ${sender}`;
-            div.innerHTML = parseMarkdown(text);
-            asesorBody.appendChild(div);
-            scrollToBottom();
-        }
-
-        // ---------- Product cards (NUEVO) ----------
-        function renderProductCards(products) {
-            if (!Array.isArray(products) || products.length === 0) return;
-
-            const wrapper = document.createElement('div');
-            wrapper.className = 'product-cards';
-
-            for (const p of products) {
-                const card = document.createElement('div');
-                card.className = 'product-card';
-
-                const img = document.createElement('img');
-                img.className = 'product-card-img';
-                img.src = p.imagen;
-                img.alt = p.nombre;
-                img.loading = 'lazy';
-                // Si la imagen falla, ocultamos el espacio en lugar de mostrar el icono roto
-                img.onerror = () => { img.style.display = 'none'; };
-
-                const body = document.createElement('div');
-                body.className = 'product-card-body';
-
-                const name = document.createElement('div');
-                name.className = 'product-card-name';
-                name.textContent = p.nombre;
-
-                const priceRow = document.createElement('div');
-                priceRow.className = 'product-card-price-row';
-
-                const price = document.createElement('span');
-                price.className = 'product-card-price';
-                price.textContent = p.precio;
-                priceRow.appendChild(price);
-
-                if (p.precio_regular && p.precio_regular !== p.precio) {
-                    const priceRegular = document.createElement('span');
-                    priceRegular.className = 'product-card-price-regular';
-                    priceRegular.textContent = p.precio_regular;
-                    priceRow.appendChild(priceRegular);
-                }
-
-                const btn = document.createElement('button');
-                btn.className = 'product-card-btn';
-                btn.textContent = 'Cotizar este';
-                btn.addEventListener('click', () => {
-                    if (isTyping) return;
-                    handleUserInput(`Cotízame el ${p.nombre}`);
-                });
-
-                body.appendChild(name);
-                body.appendChild(priceRow);
-                body.appendChild(btn);
-                card.appendChild(img);
-                card.appendChild(body);
-                wrapper.appendChild(card);
-            }
-
-            asesorBody.appendChild(wrapper);
-            scrollToBottom();
-        }
-
-        // ---------- Network ----------
-        async function handleUserInput(text) {
-            if (isTyping) return;
-
-            renderMessage(text, 'user');
-            chatHistory.push({ role: 'user', parts: [{ text: text }] });
-
-            asesorInput.value = '';
-            asesorInput.disabled = true;
-            updateSendButtonState();
-
-            isTyping = true;
-            const typing = createTypingIndicator();
-            asesorBody.appendChild(typing);
-            scrollToBottom();
-
-            try {
-                const response = await fetch(BACKEND_URL, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ messages: chatHistory })
-                });
-
-                const data = await response.json();
-                typing.remove();
-
-                if (data.error) {
-                    renderMessage("⚠️ " + data.error, 'system');
-                } else {
-                    const aiReply = data.reply;
-                    renderMessage(aiReply, 'system');
-                    chatHistory.push({ role: 'model', parts: [{ text: aiReply }] });
-
-                    // NUEVO: si el backend devolvió productos, renderizar tarjetas
-                    if (Array.isArray(data.products) && data.products.length > 0) {
-                        renderProductCards(data.products);
-                    }
-                }
-            } catch (err) {
-                typing.remove();
-                renderMessage(
-                    "Lo siento, hubo un problema de conexión con el servidor. Por favor inténtalo de nuevo en un momento.",
-                    'system'
-                );
-                console.error(err);
-            }
-
-            isTyping = false;
-            asesorInput.disabled = false;
-            setTimeout(() => { if (isChatOpen) asesorInput.focus(); }, 50);
-            scrollToBottom();
-        }
-
-        function sendInitialWelcomeMessage() {
-            const welcomeText = "Bienvenido a Valquiria Inc. Soy el Asesor Valquiria, tu Asesor Especializado. ¿En qué te puedo ayudar el día de hoy con nuestros productos o servicios?";
-            chatHistory.push({ role: 'model', parts: [{ text: welcomeText }] });
-            renderMessage(welcomeText, 'system');
-        }
-
-        function scrollToBottom() {
-                asesorBody.scrollTo({ top: asesorBody.scrollHeight, behavior: 'smooth' });
-            }
-            // ========================================
-            // FASE 1: CATÁLOGO VISIBLE
-            // ========================================
-            const productosCatalogo = [
-                {
-                    sku: "ValPulpo",
-                    nombre: "Dientes Valquiria Para Práctica De Pulpotomía",
-                    precio: "$444.01 MXN",
-                    precio_regular: "$539.00 MXN",
-                    stock: 23,
-                    categoria: "pediatria",
-                    imagen: "https://res.cloudinary.com/dyzgyuixk/image/upload/f_auto,q_auto/pulpo_frybuu",
-                    descripcion: "Kit de Dientes para Pulpotomías - Valquiria Dental\n\n¡La herramienta ideal para perfeccionar tus habilidades en odontología pediátrica!\n\nCaracterísticas Destacadas:\n• Diseño Realista y Detallado\n• Simulación Realista del Nervio\n• Alta Calidad en Materiales\n• Desarrollado para la Enseñanza"
-                },
-                {
-                    sku: "ValEnd",
-                    nombre: "Dientes Valquiria Para Práctica De Endodoncia",
-                    precio: "$401.83 MXN",
-                    precio_regular: "$639.00 MXN",
-                    stock: 27,
-                    categoria: "endodoncia",
-                    imagen: "https://res.cloudinary.com/dyzgyuixk/image/upload/f_auto,q_auto/endo_ahtc7k",
-                    descripcion: "Dientes para Endodoncia de la marca Valquiria Dental.\n\nCaracterísticas Destacadas:\n• Realismo con nervio sintético líder en la industria\n• Anatomía Precisa para un Aprendizaje Detallado\n• Adaptabilidad para todos los niveles"
-                },
-                {
-                    sku: "DientesRealistas",
-                    nombre: "Kit De Dientes Realistas (32 piezas)",
-                    precio: "$1,007.11 MXN",
-                    precio_regular: "$1,299.00 MXN",
-                    stock: 15,
-                    categoria: "kit",
-                    imagen: "https://res.cloudinary.com/dyzgyuixk/image/upload/f_auto,q_auto/realistas_dxfhrr",
-                    descripcion: "Kit de Dientes Ultra Realistas para Estudiantes de Odontología.\n\nIncluye los 32 dientes de un adulto con simulación realista de nervios humanos."
-                },
-                {
-                    sku: "Endotnissin",
-                    nombre: "Dientes Tipo Nissin Endodoncia",
-                    precio: "$719.58 MXN",
-                    precio_regular: "$990.00 MXN",
-                    stock: 10,
-                    categoria: "endodoncia",
-                    imagen: "https://res.cloudinary.com/dyzgyuixk/image/upload/f_auto,q_auto/endonissin_b0hlmi",
-                    descripcion: "La tecnología Valquiria Dental ha llegado a los dientes tipo Nissin.\n\nAhora puedes realizar prácticas de endodoncia y limpieza desde tu tipodonto Nissin con el mayor realismo posible."
-                }
-            ];
-
-        function renderCatalogo(filtro = "all") {
-            const grid = document.getElementById("catalogoGrid");
-            if (!grid) return;
-            grid.innerHTML = "";
-
-            const filtrados = filtro === "all" 
-                ? productosCatalogo 
-                : productosCatalogo.filter(p => p.categoria === filtro);
-
-            filtrados.forEach(prod => {
-                const card = document.createElement("div");
-                card.className = "producto-card";
-                card.innerHTML = `
-                    <img src="${prod.imagen}" alt="${prod.nombre}" class="producto-img" loading="lazy">
-                    <div class="producto-body">
-                        <h3 class="producto-nombre">${prod.nombre}</h3>
-                    
-                        <div class="producto-precios">
-                            <span class="producto-precio">${prod.precio}</span>
-                            ${prod.precio_regular ? `<span class="producto-precio-regular">${prod.precio_regular}</span>` : ''}
-                        </div>
-                    
-                        <div class="producto-stock">Stock: ${prod.stock} unidades</div>
-                    
-                        <div class="producto-acciones">
-                            <button class="btn-cotizar" data-sku="${prod.sku}">Cotizar este</button>
-                            <button class="btn-detalles" data-sku="${prod.sku}">Ver detalles</button>
-                        </div>
-                    </div>
-                `;
-                grid.appendChild(card);
-            });
-
-            grid.querySelectorAll(".btn-cotizar").forEach(btn => {
-                btn.addEventListener("click", () => {
-                    const sku = btn.dataset.sku;
-                    const producto = productosCatalogo.find(p => p.sku === sku);
-                    if (producto) {
-                        document.getElementById("asesorBtn").click();
-                        setTimeout(() => {
-                            handleUserInput(`Cotízame el ${producto.nombre}`);
-                        }, 650);
-                    }
-                });
-            });
-
-            grid.querySelectorAll(".btn-detalles").forEach(btn => {
-                btn.addEventListener("click", () => {
-                    const sku = btn.dataset.sku;
-                    mostrarModalProducto(sku);
-                });
-            });
-        }
-
-        function mostrarModalProducto(sku) {
-            const prod = productosCatalogo.find(p => p.sku === sku);
-            if (!prod) return;
-
-            const modal = document.createElement("div");
-            modal.className = "modal open";
-            modal.innerHTML = `
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <h3>${prod.nombre}</h3>
-                       <button class="modal-close">&times;</button>
-                    </div>
-                    <div class="modal-body">
-                       <p>${prod.descripcion}</p>
-                    </div>
-                </div>
-            `;
-
-            modal.querySelector(".modal-close").addEventListener("click", () => modal.remove());
-            modal.addEventListener("click", (e) => {
-                if (e.target === modal) modal.remove();
-            });
-
-            document.body.appendChild(modal);
-        }
-
-        function initFiltrosCatalogo() {
-            document.querySelectorAll(".filtro-btn").forEach(btn => {
-                btn.addEventListener("click", () => {
-                    document.querySelectorAll(".filtro-btn").forEach(b => b.classList.remove("active"));
-                    btn.classList.add("active");
-                    renderCatalogo(btn.dataset.filter);
-                });
-            });
-        }
-
-        // Inicializar cuando cargue la página
-        window.addEventListener("load", () => {
-            if (document.getElementById("catalogoGrid")) {
-                renderCatalogo("all");
-                initFiltrosCatalogo();
-            }
-        });
-        // ========================================
-    // FASE 3: ACTIVE STATE EN EL MENÚ (Scroll Spy)
-    // ========================================
-    function initActiveNav() {
-        const sections = document.querySelectorAll('section[id]');
-        const navLinks = document.querySelectorAll('.nav-links a');
-
-        if (!sections.length || !navLinks.length) return;
-
-        const observer = new IntersectionObserver((entries) => {
-            entries.forEach(entry => {
-                if (entry.isIntersecting) {
-                    const currentId = entry.target.getAttribute('id');
-
-                    // Quitar clase active de todos los links
-                    navLinks.forEach(link => link.classList.remove('active'));
-
-                    // Agregar clase active al link correspondiente
-                    const activeLink = document.querySelector(`.nav-links a[href="#${currentId}"]`);
-                    if (activeLink) {
-                        activeLink.classList.add('active');
-                    }
-                }
-            });
-        }, {
-            threshold: 0.3,
-            rootMargin: "-80px 0px -40% 0px"
-        });
-
-        sections.forEach(section => observer.observe(section));
-    }
-
-    // Inicializar el Active State cuando cargue la página
-    window.addEventListener("load", () => {
-        initActiveNav();
-    });
-
-        // ========================================
-    // FASE 2 - FIX: Botón del Hero que abre el Asesor
-    // ========================================
-    const heroAsesorBtn = document.getElementById('heroAsesorBtn');
-    if (heroAsesorBtn) {
-        heroAsesorBtn.addEventListener('click', function(e) {
-            e.preventDefault();
-            toggleChat();
-        });
-    }
-    </script>
 </body>
-
-</html> 
+</html>
