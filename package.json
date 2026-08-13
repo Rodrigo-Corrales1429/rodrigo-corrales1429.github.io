@@ -5,9 +5,10 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "node test-quote-engine.js && node test-tools-dispatcher.js",
+    "test": "node test-quote-engine.js && node test-tools-dispatcher.js && node test-impresion3d.js",
     "test:engine": "node test-quote-engine.js",
-    "test:tools": "node test-tools-dispatcher.js"
+    "test:tools": "node test-tools-dispatcher.js",
+    "test:3d": "node test-impresion3d.js"
   },
   "engines": {
     "node": ">=18.0.0"

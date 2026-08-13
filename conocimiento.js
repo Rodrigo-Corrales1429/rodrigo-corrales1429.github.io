@@ -25,6 +25,8 @@
  * ============================================================================
  */
 
+const { tarifasDeReferencia } = require("./impresion3d.js");
+
 // ----------------------------------------------------------------------------
 // CONTEXTO TRANSVERSAL DE LA EMPRESA
 // ----------------------------------------------------------------------------
@@ -67,7 +69,9 @@ const DIVISIONES = {
     numero: "División 01",
     titulo: "Valquiria 3D",
     subtitulo: "Manufactura aditiva",
-    estado: "EN CONSTRUCCIÓN — no vende en línea todavía",
+    estado:
+      "EN CONSTRUCCIÓN — sin tienda en línea, pero el asesor SÍ da " +
+      "estimaciones oficiales de precio con la herramienta estimar_impresion_3d",
     promesa: "Prototipos que existen mañana.",
     que_es:
       "Impresión 3D profesional: prototipado rápido, piezas funcionales y " +
@@ -76,22 +80,36 @@ const DIVISIONES = {
       "FDM para piezas funcionales; resina para detalle fino.",
       "Del archivo a la pieza en obra, con tolerancias medidas (no estimadas a ojo).",
       "Series cortas sin costo de molde — el punto donde la aditiva le gana a la inyección.",
-      "Si el modelo no existe, se diseña. No es solo servicio de impresión."
+      "Si el modelo no existe, se diseña. No es solo servicio de impresión.",
+      "Post-procesado disponible: lijado/alisado y pintura de acabado."
     ],
+    /* Tarifas vivas: salen del mismo motor que usa la herramienta, así que
+       este bloque y el estimador nunca se contradicen. */
+    tarifas_de_referencia: tarifasDeReferencia(),
+    como_cotiza:
+      "Con la herramienta estimar_impresion_3d, a partir del peso en gramos " +
+      "(y las horas de impresión si se conocen). Se cobra por gramo o por " +
+      "hora, LO QUE MÁS CONVENGA AL CLIENTE. El resultado es una estimación " +
+      "preliminar; la cifra final la confirma un especialista con el archivo " +
+      "STL/STEP en la mano.",
     preguntas_de_calificacion: [
       "¿Qué función cumple la pieza: prototipo de forma, prototipo funcional, o pieza final?",
       "¿Ya existe archivo 3D (STL/STEP) o hay que diseñarlo desde cero?",
+      "¿Cuánto pesa aproximadamente la pieza, o qué tamaño tiene? (para estimar en el momento)",
       "¿Cuántas piezas y con qué frecuencia?",
-      "¿Hay requisitos mecánicos, térmicos o de acabado que la pieza deba cumplir?"
+      "¿Necesita acabado: lijado o pintura?"
     ],
     lo_que_no_prometemos: [
-      "No damos precio por pieza sin ver geometría y volumen.",
+      "La estimación del chat es preliminar: el precio en firme lo confirma un especialista con el archivo, porque orientación, soportes y relleno cambian el peso y el tiempo reales.",
       "No comprometemos tolerancias específicas sin revisar el archivo.",
-      "No hay tienda en línea de esta división todavía."
+      "No hay tienda en línea de esta división todavía: el cierre es con el especialista.",
+      "El descuento por volumen (10+ piezas) existe, pero el porcentaje lo confirma el especialista."
     ],
     siguiente_paso:
-      "Levantar el interés con registrar_interes y ofrecer que un especialista " +
-      "revise el archivo o la idea."
+      "Dar la estimación con estimar_impresion_3d en cuanto haya un peso " +
+      "aproximado — un número real abre más conversaciones que un formulario. " +
+      "Después, registrar el interés con contacto para que el especialista " +
+      "confirme con el archivo."
   },
 
   // ══════════════════════════════════════════════════════════════════════
@@ -143,23 +161,43 @@ const DIVISIONES = {
     que_es:
       "Empaques termoformados a la medida para productos que necesitan " +
       "presentación premium y protección real. Molde propio, cavidad propia, " +
-      "ninguna caja genérica.",
+      "ninguna caja genérica. Se vende la lámina termoformada con los moldes " +
+      "hechos al gusto y a la medida del cliente, y también el servicio de " +
+      "bajada (formado sobre molde del cliente).",
+    materiales: [
+      "Poliestireno blanco para bases y charolas: rígido, opaco, presentación limpia.",
+      "PET o vinil transparente para tapas y blísteres: el producto se ve sin abrirse.",
+      "Base y tapa pueden combinarse: base blanca que sostiene, tapa transparente que exhibe."
+    ],
     capacidades: [
       "Cavidad diseñada sobre el modelo real del producto, no sobre una medida aproximada.",
-      "Molde propio: no se adapta un blíster de catálogo ajeno.",
-      "Prototipo de empaque antes de comprometer el tiraje completo."
+      "Molde propio impreso en 3D: no se adapta un blíster de catálogo ajeno, y el molde existe en días, no en semanas.",
+      "Prototipo de empaque antes de comprometer el tiraje completo.",
+      "Base y tapa termoformadas como juego, en el material que pida el producto.",
+      "Descuento por mayoreo en tirajes grandes (el porcentaje lo confirma el especialista)."
     ],
+    politica_de_precios:
+      "DELIBERADAMENTE sin precios publicados, ni siquiera aproximados. Cada " +
+      "molde y cada tiraje son distintos, y el precio se conversa con el " +
+      "especialista: el trabajo del asesor es entender el proyecto (producto, " +
+      "dimensiones, tiraje, material) y registrar el interés — nunca dar una " +
+      "cifra. Esto no es una carencia: es la manera de que el prospecto se " +
+      "involucre y hable con una persona.",
     preguntas_de_calificacion: [
       "¿Qué producto va dentro y qué dimensiones tiene?",
       "¿Cuál es el tiraje estimado?",
       "¿El empaque va a punto de venta, a envío, o a ambos?",
-      "¿Hay requisitos de marca o de material (reciclable, transparente, etc.)?"
+      "¿Prefiere base blanca con tapa transparente, todo transparente, u otra combinación?",
+      "¿Hay requisitos de marca (sello, logotipo en relieve) o de material (reciclable)?"
     ],
     lo_que_no_prometemos: [
+      "NUNCA se da un precio de empaque por chat, ni siquiera un rango o aproximado.",
       "No cotizamos molde sin conocer geometría y tiraje.",
       "No hay catálogo de empaques estándar: todo es a la medida."
     ],
-    siguiente_paso: "Levantar el interés con registrar_interes."
+    siguiente_paso:
+      "Calificar con 2-3 preguntas y levantar el interés con registrar_interes " +
+      "para que el especialista dé el precio."
   },
 
   // ══════════════════════════════════════════════════════════════════════
@@ -176,7 +214,8 @@ const DIVISIONES = {
     capacidades: [
       "La capa como textura: el defecto de impresión convertido en acabado deliberado.",
       "Piezas únicas o series cortas para interiorismo.",
-      "Materiales traslúcidos calibrados para luz cálida."
+      "Materiales traslúcidos calibrados para luz cálida.",
+      "Diseños escultóricos que solo la impresión 3D permite: lámparas voxel de estética 8-bit, geometrías paramétricas y piezas temáticas (la luz como parte de la escultura, no un foco con pantalla)."
     ],
     preguntas_de_calificacion: [
       "¿Es para un espacio residencial, comercial o un proyecto de interiorismo?",

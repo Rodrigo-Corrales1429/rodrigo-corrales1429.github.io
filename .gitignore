@@ -1,0 +1,27 @@
+# ============================================================================
+#  Lo que NUNCA debe salir de esta carpeta
+# ============================================================================
+#  Este archivo no existía. Sin él, un `git add .` distraído sube la API key
+#  de Gemini a un repositorio público — y una clave publicada hay que rotarla,
+#  no borrarla: queda en el historial de git y en los rastreadores que
+#  escanean GitHub en cuestión de minutos.
+# ============================================================================
+
+# Secretos. La plantilla vacía (.env.example) SÍ se versiona; los valores no.
+.env
+.env.*
+!.env.example
+
+# Dependencias: se reconstruyen con `npm ci` desde package-lock.json.
+node_modules/
+
+# Ruido de macOS y de editores
+.DS_Store
+*.log
+npm-debug.log*
+.vscode/
+.idea/
+
+# Salidas locales
+coverage/
+*.tgz

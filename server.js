@@ -31,12 +31,13 @@
 
 const express = require("express");
 const cors = require("cors");
+const crypto = require("crypto");
 require("dotenv").config();
 const { GoogleGenAI, FunctionCallingConfigMode } = require("@google/genai");
 
 const { TOOLS, ejecutarHerramienta, obtenerLeads } = require("./gemini-tools.js");
 const { getProductoPorSku } = require("./catalog.js");
-const { centavosAPesos } = require("./quote-engine.js");
+const { centavosAPesos, calcularCotizacion } = require("./quote-engine.js");
 const { resumenDivisionesParaPrompt } = require("./conocimiento.js");
 
 const app = express();
@@ -69,6 +70,16 @@ app.use(
   })
 );
 app.use(express.json({ limit: "100kb" }));
+
+/* Cabeceras de seguridad mínimas de una API JSON. No sustituyen a la CSP del
+   frontend (que vive en su <meta>): impiden que una respuesta de esta API se
+   interprete como otra cosa o quede cacheada con datos de una conversación. */
+app.use((req, res, next) => {
+  res.set("X-Content-Type-Options", "nosniff");
+  res.set("Referrer-Policy", "no-referrer");
+  res.set("Cache-Control", "no-store");
+  next();
+});
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
@@ -158,11 +169,17 @@ ${resumenDivisionesParaPrompt()}
 REGLA DE ESTADO — la más importante de todo este documento:
 Solo Valquiria Dental vende en línea hoy. Es la única que puedes cotizar y
 cerrar tú mismo.
-Las otras cuatro (3D, Pack, Lux, IA) NO tienen catálogo ni precios publicados.
-Con ellas tu trabajo es otro: entender el proyecto, orientar con criterio
-técnico real, y registrar el interés.
+EXCEPCIÓN ÚNICA — Valquiria 3D tiene ESTIMADOR OFICIAL: la herramienta
+estimar_impresion_3d. Esos números sí puedes darlos, siempre presentados como
+estimación preliminar que un especialista confirma con el archivo. Es la única
+división además de Dental cuyos precios puedes mencionar.
+Pack, Lux e IA NO tienen precios publicados. Con ellas tu trabajo es otro:
+entender el proyecto, orientar con criterio técnico real, y registrar el
+interés. Con Pack la política es deliberada y estricta: NUNCA des un precio de
+empaque, ni siquiera un rango o un "aproximadamente" — el precio se conversa
+con el especialista, y ese contacto es parte del producto.
 Confundir esto es el peor error posible. NUNCA inventes un precio, un tiempo de
-entrega ni una tolerancia para una división que no vende en línea.
+entrega ni una tolerancia que no haya salido de una herramienta.
 
 SOBRE VALQUIRIA IA — tratamiento especial:
 Tú eres la muestra de esa división. Cuando alguien pregunte qué hace Valquiria
@@ -183,7 +200,10 @@ consultar_division(tema)  → El conocimiento oficial de la empresa. Temas:
                             explicar temas técnicos (FDM, resina, materiales).
 buscar_productos(query)   → Catálogo Dental por lenguaje natural.
 listar_catalogo()         → Catálogo Dental completo.
-calcular_cotizacion(items)→ La ÚNICA fuente de números.
+calcular_cotizacion(items)→ La ÚNICA fuente de números del catálogo Dental.
+estimar_impresion_3d(...) → La ÚNICA fuente de números de impresión 3D.
+                            Cobra por gramo o por hora, lo que más convenga
+                            al cliente; devuelve estimación preliminar.
 registrar_interes(...)    → Captura de proyecto para divisiones sin venta en
                             línea, o para mayoreo.
 
@@ -239,6 +259,17 @@ D · PROYECTO A MEDIDA  (3D, Pack, Lux, IA — aquí está el valor grande)
          conviene" no es un consultor.
       4. Cuando tengas el panorama, pide nombre y contacto y llama
          registrar_interes con un resumen técnico detallado.
+    CASO ESPECIAL — IMPRESIÓN 3D: en cuanto haya material y un peso
+    aproximado en gramos, llama estimar_impresion_3d y da el número en ese
+    mismo turno. Un número real abre más conversaciones que un formulario.
+    Si el usuario no sabe el peso, ayúdale con referencias (llavero 5-15 g,
+    taza ~100 g, casco 400-800 g) o pide el archivo por WhatsApp. Después de
+    dar la estimación, ofrece los dos cierres: mandar el archivo al
+    especialista, o dejar contacto con registrar_interes.
+    CASO ESPECIAL — PACK: precio jamás, ni aproximado. Califica el proyecto
+    (producto, dimensiones, tiraje, material: base de poliestireno blanco,
+    tapa de PET o vinil transparente) y registra el interés. El precio lo da
+    el especialista, y decirlo así, con naturalidad, es parte del trato.
 
 E · CIERRE / CONFIRMACIÓN
     "sí", "confirmo", "lo quiero", "procede"
@@ -271,6 +302,15 @@ automáticamente tarjetas con foto, nombre, precio y botón. Por lo tanto:
 Cuando calcular_cotizacion devuelva ok=true:
 - Lista breve: producto, cantidad, subtotal de línea.
 - Subtotal, envío (di explícitamente si es gratis) y TOTAL en negritas.
+- EL CARRITO SE ACTUALIZA SOLO: el sistema coloca automáticamente en el
+  carrito del cliente exactamente los artículos de tu cotización. Dilo con
+  naturalidad («ya quedó en tu carrito») e invita a pagar o a cerrar por
+  WhatsApp. No le pidas que agregue nada a mano.
+- COMO LA COTIZACIÓN REEMPLAZA EL CARRITO COMPLETO: si el cliente ya traía
+  artículos en el carrito (los ves en el contexto de la sesión) y pide
+  AGREGAR algo, cotiza la suma completa — lo que traía más lo nuevo. Si pide
+  QUITAR algo, cotiza lo que queda. Tu cotización siempre es el estado final
+  del pedido.
 - Si el campo "upsell" no es null, sugiere UNA vez agregar algo para superar
   el umbral de envío gratis.
 - Cierra invitando a confirmar.
@@ -325,10 +365,12 @@ function conTimeout(promise, ms, msg = "Timeout") {
   ]);
 }
 
-/** Config base de cada llamada. Centralizado para no repetir el thinking. */
-function configGemini(extra = {}) {
+/** Config base de cada llamada. Centralizado para no repetir el thinking.
+ *  `contexto` es texto adicional de ESTA sesión (hoy: el carrito del
+ *  cliente) que se anexa al system prompt sin tocar el historial. */
+function configGemini(extra = {}, contexto = "") {
   const base = {
-    systemInstruction: SYSTEM_PROMPT,
+    systemInstruction: contexto ? SYSTEM_PROMPT + contexto : SYSTEM_PROMPT,
     tools: TOOLS,
     temperature: 0.5,
     ...extra
@@ -337,6 +379,36 @@ function configGemini(extra = {}) {
     base.thinkingConfig = { thinkingBudget: parseInt(THINKING_BUDGET, 10) };
   }
   return base;
+}
+
+/**
+ * El frontend manda el carrito actual con cada mensaje (app.js ya lo hacía;
+ * el servidor lo ignoraba). Validarlo importa: entra del cliente, así que
+ * aquí se filtra a SKUs reales y cantidades sanas antes de que toque el
+ * prompt. Devuelve el bloque de contexto listo para el system prompt.
+ */
+function contextoCarrito(carrito) {
+  if (!Array.isArray(carrito) || carrito.length === 0) {
+    return "\n\n═ CONTEXTO DE ESTA SESIÓN ═\nCarrito actual del cliente: vacío.";
+  }
+  const lineas = [];
+  for (const it of carrito.slice(0, 20)) {
+    if (!it || typeof it.sku !== "string") continue;
+    const p = getProductoPorSku(it.sku.trim());
+    const n = Number(it.cantidad);
+    if (!p || !Number.isInteger(n) || n <= 0 || n > 200) continue;
+    lineas.push(`${n} × ${p.nombre} (SKU ${p.sku})`);
+  }
+  if (!lineas.length) {
+    return "\n\n═ CONTEXTO DE ESTA SESIÓN ═\nCarrito actual del cliente: vacío.";
+  }
+  return (
+    "\n\n═ CONTEXTO DE ESTA SESIÓN ═\n" +
+    "Carrito actual del cliente (lo que ve en su pantalla ahora mismo):\n" +
+    lineas.map(l => "· " + l).join("\n") +
+    "\nRecuerda: tu cotización REEMPLAZA este carrito. Si el cliente pide " +
+    "agregar o quitar algo, cotiza el estado final completo."
+  );
 }
 
 function limpiarHistorial(messages) {
@@ -361,8 +433,23 @@ function validarHistorial(messages) {
     if (!m || (m.role !== "user" && m.role !== "model")) {
       throw new Error("Cada mensaje debe tener role 'user' o 'model'.");
     }
-    if (!Array.isArray(m.parts)) {
-      throw new Error("Cada mensaje debe tener un arreglo 'parts'.");
+    if (!Array.isArray(m.parts) || m.parts.length === 0 || m.parts.length > 8) {
+      throw new Error("Cada mensaje debe tener un arreglo 'parts' de 1 a 8 elementos.");
+    }
+    /* Solo texto plano. Un cliente hostil podría mandar parts con
+       functionResponse falsos —resultados de herramienta que nadie ejecutó—
+       y el modelo los trataría como evidencia. El frontend legítimo solo
+       manda { text }, así que todo lo demás se rechaza. */
+    for (const parte of m.parts) {
+      if (!parte || typeof parte !== "object" || typeof parte.text !== "string") {
+        throw new Error("Cada parte del mensaje debe ser un objeto { text }.");
+      }
+      if (Object.keys(parte).length !== 1) {
+        throw new Error("Las partes del mensaje solo admiten el campo 'text'.");
+      }
+      if (parte.text.length > 4000) {
+        throw new Error("Un mensaje excede el límite de 4,000 caracteres.");
+      }
     }
   }
   return messages;
@@ -403,7 +490,7 @@ function tarjetaProducto(sku) {
 // ----------------------------------------------------------------------------
 
 /**
- * Devuelve { reply, products, cotizacion, lead, meta }.
+ * Devuelve { reply, products, cotizacion, acciones, lead, meta }.
  *
  * Regla de tarjetas (sin cambios desde v3, con una adición):
  *  - buscar_productos / listar_catalogo → sí generan tarjetas.
@@ -412,8 +499,16 @@ function tarjetaProducto(sku) {
  *    conversación sobre un proyecto de IA no debe terminar con fotos de
  *    dientes debajo. Ese detalle es la diferencia entre un asesor y un
  *    catálogo con disfraz.
+ *
+ * Regla de acciones — el contrato con app.js que se había perdido:
+ *  - Cada cotización exitosa viaja con { tipo:"carrito_set", items:[...] }.
+ *    El servidor no toca el carrito: propone la acción y el cliente la
+ *    aplica (Carrito.reemplazar). Sin esto, el chat muestra el total pero
+ *    el carrito de la esquina se queda en cero — el bug exacto que motivó
+ *    esta versión.
+ *  - Un lead registrado viaja con un botón de WhatsApp para adelantarse.
  */
-async function correrConversacion(historialInicial) {
+async function correrConversacion(historialInicial, contextoSesion = "") {
   const contents = [...historialInicial];
 
   let skusParaTarjetas = [];
@@ -425,10 +520,33 @@ async function correrConversacion(historialInicial) {
     const productosFinales = ultimaCotizacion
       ? []
       : skusParaTarjetas.map(tarjetaProducto).filter(Boolean).slice(0, 4);
+    const acciones = [];
+    if (
+      ultimaCotizacion && ultimaCotizacion.ok &&
+      Array.isArray(ultimaCotizacion.lineas) && ultimaCotizacion.lineas.length
+    ) {
+      acciones.push({
+        tipo: "carrito_set",
+        items: ultimaCotizacion.lineas.map(l => ({
+          sku: l.sku,
+          cantidad: l.cantidad
+        }))
+      });
+    }
+    if (ultimoLead) {
+      acciones.push({
+        tipo: "whatsapp",
+        rotulo: "Adelantarme por WhatsApp",
+        texto:
+          `Hola Valquiria, acabo de registrar mi interés con el Asesor ` +
+          `(folio ${ultimoLead.folio}). Quiero platicar con un especialista.`
+      });
+    }
     return {
       reply: texto,
       products: productosFinales,
       cotizacion: ultimaCotizacion,
+      acciones,
       lead: ultimoLead,
       meta: { herramientas: herramientasUsadas, modelo: MODELO }
     };
@@ -439,7 +557,7 @@ async function correrConversacion(historialInicial) {
       ai.models.generateContent({
         model: MODELO,
         contents,
-        config: configGemini()
+        config: configGemini({}, contextoSesion)
       }),
       TIMEOUT_GEMINI_MS,
       "Gemini no respondió a tiempo (45s). Por favor reintenta."
@@ -530,7 +648,7 @@ async function correrConversacion(historialInicial) {
               allowedFunctionNames: ["listar_catalogo"]
             }
           }
-        })
+        }, contextoSesion)
       }),
       TIMEOUT_GEMINI_MS,
       "Timeout en intento de rescate."
@@ -558,7 +676,7 @@ async function correrConversacion(historialInicial) {
             { role: "model", parts: rescateFcs.map(fc => ({ functionCall: fc })) },
             { role: "user", parts: partesRescateResp }
           ],
-          config: configGemini()
+          config: configGemini({}, contextoSesion)
         }),
         TIMEOUT_GEMINI_MS,
         "Timeout en respuesta final del rescate."
@@ -626,7 +744,10 @@ app.post("/api/chat", limitarTasa, async (req, res) => {
       return res.status(400).json({ error: e.message });
     }
 
-    const resultado = await correrConversacion(historial);
+    const resultado = await correrConversacion(
+      historial,
+      contextoCarrito(req.body?.carrito)
+    );
     return res.json(resultado);
   } catch (error) {
     console.error("[/api/chat] Error:", error);
@@ -640,17 +761,147 @@ app.post("/api/chat", limitarTasa, async (req, res) => {
 });
 
 /**
+ * ═══ PAGOS — Mercado Pago Checkout Pro ═══
+ *
+ * El frontend ya llamaba POST /api/pago con { items:[{sku,cantidad}] } y el
+ * endpoint no existía: el botón "Pagar con Mercado Pago" caía SIEMPRE al
+ * rescate de WhatsApp. Este endpoint cierra ese hueco.
+ *
+ * Reglas de blindaje:
+ *  - El cliente manda SKUs y cantidades, NUNCA precios. Los importes se
+ *    recalculan aquí con el mismo motor de cotización del Asesor. Un carrito
+ *    manipulado desde la consola no puede cambiar lo que se cobra.
+ *  - Necesita MP_ACCESS_TOKEN en el entorno (panel de Render). Sin él,
+ *    responde 503 con un mensaje claro y el frontend sigue cayendo a
+ *    WhatsApp, exactamente como hoy. Configurarlo ENCIENDE los pagos sin
+ *    tocar código.
+ *  - SITIO_URL permite apuntar las back_urls a otro dominio si algún día
+ *    cambia.
+ */
+const SITIO_URL = (process.env.SITIO_URL || "https://valquiriainc.com").replace(/\/+$/, "");
+
+app.post("/api/pago", limitarTasa, async (req, res) => {
+  try {
+    const mpToken = process.env.MP_ACCESS_TOKEN;
+    if (!mpToken) {
+      return res.status(503).json({
+        error:
+          "El pago en línea no está disponible en este momento. Cierra tu " +
+          "pedido por WhatsApp y con gusto te atendemos."
+      });
+    }
+
+    const cot = calcularCotizacion(req.body?.items);
+    if (!cot.ok) {
+      return res.status(400).json({ error: cot.error });
+    }
+
+    const items = cot.lineas.map(l => {
+      const p = getProductoPorSku(l.sku);
+      return {
+        id: l.sku,
+        title: l.nombre,
+        quantity: l.cantidad,
+        currency_id: "MXN",
+        unit_price: p.precio_centavos / 100,
+        picture_url: p.imagen || undefined
+      };
+    });
+    if (cot._raw.envio_centavos > 0) {
+      items.push({
+        id: "ENVIO",
+        title: "Envío a domicilio",
+        quantity: 1,
+        currency_id: "MXN",
+        unit_price: cot._raw.envio_centavos / 100
+      });
+    }
+
+    const folio = "VQ-" + Date.now().toString(36).toUpperCase();
+    const preferencia = {
+      items,
+      external_reference: folio,
+      statement_descriptor: "VALQUIRIA",
+      back_urls: {
+        success: SITIO_URL + "/#/gracias",
+        pending: SITIO_URL + "/#/gracias",
+        failure: SITIO_URL + "/#/catalogo"
+      },
+      auto_return: "approved"
+    };
+
+    const r = await conTimeout(
+      fetch("https://api.mercadopago.com/checkout/preferences", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${mpToken}`
+        },
+        body: JSON.stringify(preferencia)
+      }),
+      15000,
+      "Mercado Pago no respondió a tiempo."
+    );
+    const data = await r.json();
+    if (!r.ok || !data.init_point) {
+      console.error("[/api/pago] Respuesta de MP:", JSON.stringify(data).slice(0, 400));
+      throw new Error("Mercado Pago no devolvió un link de pago.");
+    }
+
+    console.log(`[pago] Preferencia ${folio} → ${cot.total}`);
+    return res.json({ url: data.init_point, folio, total: cot.total });
+  } catch (e) {
+    console.error("[/api/pago] Error:", e.message);
+    return res.status(502).json({
+      error:
+        "No pude generar el link de pago en este momento. Intenta de nuevo " +
+        "o cierra tu pedido por WhatsApp."
+    });
+  }
+});
+
+/**
  * Consulta de los intereses capturados durante la vida del proceso.
  * Protegido con un token simple: si no defines LEADS_TOKEN, el endpoint
  * queda cerrado. Es un mirador de emergencia, no tu CRM — para eso está
  * LEADS_WEBHOOK_URL.
+ *
+ * v4.1: el token viaja en la cabecera X-Leads-Token, no en la query string
+ * (las URLs terminan en logs de proxies y del navegador), y se compara en
+ * tiempo constante para no filtrar el token por goteo de milisegundos.
+ * Uso: curl -H "X-Leads-Token: TU_TOKEN" https://.../api/leads
  */
+function tokenValido(recibido, esperado) {
+  if (typeof recibido !== "string" || typeof esperado !== "string" || !esperado) {
+    return false;
+  }
+  const a = crypto.createHash("sha256").update(recibido).digest();
+  const b = crypto.createHash("sha256").update(esperado).digest();
+  return crypto.timingSafeEqual(a, b);
+}
+
 app.get("/api/leads", (req, res) => {
-  const token = process.env.LEADS_TOKEN;
-  if (!token || req.query.token !== token) {
+  if (!tokenValido(req.get("x-leads-token"), process.env.LEADS_TOKEN)) {
     return res.status(404).json({ error: "No encontrado." });
   }
   res.json({ ok: true, leads: obtenerLeads() });
+});
+
+/* Manejador de errores JSON: sin él, un body malformado o un origen
+   rechazado por CORS responden con la página HTML de error de Express,
+   que además trae la traza. La API habla JSON, incluso para quejarse. */
+app.use((err, req, res, next) => {
+  if (err && err.type === "entity.too.large") {
+    return res.status(413).json({ error: "El mensaje es demasiado grande." });
+  }
+  if (err instanceof SyntaxError && err.status === 400) {
+    return res.status(400).json({ error: "El cuerpo de la petición no es JSON válido." });
+  }
+  if (err && /CORS/i.test(err.message || "")) {
+    return res.status(403).json({ error: "Origen no permitido." });
+  }
+  console.error("[error-mw]", err && err.message);
+  return res.status(500).json({ error: "Ocurrió un inconveniente temporal." });
 });
 
 app.listen(port, () => {

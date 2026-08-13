@@ -28,6 +28,7 @@ const {
 } = require("./quote-engine.js");
 
 const { consultarConocimiento, normalizarClave } = require("./conocimiento.js");
+const { estimarImpresion3D } = require("./impresion3d.js");
 
 // ----------------------------------------------------------------------------
 // 1. Declaraciones (lo que Gemini ve)
@@ -194,6 +195,58 @@ const calcularCotizacionDeclaration = {
   }
 };
 
+const estimarImpresion3dDeclaration = {
+  name: "estimar_impresion_3d",
+  description:
+    "Calcula la estimación PRELIMINAR de un trabajo de impresión 3D de " +
+    "Valquiria 3D. Es la ÚNICA fuente de números para impresión 3D: NUNCA " +
+    "calcules tú un precio por gramo ni por hora. La regla comercial es que " +
+    "se cobra por gramo O por hora de impresión, lo que más convenga al " +
+    "cliente — la función aplica esa regla sola si le das ambos datos. " +
+    "Úsala en cuanto el usuario tenga un peso aproximado en gramos; si no lo " +
+    "sabe, ayúdale a estimarlo (un llavero pesa 5-15 g, una taza ~100 g, un " +
+    "casco 400-800 g) o pídele el archivo por WhatsApp. Presenta el " +
+    "resultado SIEMPRE como estimación preliminar: la cifra final la " +
+    "confirma un especialista con el archivo STL/STEP en la mano. NO la uses " +
+    "para productos del catálogo Dental (esos van con calcular_cotizacion) " +
+    "ni para empaque termoformado (Pack no da precios por chat).",
+  parametersJsonSchema: {
+    type: "object",
+    properties: {
+      material: {
+        type: "string",
+        description:
+          "Material de impresión: 'pla', 'petg', 'abs' (o ASA), 'tpu' " +
+          "(flexible) o 'resina'. Si el usuario no sabe cuál, sugiérelo por " +
+          "el uso: aguantar → PETG/ABS, verse con detalle → resina, uso " +
+          "general → PLA."
+      },
+      gramos: {
+        type: "number",
+        description: "Peso estimado de UNA pieza, en gramos. Mayor a 0."
+      },
+      horas: {
+        type: "number",
+        description:
+          "Horas de impresión estimadas de UNA pieza. Opcional: si se " +
+          "incluye, la función cobra por gramo o por hora, lo que salga más " +
+          "barato para el cliente."
+      },
+      cantidad: {
+        type: "integer",
+        description: "Número de piezas idénticas. Por defecto 1. Máximo 500."
+      },
+      postprocesado: {
+        type: "string",
+        description:
+          "Acabado: 'ninguno' (default), 'lijado' (+20%) o 'pintura' " +
+          "(+50%, incluye lijado)."
+      }
+    },
+    required: ["material", "gramos"]
+  }
+};
+
 // El bloque que se le pasa a Gemini en el config.tools:
 const TOOLS = [
   {
@@ -202,6 +255,7 @@ const TOOLS = [
       buscarProductosDeclaration,
       listarCatalogoDeclaration,
       calcularCotizacionDeclaration,
+      estimarImpresion3dDeclaration,
       registrarInteresDeclaration
     ]
   }
@@ -313,6 +367,9 @@ function ejecutarHerramienta({ name, args }) {
       case "calcular_cotizacion":
         return calcularCotizacion(args?.items);
 
+      case "estimar_impresion_3d":
+        return estimarImpresion3D(args);
+
       case "registrar_interes":
         return registrarInteres(args);
 
@@ -322,7 +379,7 @@ function ejecutarHerramienta({ name, args }) {
           error:
             `La herramienta "${name}" no existe. Herramientas válidas: ` +
             `consultar_division, buscar_productos, listar_catalogo, ` +
-            `calcular_cotizacion, registrar_interes.`
+            `calcular_cotizacion, estimar_impresion_3d, registrar_interes.`
         };
     }
   } catch (e) {
