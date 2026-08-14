@@ -14,8 +14,8 @@
      precargar(ids)              muestrea en segundo plano, sin robar cuadros
    ═══════════════════════════════════════════════════════════════════════════ */
 import * as THREE from 'three';
-import { FIGURAS } from './figuras.js?v=68';
-import { cargarModelo, animarMallas, GLSL_IDLE } from './modelo.js?v=68';
+import { FIGURAS } from './figuras.js?v=69';
+import { cargarModelo, animarMallas, GLSL_IDLE } from './modelo.js?v=69';
 
 /* ── Las piezas esculpidas ─────────────────────────────────────────────────
    Cualquier figura puede declarar un `glb` en figuras.js y dejar de ser una
@@ -271,7 +271,24 @@ function pedirMalla(id) {
     alAvanzar: id === FIGURA_HUB ? (v => { avanceModelo = v; }) : null
   }).then(m => {
     mallas.set(id, m);
-    F.bb = m.bb;
+    /* `holgura` estira el marco POR ENCIMA de la pieza, y solo sirve a las
+       secciones cuyo `tope` es menor que 1.
+
+       El corte del cabezal se mide contra esta caja: con `tope` 0.94 se
+       imprime el 94 % de su altura. Cuando la caja es la de la malla —tan
+       justa como la pieza— ese 6 % que falta se lo come la parte más alta,
+       y en una figura humana la parte más alta es la CABEZA. La SDF no tenía
+       el problema porque su tercio superior lo ocupaban los anillos de
+       órbita, no el personaje: ahí el corte se llevaba aire.
+
+       Con holgura 1.07 la caja crece un 7 % hacia arriba, así que el 94 % cae
+       un pelo por encima de la coronilla: la figura sale entera y el cabezal
+       se queda justo encima, pulsando. Que es exactamente lo que la sección
+       quiere contar — esta división está EN BETA, la pieza aún se imprime—
+       solo que dicho sin decapitar a nadie. */
+    F.bb = F.holgura
+      ? { ...m.bb, y1: m.bb.y0 + (m.bb.y1 - m.bb.y0) * F.holgura }
+      : m.bb;
     F.malla = true;
     cache.set(id, m.puntos);
     animarMallas(m.materiales, uniformesAnimacion(), F.modo);

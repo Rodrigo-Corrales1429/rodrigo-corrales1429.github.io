@@ -911,6 +911,10 @@ const FIGURAS = {
        los 1.64 de la valquiria a 4.8. El `alza` negativo baja el apoyo a
        y=-0.895 para que las dos pisen la plataforma a la misma altura. */
     encaje: 1.357, alza: -0.425,
+    /* La sección /ia imprime al 94 % a propósito («EN BETA · CAPA 161 DE
+       171»). Sin holgura ese 6 % que falta se lo lleva la cabeza. Ver la
+       explicación larga en `pedirMalla` de escena.js. */
+    holgura: 1.07,
     bb: { x0: -.49, x1: .49, y0: -.47, y1: .79, z0: -.52, z1: .45 }
   },
   diente: {

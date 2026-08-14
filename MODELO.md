@@ -140,6 +140,11 @@ diente: {
   dos no representan lo mismo. La valquiria los usa (`0.74` y `0.19`) porque su
   SDF reserva el tercio superior del marco para una lanza que la malla no trae;
   sin corregirlo, la pieza salía enorme.
+- `holgura` — solo para secciones cuyo `tope` es menor que 1. Estira el marco
+  **por encima** de la pieza para que el corte del cabezal caiga en aire y no
+  en la malla. Lo necesita la cyborg: `/ia` imprime al 94 % a propósito, y sin
+  holgura ese 6 % que falta se lo lleva la cabeza. La cuenta es
+  `holgura ≥ 1 / tope` (con `tope` .94 → 1.07, que deja un pelo de margen).
 - `solida` — **no hace falta ponerlo** en una figura con malla. El curado se
   activa solo cuando hay algo debajo que enseñar.
 
