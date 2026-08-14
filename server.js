@@ -39,6 +39,12 @@ const { TOOLS, ejecutarHerramienta, obtenerLeads } = require("./gemini-tools.js"
 const { getProductoPorSku } = require("./catalog.js");
 const { centavosAPesos, calcularCotizacion } = require("./quote-engine.js");
 const { resumenDivisionesParaPrompt } = require("./conocimiento.js");
+const {
+  construirPreferencia,
+  crearPreferencia,
+  validarFirmaWebhook,
+  consultarPago
+} = require("./pagos.js");
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -71,13 +77,32 @@ app.use(
 );
 app.use(express.json({ limit: "100kb" }));
 
-/* Cabeceras de seguridad mínimas de una API JSON. No sustituyen a la CSP del
-   frontend (que vive en su <meta>): impiden que una respuesta de esta API se
-   interprete como otra cosa o quede cacheada con datos de una conversación. */
+/* Cabeceras de seguridad de una API JSON. No sustituyen a la CSP del frontend
+   (que vive en su <meta> porque GitHub Pages no deja poner cabeceras): impiden
+   que una respuesta de esta API se interprete como otra cosa, quede cacheada
+   con datos de una conversación, o se embeba en una página ajena.
+
+   Aquí SÍ se pueden poner las que en <meta> el navegador ignora —
+   frame-ancestors y X-Frame-Options— porque este servidor sí controla sus
+   cabeceras. Cubren a la API, no al sitio: el sitio necesitaría un proxy
+   delante. Ver SEGURIDAD.md. */
 app.use((req, res, next) => {
   res.set("X-Content-Type-Options", "nosniff");
   res.set("Referrer-Policy", "no-referrer");
   res.set("Cache-Control", "no-store");
+  /* Nada de esta API se dibuja: negar el marco por completo es gratis y cierra
+     el clickjacking sobre los endpoints. */
+  res.set("X-Frame-Options", "DENY");
+  res.set("Content-Security-Policy",
+    "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'");
+  /* Que ningún otro origen pueda leer estas respuestas como recurso. */
+  res.set("Cross-Origin-Resource-Policy", "same-site");
+  /* Un navegador que llegue por http se queda en https a partir de aquí. */
+  if (req.secure || req.get("x-forwarded-proto") === "https") {
+    res.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+  }
+  res.set("Permissions-Policy",
+    "geolocation=(), microphone=(), camera=(), payment=(), usb=()");
   next();
 });
 
@@ -101,36 +126,104 @@ const THINKING_BUDGET = process.env.GEMINI_THINKING_BUDGET || "0";
 // ----------------------------------------------------------------------------
 
 const VENTANA_MS = 60_000;
-const MAX_POR_VENTANA = parseInt(process.env.RATE_LIMIT_POR_MINUTO || "15", 10);
-const golpes = new Map();
+const DIA_MS = 24 * 60 * 60_000;
 
-setInterval(() => {
-  const corte = Date.now() - VENTANA_MS;
-  for (const [ip, marcas] of golpes) {
-    const vivas = marcas.filter(t => t > corte);
-    if (vivas.length === 0) golpes.delete(ip);
-    else golpes.set(ip, vivas);
-  }
-}, VENTANA_MS).unref();
-
-function limitarTasa(req, res, next) {
+/**
+ * Identidad del que llama. Dos precisiones que importan:
+ *
+ * · En IPv6 una sola persona suele disponer de un /64 entero —billones de
+ *   direcciones—, así que limitar por dirección exacta no limita nada: basta
+ *   con cambiar el último grupo. Se agrupa por prefijo /64.
+ * · Render va detrás de un proxy y `trust proxy` ya está puesto, así que
+ *   req.ip es la del visitante y no la del balanceador.
+ */
+function identidad(req) {
   const ip = req.ip || "desconocida";
-  const ahora = Date.now();
-  const marcas = (golpes.get(ip) || []).filter(t => t > ahora - VENTANA_MS);
-
-  if (marcas.length >= MAX_POR_VENTANA) {
-    console.warn(`[rate-limit] Bloqueada ${ip} (${marcas.length} en 60s)`);
-    return res.status(429).json({
-      error:
-        "Estás enviando mensajes muy rápido. Espera un momento y vuelve a " +
-        "intentarlo, o escríbenos por WhatsApp al +52 55 5467 5821."
-    });
+  if (ip.includes(":") && !ip.includes(".")) {
+    return ip.split(":").slice(0, 4).join(":") + "::/64";
   }
-
-  marcas.push(ahora);
-  golpes.set(ip, marcas);
-  next();
+  return ip;
 }
+
+/**
+ * Limitador con dos ventanas: una por minuto contra ráfagas y otra por día
+ * contra el goteo. Sin la diaria, quince peticiones por minuto sostenidas
+ * durante veinticuatro horas son 21,600 llamadas al modelo desde una sola
+ * IP, todas dentro del límite y todas en tu factura.
+ *
+ * Vive en memoria y no sobrevive a un reinicio ni se comparte entre
+ * instancias. Es una decisión, no un descuido: el servicio corre en una sola
+ * instancia, y lo que esto ataja —un bucle automatizado— se ataja igual.
+ * Si algún día hay varias instancias, esto pasa a ser orientativo y toca
+ * Redis o un limitador en el proxy (ver SEGURIDAD.md).
+ */
+function crearLimitador({ nombre, max, maxDiario, mensaje }) {
+  const minuto = new Map();
+  const dia = new Map();
+
+  setInterval(() => {
+    const corte = Date.now() - VENTANA_MS;
+    for (const [k, marcas] of minuto) {
+      const vivas = marcas.filter(t => t > corte);
+      if (vivas.length === 0) minuto.delete(k); else minuto.set(k, vivas);
+    }
+    const corteDia = Date.now() - DIA_MS;
+    for (const [k, reg] of dia) if (reg.desde < corteDia) dia.delete(k);
+  }, VENTANA_MS).unref();
+
+  return function limitador(req, res, next) {
+    const quien = identidad(req);
+    const ahora = Date.now();
+
+    const marcas = (minuto.get(quien) || []).filter(t => t > ahora - VENTANA_MS);
+    if (marcas.length >= max) {
+      const esperaS = Math.ceil((marcas[0] + VENTANA_MS - ahora) / 1000);
+      console.warn(`[rate-limit:${nombre}] ${quien} frenada (${marcas.length}/min)`);
+      res.set("Retry-After", String(Math.max(1, esperaS)));
+      return res.status(429).json({ error: mensaje, motivo: "rate-limit" });
+    }
+
+    const reg = dia.get(quien) || { desde: ahora, n: 0 };
+    if (ahora - reg.desde > DIA_MS) { reg.desde = ahora; reg.n = 0; }
+    if (reg.n >= maxDiario) {
+      console.warn(`[rate-limit:${nombre}] ${quien} superó el tope diario (${reg.n})`);
+      res.set("Retry-After", "3600");
+      return res.status(429).json({
+        error:
+          "Llegaste al límite de uso por hoy. Escríbenos por WhatsApp al " +
+          "+52 55 5467 5821 y te atendemos sin esperas.",
+        motivo: "rate-limit-diario"
+      });
+    }
+
+    marcas.push(ahora);
+    minuto.set(quien, marcas);
+    reg.n++;
+    dia.set(quien, reg);
+    next();
+  };
+}
+
+const limitarTasa = crearLimitador({
+  nombre: "chat",
+  max: parseInt(process.env.RATE_LIMIT_POR_MINUTO || "15", 10),
+  maxDiario: parseInt(process.env.RATE_LIMIT_POR_DIA || "400", 10),
+  mensaje:
+    "Estás enviando mensajes muy rápido. Espera un momento y vuelve a " +
+    "intentarlo, o escríbenos por WhatsApp al +52 55 5467 5821."
+});
+
+/* El de pagos es MUCHO más estrecho porque cada llamada crea una preferencia
+   real en Mercado Pago. Nadie compra seis veces por minuto; quien lo intenta
+   está probando algo, no comprando. */
+const limitarPagos = crearLimitador({
+  nombre: "pago",
+  max: parseInt(process.env.RATE_LIMIT_PAGO_POR_MINUTO || "6", 10),
+  maxDiario: parseInt(process.env.RATE_LIMIT_PAGO_POR_DIA || "40", 10),
+  mensaje:
+    "Demasiados intentos de pago seguidos. Espera un momento y reintenta, o " +
+    "cierra tu pedido por WhatsApp al +52 55 5467 5821."
+});
 
 // ----------------------------------------------------------------------------
 // SYSTEM PROMPT v4 — LAS CINCO DIVISIONES
@@ -200,7 +293,12 @@ consultar_division(tema)  → El conocimiento oficial de la empresa. Temas:
                             explicar temas técnicos (FDM, resina, materiales).
 buscar_productos(query)   → Catálogo Dental por lenguaje natural.
 listar_catalogo()         → Catálogo Dental completo.
-calcular_cotizacion(items)→ La ÚNICA fuente de números del catálogo Dental.
+calcular_cotizacion(items, accion)
+                          → La ÚNICA fuente de números del catálogo Dental, y
+                            la ÚNICA forma de tocar el carrito del cliente.
+                            No necesita SKUs: en "producto" va la palabra del
+                            usuario. Con "accion" se agrega, quita, fija o
+                            vacía sin rehacer la cuenta a mano.
 estimar_impresion_3d(...) → La ÚNICA fuente de números de impresión 3D.
                             Cobra por gramo o por hora, lo que más convenga
                             al cliente; devuelve estimación preliminar.
@@ -240,12 +338,36 @@ B · EXPLORACIÓN DE CATÁLOGO
 
 C · COMPRA DIRECTA
     "quiero 2 endos", "dame 3 de pulpotomía", "cotízame un kit nissin"
-    → El usuario YA decidió. Identifica el SKU y llama calcular_cotizacion
-      DE INMEDIATO. No busques alternativas. No preguntes "¿cuál de los tres?".
-      Mapeo rápido: endo → ValEnd · pulpo/pediatría → ValPulpo ·
-      nissin → Endotnissin · kit completo/32 dientes → DientesRealistas.
-      Si dudas entre dos SKUs, cotiza el más solicitado y ofrece cambiarlo.
+    → El usuario YA decidió. Llama calcular_cotizacion DE INMEDIATO. No
+      busques alternativas. No preguntes "¿cuál de los tres?". No llames
+      buscar_productos antes: NO necesitas el SKU, escribe en "producto" la
+      palabra que usó el usuario y el servidor la identifica —aguanta erratas,
+      plurales y apodos—.
       Nunca regreses al usuario sin un total.
+
+    LISTAS DE VARIOS PRODUCTOS — el error que más caro sale:
+    "2 endo, 1 pulpo, 3 realistas y 2 nissin" es UNA llamada con CUATRO
+    elementos en "items". No cuatro llamadas. No tres elementos porque uno se
+    te pasó. Antes de llamar la herramienta, cuenta cuántos productos nombró
+    el usuario y comprueba que tu lista tenga exactamente esos, cada uno con
+    SU cantidad. Si el usuario nombró cuatro y tú mandas tres, el pedido sale
+    mal y el cliente lo nota.
+
+D-bis · CORRECCIÓN DEL PEDIDO
+    "vacía el carrito y ponme esto", "quita los de endodoncia", "mejor 5 de
+    los endo", "agrégame 2 nissin más"
+    → NO recalcules el carrito de cabeza. Declara la intención con "accion" y
+      manda SOLO lo que cambia; el servidor conoce el carrito y calcula el
+      estado final:
+        agregar    suma a lo que ya hay
+        quitar     resta (sin cantidad = quita la línea completa)
+        fijar      deja ese producto en esa cantidad, no toca el resto
+        reemplazar el carrito queda exactamente con estos items
+        vaciar     lo deja en cero
+      "vacía el carrito y ponme 3 pulpo" es UNA llamada con
+      accion='reemplazar', no un vaciado seguido de un alta.
+      Lee siempre "carrito_final" de la respuesta: ESE es el pedido que tiene
+      el cliente en pantalla, y es lo que debes describirle.
 
 D · PROYECTO A MEDIDA  (3D, Pack, Lux, IA — aquí está el valor grande)
     "quiero automatizar mi clínica", "necesito empaque para mi producto",
@@ -302,27 +424,34 @@ automáticamente tarjetas con foto, nombre, precio y botón. Por lo tanto:
 Cuando calcular_cotizacion devuelva ok=true:
 - Lista breve: producto, cantidad, subtotal de línea.
 - Subtotal, envío (di explícitamente si es gratis) y TOTAL en negritas.
-- EL CARRITO SE ACTUALIZA SOLO: el sistema coloca automáticamente en el
-  carrito del cliente exactamente los artículos de tu cotización. Dilo con
-  naturalidad («ya quedó en tu carrito») e invita a pagar o a cerrar por
-  WhatsApp. No le pidas que agregue nada a mano.
-- COMO LA COTIZACIÓN REEMPLAZA EL CARRITO COMPLETO: si el cliente ya traía
-  artículos en el carrito (los ves en el contexto de la sesión) y pide
-  AGREGAR algo, cotiza la suma completa — lo que traía más lo nuevo. Si pide
-  QUITAR algo, cotiza lo que queda. Tu cotización siempre es el estado final
-  del pedido.
+- EL CARRITO SE ACTUALIZA SOLO: el sistema deja en el carrito del cliente
+  exactamente lo que venga en "carrito_final". Dilo con naturalidad («ya
+  quedó en tu carrito») e invita a pagar o a cerrar por WhatsApp. No le pidas
+  que agregue nada a mano.
+- DESCRIBE "carrito_final", no lo que tú pediste. Si usaste accion='agregar',
+  el total incluye lo que ya traía: enumera el pedido completo para que no
+  haya sorpresas al pagar.
+- Si viene el campo "avisos", atiéndelo en tu respuesta: son cosas que el
+  servidor detectó y que el cliente necesita oír —un producto que no se pudo
+  identificar, una elección ambigua que hay que confirmar, o una errata que
+  interpretaste—. Menciónalo en una línea, sin dramatizar, y sigue.
+- Si "carrito_vacio" es true, el carrito quedó en cero. Confírmalo en una
+  frase y pregunta qué quiere poner. No inventes un total.
 - Si el campo "upsell" no es null, sugiere UNA vez agregar algo para superar
   el umbral de envío gratis.
 - Cierra invitando a confirmar.
-Si devuelve ok=false, explica el problema con tus palabras (SKU inexistente,
-sin stock, cantidad inválida) y pide la corrección.
+Si devuelve ok=false, explica el problema con tus palabras (producto no
+identificado, sin stock, cantidad inválida) y pide la corrección.
 
 ═══════════════════════════════════════════════════════════════════
  8 · NUNCA TE RINDAS
 ═══════════════════════════════════════════════════════════════════
-JAMÁS respondas "no entendí" ni "reformula tu solicitud". Tolera los typos:
-endo→endodoncia · pulpo→pulpotomía · nisin/nicin/nissim→nissin ·
-pediatria→odontopediatría · "boca completa"/"32 dientes"→kit completo.
+JAMÁS respondas "no entendí" ni "reformula tu solicitud". Los apodos y las
+erratas los resuelve el servidor: pásale a calcular_cotizacion lo que el
+usuario escribió —"endo", "pulpo", "nisiin", "kit completo", "realistas"— y
+él identifica el producto. Solo cuando la herramienta devuelva un aviso de
+ambigüedad, o no identifique algo, preguntas; y preguntas por ESE producto,
+no por el pedido entero.
 Si el mensaje es solo un saludo, preséntate en una línea y ofrece las dos
 rutas reales: ver el catálogo Dental, o contar un proyecto.
 
@@ -365,6 +494,57 @@ function conTimeout(promise, ms, msg = "Timeout") {
   ]);
 }
 
+/**
+ * Traduce un fallo del proveedor a algo que el visitante pueda accionar.
+ *
+ * Todo caía antes en «Ocurrió un inconveniente temporal», que es cierto y es
+ * inútil: con una cuota agotada el cliente reintenta cada diez segundos y
+ * nunca funciona, y con una API key mal puesta el sitio parece roto sin que
+ * nadie sepa por qué. Ahora cada caso dice qué pasó y qué hacer, y el que
+ * hay que arreglar en Render se distingue en el log a simple vista.
+ *
+ * Nunca se filtra el texto crudo del proveedor: puede traer identificadores
+ * del proyecto y no le sirve de nada a quien está intentando comprar dientes.
+ */
+function traducirFalloProveedor(error) {
+  const texto = String(error?.message || error || "");
+  const codigo = Number(error?.status) || Number(texto.match(/"code"\s*:\s*(\d+)/)?.[1]) || 0;
+  const wa = "También puedes escribirnos por WhatsApp al +52 55 5467 5821.";
+
+  if (/Timeout|tiempo/i.test(texto)) {
+    return { http: 504, gravedad: "warn", etiqueta: "timeout",
+      mensaje: "El asesor tardó demasiado en responder. Inténtalo otra vez; " +
+               "si vuelve a pasar, " + wa.charAt(0).toLowerCase() + wa.slice(1) };
+  }
+  if (codigo === 429 || /RESOURCE_EXHAUSTED|quota|rate limit/i.test(texto)) {
+    return { http: 429, gravedad: "error", etiqueta: "cuota-gemini",
+      mensaje: "Hay muchas consultas en este momento y el asesor llegó a su " +
+               "límite. Espera un minuto y vuelve a intentarlo — o, si no " +
+               "quieres esperar, escríbenos por WhatsApp al +52 55 5467 5821 " +
+               "y te atendemos de inmediato." };
+  }
+  if (codigo === 401 || codigo === 403 || /API_KEY_INVALID|API key not valid|PERMISSION_DENIED/i.test(texto)) {
+    /* Esto NO se arregla reintentando: falta o está mal GEMINI_API_KEY en
+       Render. Se marca como configuración para que salte en los logs. */
+    return { http: 503, gravedad: "config", etiqueta: "credencial-gemini",
+      mensaje: "El asesor no está disponible en este momento. Escríbenos por " +
+               "WhatsApp al +52 55 5467 5821 y te atendemos enseguida." };
+  }
+  if (codigo === 503 || codigo === 500 || /UNAVAILABLE|overloaded|internal/i.test(texto)) {
+    return { http: 503, gravedad: "warn", etiqueta: "proveedor-caido",
+      mensaje: "El asesor está saturado en este momento. Inténtalo en un " +
+               "minuto, o cierra tu pedido por WhatsApp al +52 55 5467 5821." };
+  }
+  if (codigo === 400 || /SAFETY|blocked/i.test(texto)) {
+    return { http: 400, gravedad: "warn", etiqueta: "peticion-rechazada",
+      mensaje: "No pude procesar ese mensaje. Reformúlalo, por favor, o " +
+               "escríbenos por WhatsApp al +52 55 5467 5821." };
+  }
+  return { http: 500, gravedad: "error", etiqueta: "desconocido",
+    mensaje: "Ocurrió un inconveniente temporal. Inténtalo de nuevo en un " +
+             "momento, o " + wa.charAt(0).toLowerCase() + wa.slice(1) };
+}
+
 /** Config base de cada llamada. Centralizado para no repetir el thinking.
  *  `contexto` es texto adicional de ESTA sesión (hoy: el carrito del
  *  cliente) que se anexa al system prompt sin tocar el historial. */
@@ -387,27 +567,52 @@ function configGemini(extra = {}, contexto = "") {
  * aquí se filtra a SKUs reales y cantidades sanas antes de que toque el
  * prompt. Devuelve el bloque de contexto listo para el system prompt.
  */
-function contextoCarrito(carrito) {
-  if (!Array.isArray(carrito) || carrito.length === 0) {
-    return "\n\n═ CONTEXTO DE ESTA SESIÓN ═\nCarrito actual del cliente: vacío.";
-  }
-  const lineas = [];
+/**
+ * Sanea el carrito que llega del cliente y lo deja en [{sku, cantidad}] con
+ * SKUs que existen de verdad y cantidades sanas. Es la ÚNICA puerta por la
+ * que ese dato entra al servidor: lo usa el contexto del prompt y, sobre
+ * todo, lo usa la herramienta de cotización para calcular el estado final.
+ *
+ * Entra del cliente, así que se filtra contra el catálogo. Nada de lo que
+ * venga aquí influye en los PRECIOS —esos salen siempre del catálogo—; lo
+ * único que aporta es qué había en pantalla.
+ */
+function sanearCarrito(carrito) {
+  if (!Array.isArray(carrito)) return [];
+  const fusion = new Map();
   for (const it of carrito.slice(0, 20)) {
     if (!it || typeof it.sku !== "string") continue;
     const p = getProductoPorSku(it.sku.trim());
     const n = Number(it.cantidad);
     if (!p || !Number.isInteger(n) || n <= 0 || n > 200) continue;
-    lineas.push(`${n} × ${p.nombre} (SKU ${p.sku})`);
+    fusion.set(p.sku, Math.min(200, (fusion.get(p.sku) || 0) + n));
   }
-  if (!lineas.length) {
-    return "\n\n═ CONTEXTO DE ESTA SESIÓN ═\nCarrito actual del cliente: vacío.";
+  return [...fusion.entries()].map(([sku, cantidad]) => ({ sku, cantidad }));
+}
+
+function contextoCarrito(carritoSaneado) {
+  if (!carritoSaneado.length) {
+    return "\n\n═ CONTEXTO DE ESTA SESIÓN ═\nCarrito actual del cliente: vacío.\n" +
+      "Como está vacío, cualquier pedido nuevo va con accion='reemplazar' " +
+      "(que es el valor por defecto).";
   }
+  const lineas = carritoSaneado.map(it => {
+    const p = getProductoPorSku(it.sku);
+    return `· ${it.cantidad} × ${p.nombre} (producto: ${p.sku})`;
+  });
   return (
     "\n\n═ CONTEXTO DE ESTA SESIÓN ═\n" +
     "Carrito actual del cliente (lo que ve en su pantalla ahora mismo):\n" +
-    lineas.map(l => "· " + l).join("\n") +
-    "\nRecuerda: tu cotización REEMPLAZA este carrito. Si el cliente pide " +
-    "agregar o quitar algo, cotiza el estado final completo."
+    lineas.join("\n") +
+    "\n\nEste es el estado real, y calcular_cotizacion ya lo conoce: NO se lo " +
+    "repitas en los 'items'. Tú solo declaras qué cambia y con qué 'accion':\n" +
+    "· «agrégame 2 nissin»      → accion='agregar', items=[{producto:'nissin',cantidad:2}]\n" +
+    "· «quita los de endo»      → accion='quitar',  items=[{producto:'endo'}]\n" +
+    "· «de los endo ponme 5»    → accion='fijar',   items=[{producto:'endo',cantidad:5}]\n" +
+    "· «vacía y ponme 3 pulpo»  → accion='reemplazar', items=[{producto:'pulpo',cantidad:3}]\n" +
+    "· «vacía el carrito»       → accion='vaciar'\n" +
+    "El servidor calcula el estado final y te lo devuelve en 'carrito_final'. " +
+    "No hagas tú esa aritmética."
   );
 }
 
@@ -508,8 +713,12 @@ function tarjetaProducto(sku) {
  *    esta versión.
  *  - Un lead registrado viaja con un botón de WhatsApp para adelantarse.
  */
-async function correrConversacion(historialInicial, contextoSesion = "") {
+async function correrConversacion(historialInicial, contextoSesion = "", carrito = []) {
   const contents = [...historialInicial];
+  /* El carrito real viaja hasta la herramienta de cotización, que es quien
+     calcula el estado final. Va por aquí y no por el historial a propósito:
+     el modelo puede perder el hilo del estado sin que la cuenta se estropee. */
+  const ctxHerramientas = { carrito };
 
   let skusParaTarjetas = [];
   let ultimaCotizacion = null;
@@ -521,13 +730,16 @@ async function correrConversacion(historialInicial, contextoSesion = "") {
       ? []
       : skusParaTarjetas.map(tarjetaProducto).filter(Boolean).slice(0, 4);
     const acciones = [];
-    if (
-      ultimaCotizacion && ultimaCotizacion.ok &&
-      Array.isArray(ultimaCotizacion.lineas) && ultimaCotizacion.lineas.length
-    ) {
+    /* `carrito_final` es la fuente de verdad del estado, y viene incluso
+       cuando queda VACÍO —«vacía el carrito» es una cotización exitosa de
+       cero líneas—. Mirar `lineas` en su lugar dejaba el vaciado sin efecto:
+       el asesor decía «listo, lo vacié» y el carrito de la esquina seguía
+       lleno. */
+    if (ultimaCotizacion && ultimaCotizacion.ok &&
+        Array.isArray(ultimaCotizacion.carrito_final)) {
       acciones.push({
         tipo: "carrito_set",
-        items: ultimaCotizacion.lineas.map(l => ({
+        items: ultimaCotizacion.carrito_final.map(l => ({
           sku: l.sku,
           cantidad: l.cantidad
         }))
@@ -576,7 +788,7 @@ async function correrConversacion(historialInicial, contextoSesion = "") {
         const resultado = ejecutarHerramienta({
           name: fc.name,
           args: fc.args || {}
-        });
+        }, ctxHerramientas);
 
         herramientasUsadas.push(fc.name);
 
@@ -593,6 +805,13 @@ async function correrConversacion(historialInicial, contextoSesion = "") {
             skusParaTarjetas = resultado.productos.map(p => p.sku);
           } else if (fc.name === "calcular_cotizacion" && Array.isArray(resultado.lineas)) {
             ultimaCotizacion = resultado;
+            /* Si el modelo encadena dos cotizaciones en el mismo turno
+               («quita los endo y agrégame un nissin»), la segunda tiene que
+               partir del resultado de la primera y no del carrito con el que
+               entró la petición. */
+            if (Array.isArray(resultado.carrito_final)) {
+              ctxHerramientas.carrito = resultado.carrito_final;
+            }
           } else if (fc.name === "registrar_interes" && resultado.folio) {
             ultimoLead = { folio: resultado.folio, division: resultado.division };
             // Una conversación consultiva no cierra con tarjetas de catálogo.
@@ -658,7 +877,7 @@ async function correrConversacion(historialInicial, contextoSesion = "") {
     if (rescateFcs.length > 0) {
       const partesRescateResp = [];
       for (const fc of rescateFcs) {
-        const resultado = ejecutarHerramienta({ name: fc.name, args: fc.args || {} });
+        const resultado = ejecutarHerramienta({ name: fc.name, args: fc.args || {} }, ctxHerramientas);
         herramientasUsadas.push(fc.name);
         if (resultado.ok && fc.name === "listar_catalogo" && Array.isArray(resultado.productos)) {
           skusParaTarjetas = resultado.productos.map(p => p.sku);
@@ -744,19 +963,26 @@ app.post("/api/chat", limitarTasa, async (req, res) => {
       return res.status(400).json({ error: e.message });
     }
 
+    const carrito = sanearCarrito(req.body?.carrito);
     const resultado = await correrConversacion(
       historial,
-      contextoCarrito(req.body?.carrito)
+      contextoCarrito(carrito),
+      carrito
     );
     return res.json(resultado);
   } catch (error) {
-    console.error("[/api/chat] Error:", error);
-    const esTimeout = /Timeout|tiempo/i.test(error.message || "");
-    return res.status(esTimeout ? 504 : 500).json({
-      error: esTimeout
-        ? "El asesor tardó demasiado en responder. Inténtalo de nuevo en un momento."
-        : "Ocurrió un inconveniente temporal. Inténtalo de nuevo en un momento."
-    });
+    const f = traducirFalloProveedor(error);
+    if (f.gravedad === "config") {
+      /* Un grito, no un susurro: mientras esto salga en los logs de Render el
+         asesor está caído para todo el mundo y no se arregla solo. */
+      console.error(
+        `[/api/chat] ⚠️  CONFIGURACIÓN — ${f.etiqueta}: revisa GEMINI_API_KEY ` +
+        `en las variables de entorno de Render. Detalle: ${String(error?.message || error).slice(0, 200)}`
+      );
+    } else {
+      console.error(`[/api/chat] ${f.etiqueta}:`, String(error?.message || error).slice(0, 300));
+    }
+    return res.status(f.http).json({ error: f.mensaje, motivo: f.etiqueta });
   }
 });
 
@@ -780,10 +1006,44 @@ app.post("/api/chat", limitarTasa, async (req, res) => {
  */
 const SITIO_URL = (process.env.SITIO_URL || "https://valquiriainc.com").replace(/\/+$/, "");
 
-app.post("/api/pago", limitarTasa, async (req, res) => {
+/* URL pública de ESTE backend, para que Mercado Pago sepa a dónde avisar.
+   Render la publica sola en RENDER_EXTERNAL_URL; BACKEND_URL la sobrescribe
+   si algún día el servicio vive en otro sitio. */
+const BACKEND_URL = (process.env.BACKEND_URL || process.env.RENDER_EXTERNAL_URL || "")
+  .replace(/\/+$/, "");
+
+/* Pedidos vistos en la vida de este proceso. Igual que los leads: es un
+   mirador, no un CRM. Lo que no se puede perder viaja por PEDIDOS_WEBHOOK_URL. */
+const PEDIDOS = new Map();
+const MAX_PEDIDOS = 300;
+
+function recordarPedido(folio, datos) {
+  PEDIDOS.set(folio, { ...(PEDIDOS.get(folio) || {}), ...datos, folio });
+  if (PEDIDOS.size > MAX_PEDIDOS) {
+    PEDIDOS.delete(PEDIDOS.keys().next().value);
+  }
+}
+
+/** Reenvía un hecho de pago a donde el negocio lo pueda ver de verdad. */
+function avisarPedido(evento) {
+  console.log(`[PEDIDO] ${JSON.stringify(evento)}`);
+  const url = process.env.PEDIDOS_WEBHOOK_URL || process.env.LEADS_WEBHOOK_URL;
+  if (!url) return;
+  fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ tipo: "pedido", ...evento })
+  }).catch(e => console.error("[PEDIDO] Webhook falló:", e.message));
+}
+
+app.post("/api/pago", limitarPagos, async (req, res) => {
   try {
     const mpToken = process.env.MP_ACCESS_TOKEN;
     if (!mpToken) {
+      console.warn(
+        "[/api/pago] ⚠️  CONFIGURACIÓN — falta MP_ACCESS_TOKEN en el entorno. " +
+        "El botón de pago cae a WhatsApp. Ver PAGOS.md."
+      );
       return res.status(503).json({
         error:
           "El pago en línea no está disponible en este momento. Cierra tu " +
@@ -791,73 +1051,192 @@ app.post("/api/pago", limitarTasa, async (req, res) => {
       });
     }
 
-    const cot = calcularCotizacion(req.body?.items);
+    /* Forma del cuerpo antes de tocar nada. calcularCotizacion ya valida lo
+       suyo, pero conviene rechazar aquí lo que ni siquiera tiene forma de
+       pedido: así no se gasta trabajo ni se ensucian los logs. */
+    const crudos = req.body?.items;
+    if (!Array.isArray(crudos) || crudos.length === 0 || crudos.length > 50) {
+      return res.status(400).json({
+        error: "El pedido está vacío o tiene demasiadas líneas."
+      });
+    }
+
+    /* EL TOTAL SE RECALCULA AQUÍ. Del cuerpo solo se leen SKUs y cantidades:
+       se construye una lista NUEVA con esos dos campos y se descarta todo lo
+       demás. Un `precio_centavos` inyectado desde la consola no llega ni a
+       leerse, así que no hay ruta por la que el cliente influya en el importe.
+       Esto no es una comprobación que se pueda burlar: es que el dato no se
+       usa. */
+    const items = crudos.map(it => ({
+      sku: typeof it?.sku === "string" ? it.sku : "",
+      cantidad: it?.cantidad
+    }));
+
+    const cot = calcularCotizacion(items);
     if (!cot.ok) {
       return res.status(400).json({ error: cot.error });
     }
 
-    const items = cot.lineas.map(l => {
-      const p = getProductoPorSku(l.sku);
-      return {
-        id: l.sku,
-        title: l.nombre,
-        quantity: l.cantidad,
-        currency_id: "MXN",
-        unit_price: p.precio_centavos / 100,
-        picture_url: p.imagen || undefined
-      };
+    const folio = "VQ-" + Date.now().toString(36).toUpperCase() +
+                  "-" + crypto.randomBytes(3).toString("hex").toUpperCase();
+
+    const preferencia = construirPreferencia({
+      cot,
+      productoPorSku: getProductoPorSku,
+      folio,
+      sitioUrl: SITIO_URL,
+      notificacionUrl: BACKEND_URL ? `${BACKEND_URL}/api/pago/webhook` : null,
+      comprador: req.body?.comprador
     });
-    if (cot._raw.envio_centavos > 0) {
-      items.push({
-        id: "ENVIO",
-        title: "Envío a domicilio",
-        quantity: 1,
-        currency_id: "MXN",
-        unit_price: cot._raw.envio_centavos / 100
-      });
+
+    const data = await crearPreferencia(preferencia, mpToken, conTimeout);
+
+    recordarPedido(folio, {
+      estado: "pendiente",
+      creado: new Date().toISOString(),
+      total: cot.total,
+      total_centavos: cot._raw.total_centavos,
+      items: cot.lineas.map(l => ({ sku: l.sku, cantidad: l.cantidad })),
+      preferencia_id: data.id
+    });
+
+    console.log(`[pago] Preferencia ${folio} → ${cot.total} (pref ${data.id})`);
+    if (!BACKEND_URL) {
+      console.warn(
+        "[/api/pago] Sin BACKEND_URL ni RENDER_EXTERNAL_URL: la preferencia va " +
+        "SIN notification_url, así que no habrá aviso automático de los pagos " +
+        "aprobados. Ver PAGOS.md."
+      );
     }
 
-    const folio = "VQ-" + Date.now().toString(36).toUpperCase();
-    const preferencia = {
-      items,
-      external_reference: folio,
-      statement_descriptor: "VALQUIRIA",
-      back_urls: {
-        success: SITIO_URL + "/#/gracias",
-        pending: SITIO_URL + "/#/gracias",
-        failure: SITIO_URL + "/#/catalogo"
-      },
-      auto_return: "approved"
-    };
-
-    const r = await conTimeout(
-      fetch("https://api.mercadopago.com/checkout/preferences", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${mpToken}`
-        },
-        body: JSON.stringify(preferencia)
-      }),
-      15000,
-      "Mercado Pago no respondió a tiempo."
-    );
-    const data = await r.json();
-    if (!r.ok || !data.init_point) {
-      console.error("[/api/pago] Respuesta de MP:", JSON.stringify(data).slice(0, 400));
-      throw new Error("Mercado Pago no devolvió un link de pago.");
-    }
-
-    console.log(`[pago] Preferencia ${folio} → ${cot.total}`);
-    return res.json({ url: data.init_point, folio, total: cot.total });
+    return res.json({
+      url: data.init_point,
+      folio,
+      total: cot.total,
+      /* El link de sandbox solo aparece con credenciales de prueba; sirve
+         para ensayar el flujo completo sin cobrar de verdad. */
+      url_prueba: data.sandbox_init_point || undefined
+    });
   } catch (e) {
-    console.error("[/api/pago] Error:", e.message);
+    console.error("[/api/pago] Error:", String(e.message).slice(0, 300));
+    if (e.mpBody) {
+      console.error("[/api/pago] Detalle MP:", JSON.stringify(e.mpBody).slice(0, 400));
+    }
     return res.status(502).json({
       error:
         "No pude generar el link de pago en este momento. Intenta de nuevo " +
-        "o cierra tu pedido por WhatsApp."
+        "o cierra tu pedido por WhatsApp al +52 55 5467 5821."
     });
   }
+});
+
+/**
+ * ═══ WEBHOOK DE MERCADO PAGO ═══
+ *
+ * Es lo que separa «tengo un botón de pago» de «tengo una tienda»: sin esto,
+ * la única señal de que alguien pagó es que su navegador vuelva al sitio, y
+ * eso se pierde en cuanto cierra la pestaña o se le va el internet al salir
+ * del banco.
+ *
+ * Dos defensas, en este orden:
+ *   1. La firma (x-signature) demuestra que el aviso viene de Mercado Pago.
+ *   2. Aunque la firma pase, el ESTADO no se lee del cuerpo: se pregunta a la
+ *      API por el pago. Un aviso falseado solo logra que consultemos un pago
+ *      inexistente.
+ *
+ * Siempre responde 200 salvo que la firma sea inválida: si devolviera 500 por
+ * un fallo nuestro, Mercado Pago reintentaría durante días.
+ */
+app.post("/api/pago/webhook", async (req, res) => {
+  const mpToken = process.env.MP_ACCESS_TOKEN;
+  const dataId = req.body?.data?.id || req.query?.["data.id"] || req.query?.id;
+  const tipo = req.body?.type || req.query?.type || req.query?.topic;
+
+  const firma = validarFirmaWebhook({
+    xSignature: req.get("x-signature"),
+    xRequestId: req.get("x-request-id"),
+    dataId,
+    secreto: process.env.MP_WEBHOOK_SECRET
+  });
+
+  if (!firma.ok) {
+    console.warn(`[webhook] Rechazado por firma (${firma.estado}) id=${dataId}`);
+    return res.status(401).json({ error: "Firma inválida." });
+  }
+  if (firma.estado === "omitida") {
+    console.warn(
+      "[webhook] Sin MP_WEBHOOK_SECRET: no se valida la firma. Configúralo " +
+      "en Render — ver PAGOS.md."
+    );
+  }
+
+  /* Acuse inmediato: Mercado Pago espera un 200 rápido, y lo que sigue puede
+     tardar lo que tarde la consulta del pago. */
+  res.status(200).json({ recibido: true });
+
+  if (tipo !== "payment" || !dataId || !mpToken) return;
+
+  try {
+    const pago = await consultarPago(dataId, mpToken, conTimeout);
+    const folio = pago.external_reference || null;
+    const estado = pago.status;
+
+    if (folio) {
+      recordarPedido(folio, {
+        estado,
+        detalle_estado: pago.status_detail,
+        pago_id: pago.id,
+        metodo: pago.payment_method_id,
+        tipo_metodo: pago.payment_type_id,
+        pagado: new Date().toISOString(),
+        email: pago.payer?.email || null
+      });
+    }
+
+    /* Cuadre: lo que Mercado Pago dice que se cobró contra lo que este
+       servidor calculó al crear la preferencia. Si no coincide, se grita —es
+       la señal de que alguien manipuló el importe o de que el catálogo cambió
+       entre la creación del link y el pago. */
+    const esperado = PEDIDOS.get(folio)?.total_centavos;
+    const cobrado = Math.round((pago.transaction_amount || 0) * 100);
+    if (estado === "approved" && esperado != null && cobrado !== esperado) {
+      console.error(
+        `[webhook] ⚠️  DESCUADRE en ${folio}: se cobró ${cobrado} centavos y ` +
+        `se esperaban ${esperado}. NO surtas este pedido sin revisarlo.`
+      );
+    }
+
+    console.log(
+      `[webhook] pago ${pago.id} folio=${folio} estado=${estado} ` +
+      `metodo=${pago.payment_type_id}/${pago.payment_method_id}`
+    );
+
+    if (estado === "approved") {
+      avisarPedido({
+        folio, pago_id: pago.id, estado,
+        total: centavosAPesos(cobrado),
+        metodo: pago.payment_type_id,
+        email: pago.payer?.email || null,
+        items: PEDIDOS.get(folio)?.items || []
+      });
+    }
+  } catch (e) {
+    console.error("[webhook] No se pudo verificar el pago:", String(e.message).slice(0, 200));
+  }
+});
+
+/** Estado de un pedido, para que la página de gracias pueda confirmarlo. */
+app.get("/api/pedido/:folio", limitarTasa, (req, res) => {
+  const p = PEDIDOS.get(String(req.params.folio || ""));
+  if (!p) return res.status(404).json({ error: "Pedido no encontrado." });
+  /* Solo lo que el comprador puede ver de su propio pedido. */
+  return res.json({
+    ok: true,
+    folio: p.folio,
+    estado: p.estado,
+    total: p.total,
+    creado: p.creado
+  });
 });
 
 /**
@@ -904,6 +1283,48 @@ app.use((err, req, res, next) => {
   return res.status(500).json({ error: "Ocurrió un inconveniente temporal." });
 });
 
+/**
+ * Auditoría de configuración al arrancar.
+ *
+ * Todo lo que falte aquí degrada el servicio EN SILENCIO: los pagos caen a
+ * WhatsApp, los leads se quedan en memoria, el webhook no valida firma. Cada
+ * uno de esos fallos se descubre normalmente semanas después y contando
+ * clientes perdidos. Que salgan en la primera pantalla del log de Render
+ * cuesta veinte líneas y las vale.
+ */
+function auditarConfiguracion() {
+  const faltan = [];
+  const flojos = [];
+
+  if (!process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY === "tu_api_key_aqui") {
+    faltan.push("GEMINI_API_KEY — el asesor NO responde sin esto.");
+  }
+  if (!process.env.MP_ACCESS_TOKEN) {
+    flojos.push("MP_ACCESS_TOKEN — sin pagos en línea; el botón cae a WhatsApp. Ver PAGOS.md.");
+  } else if (!process.env.MP_WEBHOOK_SECRET) {
+    flojos.push("MP_WEBHOOK_SECRET — el webhook de pagos no valida la firma. Ver PAGOS.md.");
+  }
+  if (process.env.MP_ACCESS_TOKEN && !BACKEND_URL) {
+    flojos.push("BACKEND_URL / RENDER_EXTERNAL_URL — sin aviso automático de pagos aprobados.");
+  }
+  if (!process.env.LEADS_WEBHOOK_URL) {
+    flojos.push("LEADS_WEBHOOK_URL — los prospectos se pierden al reiniciarse Render.");
+  }
+  if (!process.env.LEADS_TOKEN) {
+    flojos.push("LEADS_TOKEN — /api/leads queda cerrado (responde 404).");
+  }
+  if (/^APP_USR-/.test(process.env.MP_ACCESS_TOKEN || "") === false &&
+      process.env.MP_ACCESS_TOKEN) {
+    flojos.push("MP_ACCESS_TOKEN no parece de producción (no empieza con APP_USR-): ¿son las credenciales de prueba?");
+  }
+
+  for (const f of faltan) console.error(`[config] ⛔ FALTA  ${f}`);
+  for (const f of flojos) console.warn(`[config] ⚠️  ${f}`);
+  if (!faltan.length && !flojos.length) {
+    console.log("[config] ✓ Todas las variables recomendadas están puestas.");
+  }
+}
+
 app.listen(port, () => {
   console.log(`[Valquiria Backend v4] Activo en puerto ${port}`);
   console.log(`[Valquiria Backend v4] Modelo: ${MODELO} · thinking: ${THINKING_BUDGET}`);
@@ -912,4 +1333,9 @@ app.listen(port, () => {
     `[Valquiria Backend v4] Herramientas: ` +
     TOOLS[0].functionDeclarations.map(d => d.name).join(", ")
   );
+  console.log(
+    `[Valquiria Backend v4] Pagos: ${process.env.MP_ACCESS_TOKEN ? "activos" : "APAGADOS (cae a WhatsApp)"}` +
+    ` · webhook firmado: ${process.env.MP_WEBHOOK_SECRET ? "sí" : "no"}`
+  );
+  auditarConfiguracion();
 });

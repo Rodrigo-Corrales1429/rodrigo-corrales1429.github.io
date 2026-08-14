@@ -14,26 +14,41 @@
      precargar(ids)              muestrea en segundo plano, sin robar cuadros
    ═══════════════════════════════════════════════════════════════════════════ */
 import * as THREE from 'three';
-import { FIGURAS } from './figuras.js?v=60';
-import { cargarModelo, animarMallas, GLSL_IDLE } from './modelo.js?v=60';
+import { FIGURAS } from './figuras.js?v=68';
+import { cargarModelo, animarMallas, GLSL_IDLE } from './modelo.js?v=68';
 
-/* ── La pieza maestra ──────────────────────────────────────────────────────
-   La valquiria del hub es la malla esculpida de `assets/valquiria.glb`, no la
-   SDF. La SDF sigue viva y sigue siendo la red de seguridad: si el archivo no
-   llega —conexión mala, WebGL sin memoria, un 404 tras renombrar— la escena
-   cae sola a la figura procedural y el visitante ve un sitio completo, no un
-   hueco. Esa caída está probada, no es teórica.
+/* ── Las piezas esculpidas ─────────────────────────────────────────────────
+   Cualquier figura puede declarar un `glb` en figuras.js y dejar de ser una
+   SDF para pasar a ser una malla esculpida. La SDF NO se borra: sigue viva
+   como red de seguridad, y si el archivo no llega —conexión mala, WebGL sin
+   memoria, un 404 porque todavía no lo has subido— la escena cae sola a la
+   figura procedural y el visitante ve un sitio completo, no un hueco. Esa
+   caída está probada, no es teórica.
 
-   El interruptor es MANUAL a propósito. Cuando el código pedía el archivo
-   "por si acaso" y no existía, cada visitante pagaba un 404 y el preloader
-   esperaba ese viaje de ida y vuelta antes de empezar. Si algún día quitas el
-   .glb, pon esto en false el mismo día.
+   Hay dos ritmos de carga, y la diferencia importa:
 
-   El archivo es el de Tripo pasado por gltf-transform: de 59 MB y 1.99 M
-   triángulos a 1.9 MB y 179 k, con Draco sobre la geometría y las texturas PBR
-   a 2048. Ver MODELO.md. */
+   · La figura del HUB (valquiria) se descarga al evaluar el módulo, antes
+     incluso de que exista el canvas: es lo que el visitante está esperando y
+     lo único que no depende de nada más. Su descarga es la que llena la barra
+     del preloader.
+   · Las demás se piden la PRIMERA VEZ que se navega a su sección. Nadie paga
+     el peso de la pieza de Lux por entrar al catálogo.
+
+   Si declaras un `glb` que todavía no existe, el costo es un 404 la primera
+   vez que se visita esa sección y nada más: la figura sale procedural y el
+   fallo queda registrado para no reintentarlo. Por eso puedes declarar el
+   archivo ANTES de subirlo — el día que lo dejes en assets/ funciona sin
+   tocar una línea de código.
+
+   El interruptor global de abajo apaga TODAS las mallas de golpe. Es para
+   depurar o para un incidente, no para el uso diario.
+
+   La valquiria actual salió de Tripo y pasó por gltf-transform: de 59 MB y
+   1.99 M triángulos a 1.9 MB y 179 k, con Draco sobre la geometría y las
+   texturas PBR a 2048. Ver MODELO.md — ahí está la receta completa y la lista
+   de requisitos que debe cumplir cualquier pieza nueva. */
 const USAR_MODELO = true;
-const URL_MODELO = 'assets/valquiria.glb';
+const FIGURA_HUB = 'valquiria';
 
 /* Los uniformes de la animación viven fuera de init() porque la malla puede
    terminar de descargarse antes de que exista el canvas, y necesita
@@ -48,13 +63,18 @@ const uAnim = {
 };
 const uniformesAnimacion = () => uAnim;
 
-/* La pieza maestra. `modelo` queda en null mientras no haya .glb, y toda la
-   escena está escrita para funcionar igual con él y sin él.
+/* Las piezas esculpidas que YA llegaron, por figura. Vacío es un estado
+   válido y frecuente: toda la escena está escrita para funcionar igual con
+   malla y sin ella.
 
-   Se declaran aquí arriba y no junto al resto del estado porque la descarga
-   arranca durante la evaluación del módulo y `corte` tiene que existir ya: una
-   const declarada más abajo estaría en zona muerta y reventaría el arranque. */
-let modelo = null, sombraSuelo = null, luzClave = null;
+   Se declara aquí arriba y no junto al resto del estado porque la descarga
+   del hub arranca durante la evaluación del módulo y `corte` tiene que existir
+   ya: una const declarada más abajo estaría en zona muerta y reventaría el
+   arranque. */
+const mallas = new Map();     // id → { grupo, bb, puntos, materiales }
+const descargas = new Map();  // id → Promise<boolean>, una por figura y sesión
+const enVuelo = new Set();    // ids cuya descarga sigue abierta
+let sombraSuelo = null, luzClave = null;
 
 /* Plano de recorte a la altura del cabezal. Recorta la malla, no los puntos:
    los puntos ya se ocultan solos con uBuild. */
@@ -186,78 +206,105 @@ function crearMuestreador(id) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   LA PIEZA MAESTRA
+   LAS PIEZAS ESCULPIDAS
    ───────────────────────────────────────────────────────────────────────────
-   La descarga arranca en cuanto se evalúa el módulo, antes incluso de que haya
-   canvas: es lo más lento del arranque y lo único que no depende de nada más.
-
-   Si llega, SUSTITUYE al muestreo de la SDF — sus puntos salen de la superficie
-   de la malla, así que la nube que se imprime y la pieza que queda son el mismo
-   objeto. Si no llega, nadie se entera: el sitio sigue con la valquiria
-   procedural y la única diferencia es que la pieza curada se dibuja con splats.
+   Si una figura declara `glb`, su malla SUSTITUYE al muestreo de la SDF — los
+   puntos que se imprimen salen de la superficie de esa misma malla, así que la
+   nube que cae y la pieza que queda son el mismo objeto en dos estados. Si no
+   llega, nadie se entera: la figura sale procedural y la única diferencia es
+   que la pieza curada se dibuja con splats.
    ═══════════════════════════════════════════════════════════════════════════ */
-let modeloEnCurso = true;
-let avanceModelo = 0;
+let avanceModelo = 0;   // 0..1 de la descarga del hub; llena el preloader
 
-/* Marco al que se encaja la malla.
+/* Marco al que se encaja cada malla.
    ─────────────────────────────────────────────────────────────────────────
-   No es el mismo que el de la SDF, y la razón es concreta: en la figura
-   procedural la lanza se llevaba el tercio superior y el regatón el pie del
-   marco, así que el CUERPO ocupaba bastante menos que la caja. La malla de
-   Tripo no trae lanza — es cuerpo de arriba abajo—, y encajarla al marco
-   completo la dejaba enorme, con la cabeza rozando la barra de navegación y
-   los pies pisando la rejilla de divisiones.
+   Por defecto es el bounding box de su SDF, que es lo correcto cuando la
+   malla representa lo mismo que la función.
 
-   Se le da el 78 % de la altura del marco y se apoya un poco más arriba. La
-   plataforma y la sombra siguen a los pies solos: después de cargar,
-   FIGURAS.valquiria.bb pasa a ser la caja real de la malla. */
-const ENCAJE_MALLA = 0.74;
-const ALZA_MALLA = 0.19;
+   La valquiria es la excepción y la razón es concreta: en la figura procedural
+   la lanza se llevaba el tercio superior y el regatón el pie del marco, así que
+   el CUERPO ocupaba bastante menos que la caja. La malla de Tripo no trae lanza
+   —es cuerpo de arriba abajo— y encajarla al marco completo la dejaba enorme,
+   con la cabeza rozando la barra de navegación y los pies pisando la rejilla de
+   divisiones. Por eso puede pedir `encaje` y `alza` en figuras.js.
 
-const marcoMalla = (() => {
-  const b = FIGURAS.valquiria.bb;
-  const y0 = b.y0 + ALZA_MALLA;
-  return { ...b, y0, y1: y0 + (b.y1 - b.y0) * ENCAJE_MALLA };
-})();
+   Después de cargar, FIGURAS[id].bb pasa a ser la caja real de la malla, y la
+   plataforma y la sombra siguen a los pies solas. */
+function marcoDe(id) {
+  const F = FIGURAS[id], b = F.bb;
+  const encaje = F.encaje == null ? 1 : F.encaje;
+  const alza = F.alza == null ? 0 : F.alza;
+  if (encaje === 1 && alza === 0) return b;
+  const y0 = b.y0 + alza;
+  return { ...b, y0, y1: y0 + (b.y1 - b.y0) * encaje };
+}
 
-const modeloListo = (USAR_MODELO ? cargarModelo({
-  url: URL_MODELO,
-  bb: marcoMalla,
-  /* Estos puntos son la impresión, no la pieza: con que la nube se lea densa
-     basta, y de más solo cuestan memoria. */
-  puntos: MOVIL ? 60000 : 180000,
-  corte,
-  alAvanzar: p => { avanceModelo = p; }
-}) : Promise.reject(new Error('pieza maestra desactivada (USAR_MODELO)'))
-).then(m => {
-  modelo = m;
-  FIGURAS.valquiria.bb = m.bb;
-  FIGURAS.valquiria.malla = true;
-  cache.set('valquiria', m.puntos);
-  animarMallas(m.materiales, uniformesAnimacion());
-  adjuntarModelo();
-  return true;
-}).catch(e => {
-  /* Solo se avisa cuando alguien PIDIÓ la malla y no llegó. Con el
-     interruptor apagado la figura procedural es el camino previsto, no una
-     degradación, y anunciarla en consola sería ruido. */
-  if (USAR_MODELO) {
-    console.info('[valquiria] sin pieza maestra (' + (e && e.message || e) +
-                 '); se usa la figura procedural. Ver MODELO.md.');
+/**
+ * Pide la malla de una figura. Devuelve una promesa que resuelve a true si
+ * llegó y a false si no la hay, no se pudo, o las mallas están apagadas.
+ *
+ * Es idempotente y se cachea POR SESIÓN: un .glb que no existe se intenta una
+ * vez, se registra el fallo y no se vuelve a pedir. Eso es lo que permite
+ * declarar el archivo antes de subirlo sin castigar al visitante con un 404
+ * en cada navegación.
+ */
+function pedirMalla(id) {
+  if (descargas.has(id)) return descargas.get(id);
+
+  const F = FIGURAS[id];
+  if (!USAR_MODELO || !F || !F.glb) {
+    const nada = Promise.resolve(false);
+    descargas.set(id, nada);
+    return nada;
   }
-  return false;
-}).finally(() => { modeloEnCurso = false; });
+
+  enVuelo.add(id);
+  const p = cargarModelo({
+    url: F.glb,
+    bb: marcoDe(id),
+    /* Estos puntos son la impresión, no la pieza: con que la nube se lea densa
+       basta, y de más solo cuestan memoria. */
+    puntos: MOVIL ? 60000 : 180000,
+    corte,
+    /* Solo la del hub mueve la barra del preloader; las demás llegan mientras
+       el visitante ya está viendo su sección. */
+    alAvanzar: id === FIGURA_HUB ? (v => { avanceModelo = v; }) : null
+  }).then(m => {
+    mallas.set(id, m);
+    F.bb = m.bb;
+    F.malla = true;
+    cache.set(id, m.puntos);
+    animarMallas(m.materiales, uniformesAnimacion(), F.modo);
+    adjuntarMalla(id);
+    return true;
+  }).catch(e => {
+    console.info('[' + id + '] sin pieza esculpida (' + (e && e.message || e) +
+                 '); se usa la figura procedural. Ver MODELO.md.');
+    return false;
+  }).finally(() => { enVuelo.delete(id); });
+
+  descargas.set(id, p);
+  return p;
+}
 
 /* Cuelga la malla del mismo grupo que la nube para que compartan encuadre,
    escala y giro. Es idempotente porque puede llamarla tanto la descarga como
    init(), y el orden entre las dos depende de la red. */
-function adjuntarModelo() {
-  if (!modelo || !grupo || modelo.grupo.parent === grupo) return;
-  grupo.add(modelo.grupo);
-  modelo.grupo.visible = (figActual === 'valquiria');
-  if (figActual === 'valquiria') { montar('valquiria'); }
+function adjuntarMalla(id) {
+  const m = mallas.get(id);
+  if (!m || !grupo || m.grupo.parent === grupo) return;
+  grupo.add(m.grupo);
+  m.grupo.visible = (figActual === id);
+  if (figActual === id) montar(id);
   encuadrar();
 }
+
+/* La malla de la figura que se está viendo, si la hay. */
+const mallaViva = () => mallas.get(figActual) || null;
+
+/* La descarga del hub arranca YA, antes incluso de que exista el canvas: es lo
+   más lento del arranque y lo único que no depende de nada más. */
+const modeloListo = pedirMalla(FIGURA_HUB);
 
 /* Muestrea una figura repartida en cuadros y avisa del avance: es lo que llena
    la barra del preloader cuando la pieza es procedural.
@@ -305,10 +352,10 @@ function bombear(ms) {
 
 function pedir(id) {
   if (cache.has(id)) return true;
-  /* Mientras se descarga la pieza maestra nadie muestrea su SDF: si las dos
-     terminaran, la segunda pisaría a la primera y la figura podría quedarse con
-     los puntos de una y el marco de la otra. */
-  if (id === 'valquiria' && modeloEnCurso) return false;
+  /* Mientras se descarga la malla de una figura nadie muestrea su SDF: si las
+     dos terminaran, la segunda pisaría a la primera y la figura podría quedarse
+     con los puntos de una y el marco de la otra. */
+  if (enVuelo.has(id)) return false;
   if (trabajoId !== id) {
     const i = cola.indexOf(id);
     if (i > 0) { cola.splice(i, 1); cola.unshift(id); }
@@ -831,7 +878,7 @@ function init() {
   scene.add(motas);
   montarPlato();
   /* Si la malla llegó antes que el canvas, aquí es donde entra. */
-  adjuntarModelo();
+  mallas.forEach((m, id) => adjuntarMalla(id));
 
   addEventListener('resize', alRedimensionar, { passive: true });
   addEventListener('pointermove', e => {
@@ -939,7 +986,13 @@ function montar(id) {
   if (viejo && viejo.attributes.position) viejo.dispose();
   figActual = id;
   uni.uModo.value = F.modo;
-  uni.uEsSolida.value = F.solida ? 1 : 0;
+  /* «Cura» quien tiene algo debajo que enseñar: o una malla esculpida, o el
+     permiso explícito de curarse con splats (`solida`). La condición NO puede
+     ser solo la bandera: una figura que espera su .glb y todavía no lo tiene
+     se quedaría apagando sus puntos para revelar una pieza que no existe, y
+     desaparecería a la vista del visitante. */
+  const curaAlTerminar = mallas.has(id) || !!F.solida;
+  uni.uEsSolida.value = curaAlTerminar ? 1 : 0;
   uni.uPaso.value = pasoDe(F);
   /* Al montar una pieza nueva el curado arranca de cero: si se heredara el
      valor anterior, la siguiente figura aparecería ya sólida de golpe. */
@@ -949,12 +1002,16 @@ function montar(id) {
   if (uni.uAwake) uni.uAwake.value = 0;
   plato.position.y = F.bb.y0 - 0.015;
 
-  /* La pieza maestra solo existe en el hub. Cuando está montada, el sólido de
-     splats se apaga: lo que queda detrás del cabezal es la malla recortada, no
-     un montón de discos. Los puntos siguen exactamente igual —son los de su
-     superficie— y se apagan al curar, dejándola ver. */
-  const conMalla = !!(modelo && id === 'valquiria');
-  if (modelo) modelo.grupo.visible = conMalla;
+  /* Cuando la figura tiene malla, el sólido de splats se apaga: lo que queda
+     detrás del cabezal es la malla recortada, no un montón de discos. Los
+     puntos siguen exactamente igual —son los de su superficie— y se apagan al
+     curar, dejándola ver.
+
+     Se recorren TODAS las mallas y no solo la entrante: sin apagar la
+     anterior, cambiar de sección dejaría dos piezas esculpidas encima de la
+     misma plataforma. */
+  const conMalla = mallas.has(id);
+  mallas.forEach((m, k) => { m.grupo.visible = (k === id); });
   if (sombraSuelo) {
     sombraSuelo.visible = conMalla;
     sombraSuelo.position.y = F.bb.y0 - 0.004;
@@ -1039,7 +1096,7 @@ function bucle(ahora) {
      escala y se desplaza al encuadrar, y con la constante en local la valquiria
      aparecería cortada por la cintura en móvil. Se convierte una vez por cuadro
      y sale gratis. */
-  if (modelo && modelo.grupo.visible) {
+  if (mallaViva()) {
     const alto = grupo.scale.y * (build <= 0.0005 ? -9 : escalon) + grupo.position.y;
     corte.constant = alto + 0.004;
     /* La luz clave persigue a la pieza para que la sombra caiga siempre bajo
@@ -1114,6 +1171,11 @@ const escena = {
     if (!FIGURAS[id]) return;
     topeNuevo = topeNuevo == null ? 1 : topeNuevo;
     if (ladoNuevo != null) { ladoDeseado = ladoNuevo; encuadrar(); }
+    /* Aquí es donde una figura con malla pide su .glb: la primera vez que se
+       navega a su sección, no al cargar el sitio. Devuelve enseguida si ya se
+       intentó, y `pedir` sabe esperar a que la descarga cierre antes de
+       muestrear la SDF. */
+    pedirMalla(id);
     if (!cache.has(id)) pedir(id);
 
     if (figActual === id) {
@@ -1166,7 +1228,7 @@ const escena = {
        mide la DESCARGA, no el muestreo: es lo que el visitante está esperando
        de verdad. Y si la descarga falla, se cae al muestreo de siempre sin que
        se note más que un preloader un poco más largo. */
-    if (id === 'valquiria') {
+    if (id === FIGURA_HUB) {
       let vivo = true;
       const tic = setInterval(() => { if (vivo) alAvanzar(avanceModelo * 0.98); }, 80);
       modeloListo.then(ok => {
@@ -1176,10 +1238,30 @@ const escena = {
       });
       return;
     }
+    /* Si el visitante entró directo a una sección cuya pieza es esculpida, se
+       espera a esa descarga igual que con la del hub: muestrear su SDF para
+       tirarla dos segundos después sería trabajo perdido y un parpadeo. */
+    if (FIGURAS[id] && FIGURAS[id].glb && USAR_MODELO) {
+      pedirMalla(id).then(ok => {
+        if (ok) { alAvanzar(1); alTerminar(); }
+        else muestrear(id, alAvanzar, alTerminar);
+      });
+      return;
+    }
     muestrear(id, alAvanzar, alTerminar);
   },
 
-  precargar(ids) { ids.forEach(id => { if (!cache.has(id) && cola.indexOf(id) < 0) cola.push(id); }); },
+  /* Muestrea en segundo plano las SDF de las figuras que el visitante todavía
+     no ha pedido. Las que declaran malla se saltan: su .glb se descarga al
+     navegar a su sección, y muestrear una SDF que va a ser reemplazada es
+     trabajo tirado. Si esa descarga falla, `mostrar` encola la SDF entonces. */
+  precargar(ids) {
+    ids.forEach(id => {
+      const F = FIGURAS[id];
+      if (USAR_MODELO && F && F.glb) return;
+      if (!cache.has(id) && cola.indexOf(id) < 0) cola.push(id);
+    });
+  },
   listaCache: () => [...cache.keys()],
   capasDe(id) {
     const F = FIGURAS[id] || FIGURAS.valquiria;

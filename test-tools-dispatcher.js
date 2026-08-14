@@ -51,14 +51,27 @@ test("Cotización válida con upsell", () => {
   if (!r.upsell) throw new Error("Debería haber upsell");
 });
 
-test("Cotización con SKU mal escrito por Gemini", () => {
-  // Simulamos que Gemini se equivocó: "valend" en minúsculas
+/* Esta prueba afirmaba lo contrario hasta que el resolvedor entró en juego:
+   antes, un SKU con las mayúsculas cambiadas era un error que el usuario
+   acababa pagando con una pregunta de más. Ahora se resuelve, y lo que hay
+   que garantizar es que se resuelva al producto CORRECTO —no que falle—. */
+test("SKU mal escrito por Gemini se resuelve al producto correcto", () => {
   const r = ejecutarHerramienta({
     name: "calcular_cotizacion",
     args: { items: [{ sku: "valend", cantidad: 1 }] }
   });
-  if (r.ok) throw new Error("Esperaba ok=false por SKU inválido");
-  if (!r.error.includes("valend")) throw new Error("El error debe mencionar el SKU malo");
+  if (!r.ok) throw new Error(`Esperaba que se resolviera: ${r.error}`);
+  if (r.carrito_final.length !== 1 || r.carrito_final[0].sku !== "ValEnd") {
+    throw new Error(`Esperaba ValEnd, hubo ${JSON.stringify(r.carrito_final)}`);
+  }
+});
+
+test("Un nombre que no existe en el catálogo sí falla", () => {
+  const r = ejecutarHerramienta({
+    name: "calcular_cotizacion",
+    args: { items: [{ sku: "zzzqwerty", cantidad: 1 }] }
+  });
+  if (r.ok) throw new Error("Esperaba ok=false: no hay producto que se le parezca");
 });
 
 test("Cotización con cantidad 'tres' (string) → rechazada", () => {

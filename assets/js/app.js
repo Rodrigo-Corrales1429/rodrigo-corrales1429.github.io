@@ -9,7 +9,7 @@
    ═══════════════════════════════════════════════════════════════════════════ */
 /* La escena se importa por su efecto: al evaluarse deja lista `window.VQ`,
    que es la superficie que usa todo lo de abajo. */
-import './escena.js?v=60';
+import './escena.js?v=68';
 
 /* Aviso al vigilante del index: los módulos llegaron y se están evaluando.
    A partir de aquí lo que tarde es trabajo, no una carga rota, así que puede
@@ -346,7 +346,10 @@ const RUTAS = {
   '/dental':     { vista:'v-dental',     fig:'diente',    tope:1,    lado:-1, titulo:'Valquiria Dental — Modelos anatómicos con nervio sintético' },
   '/ia':         { vista:'v-ia',         fig:'cyborg',    tope:.94,  lado:1,  titulo:'Valquiria IA — Automatización y consultoría en inteligencia artificial' },
   '/3d':         { vista:'v-3d',         fig:'engrane',   tope:.62,  lado:-1, titulo:'Valquiria 3D — Prototipado y manufactura aditiva' },
-  '/pack':       { vista:'v-pack',       fig:'empaque',   tope:.55,  lado:1,  titulo:'Valquiria Pack — Empaque termoformado a la medida' },
+  /* El tope subió de .55 a .88: la charola nueva es baja y con .55 el corte
+     caía antes de la cavidad y el sello — se veía una losa, no un empaque.
+     Con .88 todo el detalle imprime y la esquina alta queda en obra. */
+  '/pack':       { vista:'v-pack',       fig:'empaque',   tope:.88,  lado:1,  titulo:'Valquiria Pack — Empaque termoformado a la medida' },
   '/lux':        { vista:'v-lux',        fig:'lampara',   tope:.68,  lado:-1, titulo:'Valquiria Lux — Iluminación impresa' },
   '/catalogo':   { vista:'v-catalogo',   fig:null, titulo:'Catálogo — Valquiria Dental' },
   /* Mercado Pago devuelve al cliente aquí después de pagar. */
@@ -674,14 +677,28 @@ const Asesor = {
     this.pensando(true);
 
     let data = null;
+    let avisoServidor = '';
     if (!this.modoLocal) {
       try { data = await this.pedirAlServidor(); }
       catch (e) {
-        console.warn('[asesor] backend no disponible, paso a modo local:', e.message);
-        this.modoLocal = true;
+        if (e.pasajero) {
+          /* Cuota agotada o proveedor saturado: este mensaje lo contesta el
+             asesor local, pero el siguiente vuelve a intentar el backend. Un
+             pico de tráfico de dos minutos no debe dejar al visitante con el
+             asesor de repuesto durante toda su visita. */
+          console.warn('[asesor] fallo pasajero (' + (e.motivo || '?') +
+                       '), contesto en local y reintento en el siguiente mensaje.');
+          avisoServidor = e.mensajeUsuario || '';
+        } else {
+          console.warn('[asesor] backend no disponible, paso a modo local:', e.message);
+          this.modoLocal = true;
+        }
       }
     }
     if (!data) data = this.responderLocal(texto);
+    /* Si el servidor explicó por qué no pudo, se dice UNA vez y arriba del
+       todo: el visitante merece saber que está hablando con el suplente. */
+    if (avisoServidor) data = { ...data, reply: avisoServidor + '\n\n' + data.reply };
 
     this.pensando(false);
     this.ocupado = false;
@@ -721,7 +738,15 @@ const Asesor = {
         signal: ctrl.signal
       });
       const j = await r.json();
-      if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status));
+      if (!r.ok) {
+        const e = new Error(j.error || ('HTTP ' + r.status));
+        /* El servidor dice POR QUÉ falló. Un 429 o una saturación son
+           pasajeros y no deben condenar la sesión entera al modo local. */
+        e.motivo = j.motivo || '';
+        e.pasajero = r.status === 429 || r.status === 503 || r.status === 504;
+        e.mensajeUsuario = j.error || '';
+        throw e;
+      }
       if (!j.reply) throw new Error('respuesta vacía');
       return j;
     } finally { clearTimeout(reloj); }
@@ -775,6 +800,71 @@ const Asesor = {
        catálogo dental antes que de software, y meterlas aquí manda a un
        cliente que pide modelos de dientes a la división equivocada. */
     const quiereIA = /\b(automatiz|inteligencia artificial|\bia\b|agente|chatbot|asistente virtual|secretaria|consultor[ií]a|software|desarrollo a la medida|pagina web|página web|sitio web|visi[oó]n artificial|visi[oó]n por computadora|machine learning|aprendizaje autom)/.test(q);
+
+    /* Impresión 3D: en modo local se dan las tarifas de referencia — son las
+       mismas del estimador del servidor, así el mensaje no cambia según qué
+       ruta respondió. Pack va antes: "molde" y "empaque" no deben caer aquí. */
+    const quierePack = /\b(empaque|empaques|termoformad|blister|clamshell|charola|bandeja|molde para|empacar)/.test(q);
+    const quiere3D = /\b(imprimir|impresion 3d|imprimen|filamento|petg|resina|stl|step|prototipos?|prototipar|maquetas?|gramos?|pieza 3d)\b/.test(q) || /\b(pla|abs|asa|tpu)\b/.test(q);
+
+    if (quierePack && !encontrados.length) {
+      return { reply:
+        'Eso es de **Valquiria Pack**: empaque termoformado con molde hecho a la ' +
+        'medida de tu producto. Trabajamos base de **poliestireno blanco** y tapa o ' +
+        'blíster de **PET o vinil transparente**, con descuento por mayoreo en ' +
+        'tirajes grandes.\n\n' +
+        'Cada molde es distinto, así que el precio se conversa con un especialista. ' +
+        'Cuéntame **qué producto va dentro, sus dimensiones y el tiraje** que ' +
+        'estimas, y te ponemos en contacto.',
+        acciones:[
+          { tipo:'whatsapp', rotulo:'Cotizar por WhatsApp',
+            texto:'Hola Valquiria, me interesa un empaque termoformado a la medida. Mi producto es:' },
+          { tipo:'ir', ruta:'/pack', texto:'Ver Valquiria Pack' }
+        ] };
+    }
+
+    if (quiere3D && !encontrados.length) {
+      /* Si el mensaje ya trae gramos, la estimación se da aquí mismo. Es la
+         misma tabla del estimador del servidor (impresion3d.js): centavos
+         enteros, por gramo, mínimo $150. Un número real vende más que una
+         promesa de número. */
+      const peso = q.match(/\b(\d{1,5})\s*(?:g|gr|grs|gramos?)\b/);
+      if (peso) {
+        const TARIFA = { pla:250, petg:300, abs:300, asa:300, tpu:350, resina:500 };
+        let mat = 'pla';
+        for (const k in TARIFA) if (new RegExp('\\b' + k + '\\b').test(q)) { mat = k; break; }
+        const gramos = parseInt(peso[1], 10);
+        const bruto = gramos * TARIFA[mat];
+        const total = Math.max(15000, bruto);
+        return { reply:
+          'Estimación preliminar: **' + gramos + ' g en ' + mat.toUpperCase() +
+          '** ≈ **' + mxn(total) + '**' +
+          (total > bruto ? ' (aplica el pedido mínimo de $150.00)' : '') +
+          '. Si el trabajo tarda pocas horas puede salir aún más barato: también ' +
+          'cobramos a **$80.00 por hora de impresión**, lo que más te convenga.\n\n' +
+          'La cifra en firme la confirma un especialista con tu archivo STL o ' +
+          'STEP en la mano — mándalo por WhatsApp y te responde una persona.',
+          acciones:[
+            { tipo:'whatsapp', rotulo:'Mandar mi archivo por WhatsApp',
+              texto:'Hola Valquiria, quiero imprimir una pieza de ~' + gramos + ' g en ' + mat.toUpperCase() + '. Les mando mi archivo:' },
+            { tipo:'ir', ruta:'/3d', texto:'Ver Valquiria 3D' }
+          ] };
+      }
+      return { reply:
+        'Eso lo ve **Valquiria 3D**. Las tarifas de referencia: **$2.50 MXN por ' +
+        'gramo** en PLA (PETG y ABS $3.00, TPU $3.50, resina $5.00) o **$80 por ' +
+        'hora de impresión** — se aplica lo que más te convenga. Lijado +20%, ' +
+        'pintura +50%, pedido mínimo $150.\n\n' +
+        'Es una estimación preliminar: la cifra en firme la confirma un ' +
+        'especialista con tu archivo STL o STEP en la mano. Si me dices el **peso ' +
+        'aproximado en gramos y el material**, te doy el número; o manda tu ' +
+        'archivo directo por WhatsApp.',
+        acciones:[
+          { tipo:'whatsapp', rotulo:'Mandar mi archivo por WhatsApp',
+            texto:'Hola Valquiria, quiero cotizar una impresión 3D. Les mando mi archivo:' },
+          { tipo:'ir', ruta:'/3d', texto:'Ver Valquiria 3D' }
+        ] };
+    }
 
     if (quiereIA && !encontrados.length) {
       return { reply:

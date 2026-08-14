@@ -696,84 +696,153 @@ function engrane(x, y, z) {
 /* ═══════════════════════════════════════════════════════════════════════════
    5 · BLÍSTER TERMOFORMADO — Valquiria Pack
    ───────────────────────────────────────────────────────────────────────────
-   Lámina de pared delgada: brida perimetral, domo con dos cavidades con forma
-   de diente, nervaduras de rigidez y lengüeta de apertura. Se muestra girado
-   para que se lea el volumen y no la silueta plana.
+   Charola termoformada para un producto que cualquiera reconoce: un celular.
+   Brida perimetral, meseta elevada con la cavidad del teléfono hundida (con
+   su isla de cámara), lengüeta de apertura y —la firma— un medallón con la V
+   de Valquiria en relieve, como el sello que un molde propio deja en la
+   lámina. Se muestra en diagonal para que se lea el volumen.
+
+   Todo son cajas y filetes generosos a propósito: el termoformado ES radios
+   suaves sobre un molde, así que el medio (SDF) y el objeto coinciden. Los
+   rasgos nunca bajan de ~0.06 de espesor, que es lo que la rejilla de 0.02
+   resuelve sin deshacerse en tiras.
    ═══════════════════════════════════════════════════════════════════════════ */
+/* Inclinación de la charola. Es el número que decide si la pieza se lee:
+   una bandeja apoyada plana se ve de canto —una losa— y todo el trabajo de
+   las cavidades se pierde. Inclinada ~40° la cámara mira DENTRO, que es
+   como se fotografía un empaque. */
+/* El signo del cabeceo importa y no es evidente: se rota el PUNTO DE
+   CONSULTA, así que la pieza gira al revés. En positivo la charola enseña
+   el fondo —una losa lisa— y todo el detalle queda escondido. */
+const PACK_GIRO = 0.34;     // yaw: ninguna cara queda frontal
+const PACK_ALZA = -0.60;    // pitch: inclina la boca hacia la cámara
+
 function empaque(px, py, pz) {
-  /* Guardado en diagonal: dos rotaciones para que ninguna cara quede frontal. */
-  const ca = Math.cos(0.58), sa = Math.sin(0.58);
+  /* La charola es un objeto BAJO (un teléfono es delgado) y el marco de la
+     escena espera piezas que vivan alrededor del centro: se alza completa
+     antes de rotar, o queda hundida en el tercio inferior de la pantalla. */
+  py -= 0.30;
+  const ca = Math.cos(PACK_GIRO), sa = Math.sin(PACK_GIRO);
   let x = px * ca + pz * sa, z = -px * sa + pz * ca, y = py;
-  const cb = Math.cos(-0.26), sb = Math.sin(-0.26);
+  const cb = Math.cos(PACK_ALZA), sb = Math.sin(PACK_ALZA);
   const y2 = y * cb - z * sb; z = y * sb + z * cb; y = y2;
 
-  /* — Brida y domo, fusionados y luego vaciados: la pared sale de restar el
-       sólido a sí mismo desplazado (|d| - grosor). — */
-  /* Bandeja SÓLIDA con los pozos restados, no una lámina de pared delgada.
-     Una lámina pone sus dos caras a menos de un paso de muestreo y la nube
-     sale hecha un moiré; restar cavidades a un sólido se lee igual de bien
-     como blíster y la superficie queda limpia. */
-  const brida = sdBox(x, y, z, 0, -0.612, 0, 0.470, 0.019, 0.330, 0.026);
-  const domo = sdBox(x, y, z, 0, -0.250, 0, 0.322, 0.362, 0.216, 0.118);
-  let cuerpo = smin(brida, domo, 0.055);
+  /* — Brida perimetral: el marco plano que sale de la termoformadora. — */
+  const brida = sdBox(x, y, z, 0, -0.520, 0, 0.505, 0.020, 0.360, 0.030);
+
+  /* — Meseta: el volumen formado que sube de la brida. Radios anchos: una
+       pared vertical perfecta no existe en termoformado (ángulo de desmoldeo)
+       y el filete gordo lo cuenta. — */
+  const meseta = sdBox(x, y, z, -0.010, -0.415, 0, 0.430, 0.085, 0.290, 0.075);
+  let cuerpo = smin(brida, meseta, 0.060);
 
   /* — Lengüeta de apertura en una esquina de la brida. — */
-  cuerpo = smin(cuerpo, sdBox(x, y, z, 0.518, -0.612, 0.228, 0.068, 0.016, 0.062, 0.022), 0.030);
+  cuerpo = smin(cuerpo, sdBox(x, y, z, 0.548, -0.520, 0.255, 0.072, 0.017, 0.066, 0.024), 0.032);
 
-  /* — Dos pozos con perfil de diente: corona ancha, raíz cónica. Rebasan por
-       arriba el borde del domo, así que quedan abiertos. Es un blíster de
-       Valquiria Dental, y se nota. — */
-  let nicho = LEJOS;
-  for (let i = 0; i < 2; i++) {
-    const cx = i === 0 ? -0.152 : 0.152;
-    let n = sdEll(x, y, z, cx, -0.040, 0, 0.118, 0.180, 0.114);
-    n = smin(n, sdCone(x, y, z, cx, -0.110, 0, cx + (i === 0 ? -0.024 : 0.024), -0.505, 0, 0.090, 0.034), 0.085);
-    nicho = Math.min(nicho, n);
-  }
-  return smax(cuerpo, -nicho, 0.030);
+  /* — Cavidad del celular: rectángulo redondeado 2.4:1, hundido y profundo.
+       Es EL rasgo que hace legible la pieza. La caja de resta rebasa la
+       meseta por arriba para que la cavidad quede abierta. — */
+  const cavidad = sdBox(x, y, z, -0.105, -0.320, -0.110, 0.310, 0.130, 0.112, 0.036);
+  cuerpo = smax(cuerpo, -cavidad, 0.030);
+
+  /* — Los dos compartimentos de accesorios: el canal largo del cable y el
+       pozo cuadrado del cargador. Un empaque de celular tiene ambos, y
+       tenerlos es lo que separa "una charola" de "la charola de un
+       teléfono". — */
+  const canal = sdBox(x, y, z, -0.230, -0.356, 0.140, 0.185, 0.098, 0.070, 0.030);
+  cuerpo = smax(cuerpo, -canal, 0.024);
+  const pozo = sdBox(x, y, z, 0.075, -0.356, 0.140, 0.090, 0.098, 0.078, 0.030);
+  cuerpo = smax(cuerpo, -pozo, 0.024);
+
+  /* — Isla de cámara: el escalón dentro de la cavidad que sostiene el módulo
+       de cámaras. Se suma DESPUÉS de restar, para que emerja del fondo. — */
+  cuerpo = smin(cuerpo, sdBox(x, y, z, -0.330, -0.398, -0.110, 0.058, 0.042, 0.072, 0.022), 0.026);
+
+  /* — Sello Valquiria: medallón en relieve sobre la meseta, con la V encima.
+       Trazos gruesos a propósito: a esta rejilla un trazo fino sale roto, y
+       un sello troquelado real también es bold. — */
+  const sx = 0.305, sy = -0.330, sz2 = -0.020;
+  const medallon = sdEll(x, y, z, sx, sy, sz2, 0.150, 0.040, 0.190);
+  cuerpo = smin(cuerpo, medallon, 0.030);
+  /* La V va tumbada sobre el medallón —con la charola alzada 34° la cara de
+     arriba mira a la cámara, así que un relieve plano sí se lee— y con el
+     VÉRTICE HACIA EL FRENTE (+z). Apuntando de lado se leía como un ">". */
+  const vTop = sy + 0.060;
+  let v = sdCone(x, y, z, sx - 0.108, vTop, sz2 - 0.118, sx, vTop, sz2 + 0.132, 0.046, 0.036);
+  v = Math.min(v, sdCone(x, y, z, sx + 0.108, vTop, sz2 - 0.118, sx, vTop, sz2 + 0.132, 0.046, 0.036));
+  cuerpo = smin(cuerpo, v, 0.016);
+
+  return cuerpo;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   6 · LÁMPARA — Valquiria Lux
+   6 · LÁMPARA VOXEL — Valquiria Lux
    ───────────────────────────────────────────────────────────────────────────
-   Pantalla de perfil acampanado —revolución de una curva, no un cono recto—
-   con las capas de impresión convertidas en el material: los anillos que se
-   ven son las mismas capas que la máquina depositó.
+   La misma campana de siempre, reconstruida en 8-bit: la superficie de
+   revolución se cuantiza a una rejilla de cubos y cada voxel queda separado
+   de sus vecinos por un surco — arte pixel hecho volumen. El foco y el cordón
+   se quedan LISOS a propósito: el contraste entre la esfera tersa y la
+   pantalla pixelada es lo que cuenta la historia ("esto solo existe porque se
+   imprime").
+
+   Cómo se voxeliza sin romper el muestreador: para cada punto se localiza el
+   centro de su celda y se devuelve max(caja de la celda, campana EN EL
+   CENTRO). En celda llena manda la caja (cubo perfecto); en celda vacía manda
+   la campana evaluada en el centro, que es positiva y crece con la distancia.
+   Como la campana es 1-Lipschitz, evaluarla en el centro en vez de en el
+   punto se desvía a lo sumo media diagonal de celda —VOX·√3/2 ≈ 0.087—, y
+   ese error queda por debajo del margen con que el muestreador descarta
+   bloques. Si subes VOX, revisa esa cuenta: pasado el margen, la pieza
+   empieza a salir con agujeros.
    ═══════════════════════════════════════════════════════════════════════════ */
+/* Los peldaños de la pantalla: [semiancho exterior, altura del centro].
+   Seis, no veinte. La lección que costó dos intentos: a la escala a la que
+   esta pieza se ve —la pantalla mide unos 160 px— la nube de puntos solo
+   comunica la SILUETA. Un enrejado de cubos finos se ve precioso en un
+   render y se deshace en una mancha cónica en la nube. Para que la pieza se
+   lea 8-bit, el escalón tiene que estar en el contorno y medir del orden de
+   diez píxeles: de ahí seis peldaños con saltos de ~0.07. */
+const LUX_PELDANOS = [
+  [0.520, -0.395],
+  [0.418, -0.240],
+  [0.318, -0.085],
+  [0.216,  0.070]
+];
+const LUX_ALTO = 0.079;    // semialtura de cada peldaño (se tocan entre sí)
+const LUX_PARED = 0.062;   // espesor de la pared: es una pantalla, no un macizo
+
 function lampara(x, y, z) {
-  const r = Math.hypot(x, z);
+  /* — Canopy y cordón: cuadrados también. El lenguaje voxel llega hasta el
+       techo; un cilindro aquí delataría que la pantalla es un truco. — */
+  let d = sdBox(x, y, z, 0, 0.735, 0, 0.090, 0.026, 0.090, 0.010);
+  d = Math.min(d, sdBox(x, y, z, 0, 0.679, 0, 0.056, 0.030, 0.056, 0.008));
+  d = Math.min(d, sdBox(x, y, z, 0, 0.410, 0, 0.026, 0.270, 0.026, 0.004));
 
-  /* — Canopy y cordón — */
-  let d = sdCone(x, y, z, 0, 1.010, 0, 0, 1.070, 0, 0.092, 0.088);
-  d = Math.min(d, sdCone(x, y, z, 0, 0.430, 0, 0, 1.010, 0, 0.020, 0.020));
-
-  /* — Pantalla: perfil r(y) acampanado. La distancia es aproximada pero el
-       gradiente apunta bien, que es lo que necesita la proyección. — */
-  if (y < 0.52 && y > -0.62) {
-    const t = Math.max(0, (0.460 - y) / 0.960);        // 0 arriba, 1 abajo
-    const perfil = 0.075 + 0.345 * Math.pow(t, 1.7);   // campana, no cono recto
-    let pantalla = Math.abs(r - perfil) - 0.017;
-    pantalla = Math.max(pantalla, y - 0.462);
-    pantalla = Math.max(pantalla, -0.500 - y);
-
-    /* Las capas, hechas material: un surco cada 0.048 en Y. Fino a propósito
-       — si el surco crece, la pantalla deja de ser una curva y se vuelve una
-       escalera. */
-    const ranura = Math.abs(((y + 10) % 0.048) - 0.024) - 0.0062;
-    pantalla = smax(pantalla, -ranura, 0.005);
-
-    d = Math.min(d, pantalla);
+  /* — Pantalla: cuatro tubos cuadrados que se estrechan al subir. Cuatro y
+       no seis, y MÁS ANCHA QUE ALTA (1.04 de boca por 0.62 de alto): con
+       peldaños pequeños y muchos, la pieza deja de leerse como lámpara y se
+       lee como zigurat. La proporción es lo que dice «pantalla».
+       Se unen con Math.min —NO con smin—: el filete redondearía justo la
+       arista viva que hace el efecto de pixel. — */
+  if (y < 0.20 && y > -0.50) {
+    for (let i = 0; i < LUX_PELDANOS.length; i++) {
+      const w = LUX_PELDANOS[i][0], cy = LUX_PELDANOS[i][1];
+      const fuera = sdBox(x, y, z, 0, cy, 0, w, LUX_ALTO, w, 0.014);
+      /* El hueco rebasa el peldaño en altura para que quede pasante: una
+         pantalla cerrada por arriba y por abajo es un cubo, no una lámpara. */
+      const hueco = sdBox(x, y, z, 0, cy, 0, w - LUX_PARED, LUX_ALTO + 0.08,
+                          w - LUX_PARED, 0.010);
+      d = Math.min(d, Math.max(fuera, -hueco));
+    }
   }
 
-  /* — Cuello: une el casquillo con la boca de la pantalla. — */
-  d = smin(d, sdCone(x, y, z, 0, 0.340, 0, 0, 0.468, 0, 0.056, 0.080), 0.03);
-
-  /* — Foco y casquillo roscado — */
-  d = Math.min(d, sdEll(x, y, z, 0, 0.020, 0, 0.132, 0.152, 0.132));
-  let casq = sdCone(x, y, z, 0, 0.160, 0, 0, 0.352, 0, 0.074, 0.054);
-  const rosca = Math.abs(((y + 10) % 0.034) - 0.017) - 0.010;
-  casq = smax(casq, -rosca, 0.005);
-  d = Math.min(d, casq);
+  /* — Portalámparas y foco, ASOMANDO POR DEBAJO de la boca. Es el detalle
+       que convierte una pantalla en una lámpara: sin bombilla visible, el
+       objeto es una pieza de cerámica colgada. El foco es además la única
+       curva de toda la pieza, y ese contraste con la escalera es lo que
+       cuenta la historia — esto solo existe porque se imprime. — */
+  d = Math.min(d, sdBox(x, y, z, 0, -0.520, 0, 0.082, 0.075, 0.082, 0.010));
+  d = Math.min(d, sdEll(x, y, z, 0, -0.735, 0, 0.152, 0.170, 0.152));
 
   return d;
 }
@@ -798,6 +867,10 @@ const FIGURAS = {
   valquiria: {
     fn: valquiria, mat: matValquiria, modo: 0, dist: 4.8, mm: 180,
     nombre: 'Valquiria',
+    /* La malla esculpida. `encaje` y `alza` la ajustan al marco de la SDF:
+       esta figura procedural reserva el tercio superior para la lanza, que la
+       malla no trae, y sin corregirlo saldría enorme. Ver MODELO.md. */
+    glb: 'assets/valquiria.glb', encaje: 0.74, alza: 0.19,
     /* Es la única pieza que se cura en resina al terminar: deja de ser nube y
        pasa a superficie sombreada. Por eso pide su propia rejilla —los puntos
        tienen que solaparse para que la piel se lea continua— y por eso es la
@@ -811,12 +884,46 @@ const FIGURAS = {
     paso: 0.0064, pasoMovil: 0.0115, solida: true,
     bb: { x0: -.37, x1: .37, y0: -1.05, y1: 1.17, z0: -.30, z1: .19 }
   },
+  /* ── Las dos que ESPERAN malla ──────────────────────────────────────────
+     Estas dos figuras están declaradas con `glb` y `solida` aunque el archivo
+     puede no existir todavía. No es un descuido: el día que el .glb aparezca
+     en assets/ la pieza pasa a ser esculpida sin tocar una línea de código, y
+     mientras tanto la SDF de abajo sigue siendo lo que se ve. El costo de la
+     espera es un 404 la primera vez que se visita la sección, y nada más.
+
+     Por qué estas dos y no las otras: son las únicas cuyo tema es ANATOMÍA y
+     PERSONAJE. Una función de distancia construida a base de elipsoides
+     fundidos da muy bien un engrane, una charola o una lámpara escalonada
+     —geometría de taller— y no da un molar reconocible ni una guerrera
+     cibernética. Ahí la SDF llega a "caja con dos palillos", y eso no es
+     material de portada. */
   cyborg: {
     fn: cyborg, modo: 4, dist: 5.0, mm: 240, nombre: 'Valquiria IA',
+    glb: 'assets/cyborg.glb',
+    /* `encaje` y `alza` aquí corrigen lo contrario que en la valquiria: aquel
+       marco sobraba y este falta. La SDF es un BUSTO sobre una peana, con dos
+       anillos de órbita que ocupan el ancho de la caja pero no su alto; la
+       malla es la figura COMPLETA, de pie. Encajada tal cual en un marco de
+       1.26 salía al 47 % de la pantalla contra el 65 % de la valquiria del
+       hub, y son el mismo personaje: leerlo más pequeño en la sección que
+       vende IA lo hacía parecer el hermano menor.
+       1.357 lo lleva a 1.71 de alto, que a `dist` 5.0 subtiende lo mismo que
+       los 1.64 de la valquiria a 4.8. El `alza` negativo baja el apoyo a
+       y=-0.895 para que las dos pisen la plataforma a la misma altura. */
+    encaje: 1.357, alza: -0.425,
     bb: { x0: -.49, x1: .49, y0: -.47, y1: .79, z0: -.52, z1: .45 }
   },
   diente: {
     fn: diente, modo: 3, dist: 5.0, mm: 20.7, nombre: 'Molar',
+    glb: 'assets/diente.glb',
+    /* `encajar()` normaliza por ALTURA y centra en X/Z; el ancho sale de la
+       proporción de la malla y no se comprueba contra nada. Este molar es más
+       rechoncho que la SDF —0.69 de ancho por alto contra 0.62— así que
+       encajado a la altura completa medía 1.38 de ancho en una caja de 1.24 y
+       se metía debajo del titular: el texto quedaba sobre marfil brillante y
+       dejaba de leerse. 0.88 lo deja en 1.21 de ancho, dentro de la caja, y el
+       `alza` lo recentra en el hueco que libera. */
+    encaje: 0.88, alza: 0.12,
     bb: { x0: -.62, x1: .62, y0: -1.10, y1: .90, z0: -.56, z1: .56 }
   },
   engrane: {
@@ -824,12 +931,12 @@ const FIGURAS = {
     bb: { x0: -.76, x1: .76, y0: -.76, y1: .76, z0: -.16, z1: .16 }
   },
   empaque: {
-    fn: empaque, modo: 3, dist: 4.5, mm: 52, nombre: 'Blíster',
-    bb: { x0: -.66, x1: .66, y0: -.74, y1: .34, z0: -.60, z1: .60 }
+    fn: empaque, modo: 3, dist: 3.6, mm: 52, nombre: 'Charola',
+    bb: { x0: -.57, x1: .75, y0: -.43, y1: .31, z0: -.81, z1: .31 }
   },
   lampara: {
-    fn: lampara, modo: 1, dist: 5.1, mm: 210, nombre: 'Lámpara',
-    bb: { x0: -.52, x1: .52, y0: -.60, y1: 1.09, z0: -.52, z1: .52 }
+    fn: lampara, modo: 1, dist: 4.7, mm: 210, nombre: 'Lámpara voxel',
+    bb: { x0: -.56, x1: .56, y0: -.93, y1: .80, z0: -.56, z1: .56 }
   }
 };
 

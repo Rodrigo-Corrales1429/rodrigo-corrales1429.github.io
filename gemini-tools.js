@@ -29,6 +29,8 @@ const {
 
 const { consultarConocimiento, normalizarClave } = require("./conocimiento.js");
 const { estimarImpresion3D } = require("./impresion3d.js");
+const { resolverSku } = require("./resolver-productos.js");
+const { getProductoPorSku } = require("./catalog.js");
 
 // ----------------------------------------------------------------------------
 // 1. Declaraciones (lo que Gemini ve)
@@ -158,37 +160,73 @@ const listarCatalogoDeclaration = {
 const calcularCotizacionDeclaration = {
   name: "calcular_cotizacion",
   description:
-    "Calcula la cotización exacta (subtotal, envío, total) para una lista " +
-    "de productos. SIEMPRE usa esta función para cualquier cálculo de precios; " +
-    "NUNCA hagas sumas tú mismo. La función aplica automáticamente la regla " +
-    "de envío gratis y detecta oportunidades de upsell. Si la función " +
-    "devuelve ok=false, explícale al usuario el motivo (SKU inválido, sin " +
-    "stock, cantidad inválida) y pídele que corrija.",
+    "Calcula la cotización exacta (subtotal, envío, total) Y deja el carrito " +
+    "del cliente en el estado que resulte. SIEMPRE usa esta función para " +
+    "cualquier cálculo de precios; NUNCA hagas sumas tú mismo.\n\n" +
+    "REGLA DE ORO: si el usuario menciona VARIOS productos en un mismo " +
+    "mensaje, extráelos TODOS en UNA SOLA llamada, con un elemento de 'items' " +
+    "por producto. Ejemplo: «2 endo, 1 pulpo, 3 realistas y 2 nissin» son " +
+    "CUATRO elementos en una sola llamada. Nunca partas la lista en varias " +
+    "llamadas y nunca omitas un producto que el usuario nombró.\n\n" +
+    "No necesitas saber el SKU: escribe en 'producto' lo que dijo el usuario " +
+    "('endo', 'pulpo', 'nissin', 'kit completo') y el servidor lo identifica, " +
+    "incluso con erratas. NO llames buscar_productos antes de cotizar solo " +
+    "para averiguar un SKU: es un viaje innecesario y es donde se pierden " +
+    "artículos.\n\n" +
+    "Usa 'accion' para editar el carrito sin rehacer la cuenta a mano. Si la " +
+    "función devuelve ok=false, explica el motivo al usuario y pide la " +
+    "corrección.",
   parametersJsonSchema: {
     type: "object",
     properties: {
       items: {
         type: "array",
         description:
-          "Lista de productos a cotizar. Cada elemento debe tener un SKU " +
-          "exacto del catálogo y una cantidad entera positiva.",
+          "TODOS los productos que el usuario mencionó en su mensaje, uno por " +
+          "elemento. Con accion='vaciar' se omite o va vacío.",
         items: {
           type: "object",
           properties: {
+            producto: {
+              type: "string",
+              description:
+                "Cómo lo nombró el usuario, tal cual: 'endo', 'pulpo', " +
+                "'realistas', 'nissin', 'kit completo', 'pediatría'. Se " +
+                "toleran erratas ('nisiin' se entiende como 'nissin'). Esta " +
+                "es la forma preferida."
+            },
             sku: {
               type: "string",
               description:
-                "SKU exacto del catálogo (case-sensitive). Ejemplos válidos: " +
-                "'ValPulpo', 'ValEnd', 'DientesRealistas', 'Endotnissin'. " +
-                "Si no estás seguro, llama primero a listar_catalogo o buscar_productos."
+                "SKU exacto, si ya lo conoces con certeza: 'ValPulpo', " +
+                "'ValEnd', 'DientesRealistas', 'Endotnissin'. Alternativa a " +
+                "'producto'; basta con uno de los dos."
             },
             cantidad: {
               type: "integer",
-              description: "Cantidad entera positiva, mayor o igual a 1."
+              description:
+                "Cantidad entera positiva. Con accion='quitar' puede " +
+                "omitirse para retirar la línea completa."
             }
           },
-          required: ["sku", "cantidad"]
+          required: ["cantidad"]
         }
+      },
+      accion: {
+        type: "string",
+        description:
+          "Qué hacer con el carrito actual del cliente (lo ves en el contexto " +
+          "de la sesión). Uno de:\n" +
+          "· 'reemplazar' (POR DEFECTO) — el carrito queda EXACTAMENTE con " +
+          "los items de esta llamada. Úsala para un pedido nuevo y para " +
+          "«vacía el carrito y ponme esto».\n" +
+          "· 'agregar' — suma estos items a lo que ya había. Para «agrégame " +
+          "2 nissin más».\n" +
+          "· 'quitar' — resta estos items de lo que había. Para «quita los de " +
+          "endodoncia». Sin 'cantidad', retira la línea entera.\n" +
+          "· 'fijar' — deja estos productos en la cantidad indicada y NO toca " +
+          "el resto del carrito. Para «de los endo ponme 5».\n" +
+          "· 'vaciar' — deja el carrito vacío. No requiere items."
       }
     },
     required: ["items"]
@@ -262,6 +300,208 @@ const TOOLS = [
 ];
 
 // ----------------------------------------------------------------------------
+// 1-bis. COTIZACIÓN CON ESTADO DE CARRITO
+// ----------------------------------------------------------------------------
+//  El modelo declara una INTENCIÓN («quita los de endodoncia») y aquí se
+//  calcula el estado final. Antes le tocaba a él hacer esa aritmética de
+//  conjuntos mientras además recordaba el carrito, y es donde fallaba: sumaba
+//  en vez de reemplazar, o se dejaba una línea al reescribir el pedido.
+//
+//  El carrito de verdad no llega del modelo sino de `ctx`, que server.js llena
+//  con el carrito del cliente ya saneado contra el catálogo. Si el modelo se
+//  equivoca de estado, la cuenta sigue saliendo bien.
+// ----------------------------------------------------------------------------
+
+const ACCIONES = ["reemplazar", "agregar", "quitar", "fijar", "vaciar"];
+
+/** Convierte [{sku,cantidad}] en Map(sku → cantidad). */
+function aMapa(items) {
+  const m = new Map();
+  for (const it of items || []) {
+    if (!it || typeof it.sku !== "string") continue;
+    const n = Number(it.cantidad);
+    if (!Number.isInteger(n) || n <= 0) continue;
+    m.set(it.sku, (m.get(it.sku) || 0) + n);
+  }
+  return m;
+}
+
+const aLista = (mapa) =>
+  [...mapa.entries()].map(([sku, cantidad]) => ({ sku, cantidad }));
+
+/**
+ * Resuelve los items que mandó el modelo a SKUs reales.
+ * Devuelve { resueltos, fallos, dudosos }.
+ */
+function resolverItems(items) {
+  const resueltos = [];
+  const fallos = [];
+  const dudosos = [];
+
+  for (const it of items || []) {
+    if (!it || typeof it !== "object") continue;
+    const texto =
+      (typeof it.producto === "string" && it.producto.trim()) ||
+      (typeof it.sku === "string" && it.sku.trim()) || "";
+    if (!texto) {
+      fallos.push({ texto: "(sin nombre)", motivo: "El item no trae 'producto' ni 'sku'." });
+      continue;
+    }
+
+    const r = resolverSku(texto);
+    if (!r.ok) {
+      fallos.push({ texto, motivo: r.error });
+      continue;
+    }
+    if (r.confianza === "baja") {
+      dudosos.push({ texto, elegido: r.sku, alternativas: r.alternativas || [] });
+    }
+
+    /* La cantidad puede faltar a propósito en 'quitar' (= la línea entera).
+       Se marca con null y cada acción decide qué significa. */
+    const n = it.cantidad == null ? null : Number(it.cantidad);
+    resueltos.push({
+      sku: r.sku,
+      nombre: r.nombre,
+      cantidad: n == null ? null : n,
+      texto_original: texto,
+      confianza: r.confianza
+    });
+  }
+  return { resueltos, fallos, dudosos };
+}
+
+/**
+ * Cotiza aplicando una acción sobre el carrito actual.
+ *
+ * @param {object} args              lo que mandó el modelo
+ * @param {Array}  carritoActual     [{sku,cantidad}] ya saneado por server.js
+ */
+function cotizarConCarrito(args, carritoActual) {
+  const accion = ACCIONES.includes(String(args?.accion || "").toLowerCase())
+    ? String(args.accion).toLowerCase()
+    : "reemplazar";
+
+  const carrito = aMapa(carritoActual);
+
+  /* — Vaciar no necesita items ni motor de precios — */
+  if (accion === "vaciar") {
+    return {
+      ok: true,
+      accion,
+      carrito_vacio: true,
+      carrito_final: [],
+      lineas: [],
+      total: "$0.00 MXN",
+      mensaje_para_asesor:
+        "El carrito quedó vacío. Confírmaselo al usuario en una línea y " +
+        "pregúntale qué quiere poner en su lugar."
+    };
+  }
+
+  const { resueltos, fallos, dudosos } = resolverItems(args?.items);
+
+  /* Si NADA se pudo identificar, no se toca el carrito: se pregunta. */
+  if (!resueltos.length) {
+    return {
+      ok: false,
+      error:
+        fallos.length
+          ? `No pude identificar estos productos: ${fallos.map(f => `"${f.texto}"`).join(", ")}. ` +
+            `Pregúntale al usuario a cuál se refiere, o llama listar_catalogo ` +
+            `y ofrécele las opciones.`
+          : "No recibí ningún producto que cotizar.",
+      no_identificados: fallos
+    };
+  }
+
+  /* — Estado final según la acción — */
+  let final;
+  if (accion === "reemplazar") {
+    final = new Map();
+    for (const r of resueltos) {
+      const n = r.cantidad == null ? 1 : r.cantidad;
+      final.set(r.sku, (final.get(r.sku) || 0) + n);
+    }
+  } else if (accion === "agregar") {
+    final = new Map(carrito);
+    for (const r of resueltos) {
+      const n = r.cantidad == null ? 1 : r.cantidad;
+      final.set(r.sku, (final.get(r.sku) || 0) + n);
+    }
+  } else if (accion === "fijar") {
+    final = new Map(carrito);
+    for (const r of resueltos) {
+      const n = r.cantidad == null ? 1 : r.cantidad;
+      if (n <= 0) final.delete(r.sku);
+      else final.set(r.sku, n);
+    }
+  } else { // quitar
+    final = new Map(carrito);
+    for (const r of resueltos) {
+      if (r.cantidad == null) { final.delete(r.sku); continue; }
+      const queda = (final.get(r.sku) || 0) - r.cantidad;
+      if (queda > 0) final.set(r.sku, queda);
+      else final.delete(r.sku);
+    }
+  }
+
+  /* Quitar puede dejar el carrito en cero, y eso es un éxito, no un error:
+     el motor de precios rechaza las listas vacías, así que se responde aquí. */
+  if (final.size === 0) {
+    return {
+      ok: true,
+      accion,
+      carrito_vacio: true,
+      carrito_final: [],
+      lineas: [],
+      total: "$0.00 MXN",
+      mensaje_para_asesor:
+        "Al aplicar los cambios el carrito quedó vacío. Díselo al usuario y " +
+        "pregúntale si quiere agregar algo más."
+    };
+  }
+
+  const cot = calcularCotizacion(aLista(final));
+  if (!cot.ok) return { ...cot, accion };
+
+  /* Avisos para que el asesor confirme en su respuesta, sin inventarlos. */
+  const avisos = [];
+  if (fallos.length) {
+    avisos.push(
+      `No identifiqué ${fallos.map(f => `"${f.texto}"`).join(", ")}; ` +
+      `el resto sí se cotizó. Pregúntale al usuario por esos.`
+    );
+  }
+  for (const d of dudosos) {
+    avisos.push(
+      `"${d.texto}" es ambiguo: elegí ${d.elegido}, pero también podría ser ` +
+      `${d.alternativas.filter(a => a.sku !== d.elegido).map(a => a.sku).join(" o ")}. ` +
+      `Confírmalo con el usuario en una línea.`
+    );
+  }
+  /* Cuando el usuario escribió con erratas, el asesor debe reflejar el nombre
+     BUENO — así el cliente ve que se le entendió y de paso aprende el nombre. */
+  const corregidos = resueltos
+    .filter(r => r.confianza === "alta" &&
+                 r.texto_original.toLowerCase() !== r.sku.toLowerCase())
+    .map(r => `"${r.texto_original}" → ${r.nombre}`);
+  if (corregidos.length) {
+    avisos.push(
+      `Interpreté ${corregidos.join(", ")}. Usa el nombre correcto del ` +
+      `producto en tu respuesta.`
+    );
+  }
+
+  return {
+    ...cot,
+    accion,
+    carrito_final: aLista(final),
+    avisos: avisos.length ? avisos : undefined
+  };
+}
+
+// ----------------------------------------------------------------------------
 // 2. Registro de interés (leads)
 // ----------------------------------------------------------------------------
 //  Render tiene sistema de archivos efímero: escribir a disco NO sirve, se
@@ -308,17 +548,62 @@ function registrarInteres(args) {
   LEADS_EN_MEMORIA.push(lead);
   if (LEADS_EN_MEMORIA.length > MAX_LEADS_MEMORIA) LEADS_EN_MEMORIA.shift();
 
+  /* El log estructurado es la última red: aunque el webhook no exista y el
+     proceso se reinicie, el lead queda en los logs de Render y se puede
+     rescatar buscando "[LEAD]". */
   console.log(`[LEAD] ${JSON.stringify(lead)}`);
 
-  // Webhook opcional, sin await: si tarda o falla, el usuario no lo sufre.
   const webhook = process.env.LEADS_WEBHOOK_URL;
-  if (webhook) {
-    fetch(webhook, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(lead)
-    }).catch(e => console.error("[LEAD] Webhook falló:", e.message));
+  if (!webhook) {
+    /* Render reinicia el proceso al desplegar y cuando el plan gratuito
+       duerme el servicio. Sin webhook, este prospecto vive solo en memoria y
+       en el log: es exactamente así como se pierde un cliente. */
+    console.warn(
+      `[LEAD] ⚠️  ${lead.id} solo existe en memoria y en este log: falta ` +
+      `LEADS_WEBHOOK_URL. Al reiniciarse Render se pierde el registro ` +
+      `consultable. Ver SEGURIDAD.md.`
+    );
+    return respuestaLead(lead);
   }
+
+  /* Sin await: el usuario no espera por esto. Con reintentos, porque un lead
+     perdido por un hipo de red es dinero perdido. */
+  enviarConReintento(webhook, lead, 3);
+
+  return respuestaLead(lead);
+}
+
+/**
+ * POST con reintentos y espera creciente. Tres intentos cubren el fallo
+ * transitorio típico —el servicio que despierta, el DNS que tarda— sin
+ * convertirse en un martillo si el destino está caído de verdad.
+ */
+function enviarConReintento(url, cuerpo, intentos, n = 1) {
+  fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(cuerpo),
+    signal: AbortSignal.timeout(10_000)
+  })
+    .then(r => {
+      if (r.ok) return;
+      throw new Error(`HTTP ${r.status}`);
+    })
+    .catch(e => {
+      if (n >= intentos) {
+        console.error(
+          `[LEAD] ⚠️  Webhook falló ${intentos} veces (${e.message}). El lead ` +
+          `${cuerpo.id || ""} SOLO queda en este log. Revísalo a mano.`
+        );
+        return;
+      }
+      const espera = 2000 * n;
+      console.warn(`[LEAD] Webhook falló (${e.message}); reintento ${n + 1}/${intentos} en ${espera}ms`);
+      setTimeout(() => enviarConReintento(url, cuerpo, intentos, n + 1), espera).unref?.();
+    });
+}
+
+function respuestaLead(lead) {
 
   return {
     ok: true,
@@ -352,7 +637,7 @@ function obtenerLeads() {
  * `{ ok: false, error: "..." }` para que Gemini pueda explicárselo al
  * usuario en su siguiente turno.
  */
-function ejecutarHerramienta({ name, args }) {
+function ejecutarHerramienta({ name, args }, ctx = {}) {
   try {
     switch (name) {
       case "consultar_division":
@@ -365,7 +650,10 @@ function ejecutarHerramienta({ name, args }) {
         return listarCatalogo();
 
       case "calcular_cotizacion":
-        return calcularCotizacion(args?.items);
+        /* `ctx.carrito` es el carrito REAL del cliente, saneado en server.js.
+           No se toma del historial ni de lo que crea el modelo: si él pierde
+           el hilo del estado, la cuenta sigue saliendo bien. */
+        return cotizarConCarrito(args, ctx.carrito || []);
 
       case "estimar_impresion_3d":
         return estimarImpresion3D(args);
@@ -396,5 +684,8 @@ function ejecutarHerramienta({ name, args }) {
 module.exports = {
   TOOLS,
   ejecutarHerramienta,
-  obtenerLeads
+  obtenerLeads,
+  // Exportados para tests:
+  cotizarConCarrito,
+  resolverItems
 };

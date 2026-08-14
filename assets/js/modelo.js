@@ -251,7 +251,48 @@ export function cargarModelo({ url, bb, puntos, corte, alAvanzar }) {
   });
 }
 
-/* Mete la animación del personaje en los materiales PBR del .glb.
+/* ═══════════════════════════════════════════════════════════════════════════
+   LA CYBORG — modo 4
+   ───────────────────────────────────────────────────────────────────────────
+   El eco exacto de la rama `uModo > 3.5` del shader de puntos de escena.js.
+   Tiene que ser exacto, no parecido: durante el curado la nube y la malla se
+   ven a la vez, y si una levita medio ciclo por delante de la otra el efecto
+   —que son el mismo objeto en dos estados— se rompe delante del visitante.
+
+   La órbita gira mucho más rápido que el cuerpo, y no hace falta marcar qué
+   vértice es órbita: basta con que la velocidad dependa del radio.
+   ═══════════════════════════════════════════════════════════════════════════ */
+const GLSL_ORBITA = `
+float vqOrbita(vec3 base, inout vec3 p){
+  float k = max(uIdle, 0.0);
+  if(k < 0.001) return 0.0;
+  float t = uTime;
+  float rad = length(base.xz);
+  float orb = smoothstep(0.30, 0.38, rad);
+  float yawT = t*(0.10 + orb*0.62)*k;
+  float c = cos(yawT), s = sin(yawT);
+  p.xz = vec2(c*p.x + s*p.z, -s*p.x + c*p.z);
+  p.y += sin(t*0.85)*0.020*k*(1.0-orb*0.6);
+  float dn = distance(base, vec3(0.0, 0.232, 0.094));
+  float nuc = 1.0 - smoothstep(0.0, 0.085, dn);
+  p.z += nuc*0.014*sin(t*2.6)*k;
+  return yawT;
+}
+`;
+
+/* Qué animación le toca a cada modo. Devuelve null cuando la malla no lleva
+   ninguna, que es lo correcto para las piezas quietas (modo 3) y lo aceptable
+   para las dos que hoy no tienen malla: el grupo entero ya gira despacio en el
+   bucle, así que nada se queda muerto. Si algún día la lámpara o el engrane
+   pasan a ser esculpidos, aquí se añade su rama —copiada del shader de puntos,
+   no reinventada. */
+function animacionDe(modo) {
+  if (modo === 0) return { glsl: GLSL_IDLE, fn: 'vqIdle', clave: 'vq-idle' };
+  if (modo === 4) return { glsl: GLSL_ORBITA, fn: 'vqOrbita', clave: 'vq-orbita' };
+  return null;
+}
+
+/* Mete la animación de la pieza en los materiales PBR del .glb.
    `onBeforeCompile` es el único punto donde se puede tocar el shader de un
    MeshStandardMaterial sin renunciar a todo lo que trae —sombras, entorno,
    normal maps— y reescribirlo a mano.
@@ -260,34 +301,39 @@ export function cargarModelo({ url, bb, puntos, corte, alAvanzar }) {
    `beginnormal_vertex`, que corre antes de `begin_vertex`, así que no hay un
    sitio donde calcularlo una vez y que llegue a los dos; recalcular una función
    de una docena de operaciones sale más barato que cualquier apaño. */
-export function animarMallas(materiales, uniformes) {
+export function animarMallas(materiales, uniformes, modo) {
+  const anim = animacionDe(modo);
+  if (!anim) return;
+
   for (const m of materiales) {
     m.onBeforeCompile = shader => {
       Object.assign(shader.uniforms, uniformes);
       shader.vertexShader = shader.vertexShader
         .replace('#include <common>', `#include <common>
 ${GLSL_IDLE_UNIFORMES}
-${GLSL_IDLE}
+${anim.glsl}
 float vqYaw = 0.0;`)
         .replace('#include <beginnormal_vertex>', `#include <beginnormal_vertex>
 {
   vec3 tmp = position;
-  vqYaw = vqIdle(position, tmp);
+  vqYaw = ${anim.fn}(position, tmp);
   float c = cos(vqYaw), s = sin(vqYaw);
   objectNormal.xz = vec2(c*objectNormal.x + s*objectNormal.z,
                         -s*objectNormal.x + c*objectNormal.z);
 }`)
         .replace('#include <begin_vertex>', `#include <begin_vertex>
 {
-  vqIdle(position, transformed);
+  ${anim.fn}(position, transformed);
   float c = cos(vqYaw), s = sin(vqYaw);
   transformed.xz = vec2(c*transformed.x + s*transformed.z,
                        -s*transformed.x + c*transformed.z);
 }`);
     };
     /* Sin esto three reutiliza el programa compilado de un material idéntico
-       sin la inyección, y la mitad de la valquiria se queda quieta. */
-    m.customProgramCacheKey = () => 'vq-idle';
+       sin la inyección, y la mitad de la pieza se queda quieta. La clave
+       depende del modo: dos piezas con animaciones distintas no pueden
+       compartir programa. */
+    m.customProgramCacheKey = () => anim.clave;
     m.needsUpdate = true;
   }
 }

@@ -25,3 +25,11 @@ npm-debug.log*
 # Salidas locales
 coverage/
 *.tgz
+
+# Los .glb que entrega el generador, en la raíz: pesan ~57 MB cada uno y son
+# la MATERIA PRIMA, no lo que sirve el sitio. Lo que se publica son las
+# versiones optimizadas de assets/ (~1-2 MB). Git guarda cada versión de un
+# binario entera y para siempre: subir los másters aquí infla el repo de forma
+# irreversible y hace lento cada clone. Consérvalos fuera del control de
+# versiones; la receta para regenerarlos está en MODELO.md.
+/*.glb

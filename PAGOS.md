@@ -1,0 +1,177 @@
+# Cobrar en valquiriainc.com
+
+Todo lo que sigue se hace **fuera del código**. En este repositorio no hay —ni
+va a haber— un token, una contraseña ni un número de cuenta. El código lee esos
+valores del entorno de Render; si algún día encuentras uno escrito en un
+archivo, es un incidente, no un atajo.
+
+---
+
+## 0 · Lo primero: dónde cae el dinero
+
+Tú no le das a nadie tu CLABE ni tus datos bancarios para integrar los pagos.
+El flujo real es:
+
+```
+cliente paga  →  tu cuenta de Mercado Pago  →  tú retiras a tu banco
+```
+
+Tu cuenta bancaria se da de alta **una sola vez, dentro de Mercado Pago**, con
+tu sesión iniciada, y el sitio nunca la ve. Lo único que este backend necesita
+es un **token de acceso**: una credencial que autoriza a cobrar *hacia* tu
+cuenta, y que puedes revocar cuando quieras sin tocar el banco.
+
+Esa distinción es la que hace que esto sea seguro. Si alguna vez una
+integración te pide la CLABE o los datos de tu tarjeta para "conectarse", no es
+Mercado Pago.
+
+---
+
+## 1 · Da de alta tu cuenta de cobro (en Mercado Pago, no aquí)
+
+1. Entra a [mercadopago.com.mx](https://www.mercadopago.com.mx) con tu cuenta.
+2. Completa la **validación de identidad** si no lo has hecho. Sin esto los
+   cobros entran pero los retiros se quedan detenidos, y es la sorpresa más
+   común del primer mes.
+3. En **Tu negocio → Configuración → Cuentas bancarias**, agrega tu CLABE.
+   Aquí sí van tus datos bancarios: estás en el sitio de Mercado Pago, con tu
+   sesión, y nadie más los ve.
+4. Decide en **Retiros** si quieres transferencia automática o manual.
+
+Cuando termines este paso ya puedes recibir dinero. Lo que sigue es conectar
+el sitio.
+
+---
+
+## 2 · Saca las credenciales
+
+1. Ve a **[Tus integraciones](https://www.mercadopago.com.mx/developers/panel)**.
+2. Crea una aplicación (nombre: `Valquiria Inc.`, tipo: pagos en línea,
+   producto: **Checkout Pro**).
+3. Abre **Credenciales de producción** y copia el **Access Token**. Empieza
+   con `APP_USR-`.
+4. Copia también las de **prueba** — las vas a usar en el paso 5.
+
+> **El Access Token es una llave, trátalo como tal.** Quien lo tenga puede
+> cobrar y consultar en tu nombre. No lo pegues en un chat, en un issue, ni en
+> un archivo del repositorio. Si se te escapa: en esa misma pantalla hay un
+> botón para regenerarlo, y regenerarlo lo invalida al instante.
+
+---
+
+## 3 · Ponlas en Render
+
+En el panel de Render, servicio del backend → **Environment** → *Add
+Environment Variable*. Ahí dentro los valores quedan cifrados y no aparecen en
+el repositorio ni en los logs.
+
+| Variable | Valor | ¿Obligatoria? |
+|---|---|---|
+| `MP_ACCESS_TOKEN` | El Access Token de producción | **Sí**, sin ella no hay pagos |
+| `MP_WEBHOOK_SECRET` | La clave secreta del webhook (paso 4) | **Sí**, muy recomendable |
+| `SITIO_URL` | `https://valquiriainc.com` | Ya debería estar |
+| `BACKEND_URL` | La URL pública del backend | Solo si Render no la publica sola |
+| `MP_MAX_CUOTAS` | Tope de mensualidades, por defecto `12` | No |
+| `MP_EXCLUIR_TIPOS` | Medios a apagar, ej. `ticket` para quitar efectivo | No |
+| `MP_VIGENCIA_MINUTOS` | Cuánto vive un link, por defecto `1440` (24 h) | No |
+| `PEDIDOS_WEBHOOK_URL` | A dónde avisar de cada pago aprobado | No, pero conviene |
+
+Render publica `RENDER_EXTERNAL_URL` por su cuenta, así que `BACKEND_URL`
+normalmente sobra. Si en los logs ves *«Sin BACKEND_URL ni
+RENDER_EXTERNAL_URL»*, defínela a mano.
+
+Al guardar, Render reinicia el servicio. **No hay que tocar el código.**
+
+---
+
+## 4 · Conecta el webhook
+
+Sin esto tienes un botón de pago. Con esto tienes una tienda: el webhook es lo
+que te entera de que alguien pagó aunque cierre la pestaña al salir del banco.
+
+1. En **Tus integraciones → tu aplicación → Webhooks**, configura la URL:
+
+   ```
+   https://TU-BACKEND.onrender.com/api/pago/webhook
+   ```
+
+2. Marca el evento **Pagos** (`payment`).
+3. Mercado Pago te muestra una **clave secreta**. Cópiala a Render como
+   `MP_WEBHOOK_SECRET`.
+4. Usa el botón **Simular notificación** del panel. En los logs de Render debe
+   aparecer una línea `[webhook] pago ... estado=...`. Si aparece
+   `Rechazado por firma`, el secreto no coincide.
+
+El backend hace dos comprobaciones, y la segunda es la importante: valida la
+firma, y **aun así no se cree el estado que viene en el aviso** — vuelve a
+preguntarle a Mercado Pago por ese pago. Una notificación falsificada solo
+consigue que consultemos un pago que no existe.
+
+También cuadra el importe: si lo cobrado no coincide con lo que el servidor
+calculó al crear el link, escribe `⚠️ DESCUADRE` en el log y te dice que no
+surtas ese pedido sin revisarlo.
+
+---
+
+## 5 · Pruébalo sin cobrar de verdad
+
+1. Pon temporalmente en Render el Access Token **de prueba**.
+2. Haz un pedido en el sitio. La respuesta trae `url_prueba`: ábrela.
+3. Paga con una [tarjeta de prueba](https://www.mercadopago.com.mx/developers/es/docs/checkout-pro/additional-content/test-cards).
+   Para aprobar, el nombre del titular es `APRO`; para rechazar, `OTHE`.
+4. Comprueba en los logs de Render que llegó el webhook y que el estado quedó
+   en `approved`.
+5. Vuelve a poner el token de producción.
+
+Haz este ensayo **antes** de anunciar los pagos. Es media hora y te ahorra
+descubrir el problema con un cliente real enfrente.
+
+---
+
+## 6 · Métodos de pago modernos
+
+Aquí conviene ser exacto, porque es fácil prometer de más.
+
+Checkout Pro **no elige** los medios de pago desde el código: muestra los que
+estén habilitados en **tu cuenta** y disponibles para el país, el navegador y
+el dispositivo del comprador. Por eso este backend no los declara uno por uno
+—sería una lista que miente en cuanto cambie algo—; lo que hace es no
+estorbarlos y dejarte un interruptor (`MP_EXCLUIR_TIPOS`) para apagar los que
+no quieras.
+
+Lo que ya funciona hoy, sin tocar nada más:
+
+- **Tarjeta de crédito y débito**, con meses sin intereses según lo que tengas
+  pactado (el tope lo pone `MP_MAX_CUOTAS`).
+- **Saldo de Mercado Pago**.
+- **Efectivo** en tiendas y **transferencia SPEI**.
+- **Link de pago**: el `init_point` que devuelve `/api/pago` ES un link
+  compartible. Puedes mandarlo por WhatsApp y se paga desde cualquier
+  dispositivo. Caduca según `MP_VIGENCIA_MINUTOS`.
+
+Sobre **Google Pay y Apple Pay**: la disponibilidad depende del despliegue de
+Mercado Pago por país y del dispositivo, y cambia con el tiempo. **Compruébalo
+en tu panel**, en *Tu negocio → Configuración → Medios de pago*: lo que
+aparezca ahí habilitado es lo que verán tus clientes, sin cambios en el código.
+Si algún día quieres las carteras **embebidas en tu propia página** —sin salir
+a Mercado Pago— eso ya no es Checkout Pro sino *Payment Brick*, y es un
+proyecto aparte: cambia el frontend del checkout, no la configuración.
+
+No te recomiendo empezar por ahí. Checkout Pro te da hoy el flujo completo,
+con la responsabilidad del cumplimiento PCI del lado de Mercado Pago.
+
+---
+
+## 7 · Las reglas que no se rompen
+
+- **El total lo calcula el backend, siempre.** El navegador manda SKUs y
+  cantidades; los precios se releen del catálogo. Un carrito editado desde la
+  consola no cambia lo que se cobra: el precio que traiga ni se lee.
+- **Nunca pidas datos de tarjeta por el chat.** El asesor tiene instrucción
+  explícita de negarse. Los datos se teclean en Mercado Pago y solo ahí.
+- **`.env` no se sube.** Ya está en `.gitignore`. Lo que se versiona es
+  `.env.example`, que lleva los nombres y ningún valor.
+- **Si un token se filtra, se rota.** No basta con borrar el archivo: lo que
+  entró a git se queda en el historial. Regenera el token en el panel.
+- **Revisa los `⚠️` de los logs.** Están puestos para que un descuadre o una
+  credencial faltante se vean de un vistazo.
