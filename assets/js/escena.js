@@ -14,8 +14,8 @@
      precargar(ids)              muestrea en segundo plano, sin robar cuadros
    ═══════════════════════════════════════════════════════════════════════════ */
 import * as THREE from 'three';
-import { FIGURAS } from './figuras.js?v=69';
-import { cargarModelo, animarMallas, GLSL_IDLE } from './modelo.js?v=69';
+import { FIGURAS } from './figuras.js?v=70';
+import { cargarModelo, animarMallas, GLSL_IDLE } from './modelo.js?v=70';
 
 /* ── Las piezas esculpidas ─────────────────────────────────────────────────
    Cualquier figura puede declarar un `glb` en figuras.js y dejar de ser una

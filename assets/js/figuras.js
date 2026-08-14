@@ -911,10 +911,20 @@ const FIGURAS = {
        los 1.64 de la valquiria a 4.8. El `alza` negativo baja el apoyo a
        y=-0.895 para que las dos pisen la plataforma a la misma altura. */
     encaje: 1.357, alza: -0.425,
-    /* La sección /ia imprime al 94 % a propósito («EN BETA · CAPA 161 DE
-       171»). Sin holgura ese 6 % que falta se lo lleva la cabeza. Ver la
-       explicación larga en `pedirMalla` de escena.js. */
-    holgura: 1.07,
+    /* La sección /ia imprime al 94 % a propósito («EN BETA · CAPA …»). Sin
+       holgura ese 6 % que falta se lo lleva la cabeza. Ver la explicación
+       larga en `pedirMalla` de escena.js.
+
+       El número sale de una cuenta, y la primera vez me quedé corto por no
+       hacerla entera: esta figura LEVITA. El plano de corte está quieto, así
+       que no basta con despejar la coronilla en reposo — hay que despejar su
+       punto más ALTO, o la cabeza se rebana media oscilación sí y media no.
+         · el shader (modo 4) sube la pieza sin(t·0.85)·0.020 en su espacio;
+         · la malla entra escalada 1.710/0.979 = 1.747, así que en el marco
+           son 0.035, un 2.04 % de la altura;
+         · hace falta tope·holgura ≥ 1.0204, o sea holgura ≥ 1.086.
+       1.11 lo cumple con margen de sobra para el pico. */
+    holgura: 1.11,
     bb: { x0: -.49, x1: .49, y0: -.47, y1: .79, z0: -.52, z1: .45 }
   },
   diente: {

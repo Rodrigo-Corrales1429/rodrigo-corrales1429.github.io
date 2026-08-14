@@ -9,7 +9,7 @@
    ═══════════════════════════════════════════════════════════════════════════ */
 /* La escena se importa por su efecto: al evaluarse deja lista `window.VQ`,
    que es la superficie que usa todo lo de abajo. */
-import './escena.js?v=69';
+import './escena.js?v=70';
 
 /* Aviso al vigilante del index: los módulos llegaron y se están evaluando.
    A partir de aquí lo que tarde es trabajo, no una carga rota, así que puede
