@@ -495,6 +495,51 @@ function conTimeout(promise, ms, msg = "Timeout") {
 }
 
 /**
+ * Llama a Gemini reintentando los fallos que se arreglan solos.
+ *
+ * Esto importa mucho más de lo que parece: un turno del asesor NO es una
+ * llamada al modelo, son hasta MAX_ITERACIONES_FUNCTION_CALL. Cada vez que el
+ * modelo pide una herramienta hay otra ida y vuelta, así que un solo mensaje
+ * del usuario puede valer seis peticiones. Con la cuota gratuita —del orden de
+ * diez por minuto— bastan dos o tres mensajes seguidos para toparla, y sin
+ * reintento el visitante ve caerse el asesor por un límite que se libera en
+ * segundos.
+ *
+ * Solo se reintenta lo transitorio (429 y 5xx). Una credencial inválida no se
+ * arregla insistiendo, y reintentarla solo suma latencia al mensaje de error.
+ */
+async function generarConReintento(peticion, intentos = 3) {
+  let ultimo;
+  for (let i = 0; i < intentos; i++) {
+    try {
+      return await conTimeout(
+        ai.models.generateContent(peticion),
+        TIMEOUT_GEMINI_MS,
+        "Gemini no respondió a tiempo (45s). Por favor reintenta."
+      );
+    } catch (e) {
+      ultimo = e;
+      const texto = String(e?.message || "");
+      const codigo = Number(e?.status) ||
+        Number(texto.match(/"code"\s*:\s*(\d+)/)?.[1]) || 0;
+      const transitorio =
+        codigo === 429 || codigo === 503 || codigo === 500 ||
+        /RESOURCE_EXHAUSTED|UNAVAILABLE|overloaded/i.test(texto);
+      if (!transitorio || i === intentos - 1) throw e;
+
+      /* Espera creciente con algo de ruido: si dos visitantes se topan con el
+         límite en el mismo segundo, no conviene que reintenten a la vez. */
+      const espera = Math.round((1200 * Math.pow(2, i)) * (0.75 + Math.random() * 0.5));
+      console.warn(
+        `[gemini] ${codigo || "fallo"} transitorio; reintento ${i + 1}/${intentos - 1} en ${espera}ms`
+      );
+      await new Promise(r => setTimeout(r, espera));
+    }
+  }
+  throw ultimo;
+}
+
+/**
  * Traduce un fallo del proveedor a algo que el visitante pueda accionar.
  *
  * Todo caía antes en «Ocurrió un inconveniente temporal», que es cierto y es
@@ -765,15 +810,11 @@ async function correrConversacion(historialInicial, contextoSesion = "", carrito
   };
 
   for (let iter = 0; iter < MAX_ITERACIONES_FUNCTION_CALL; iter++) {
-    const response = await conTimeout(
-      ai.models.generateContent({
+    const response = await generarConReintento({
         model: MODELO,
         contents,
         config: configGemini({}, contextoSesion)
-      }),
-      TIMEOUT_GEMINI_MS,
-      "Gemini no respondió a tiempo (45s). Por favor reintenta."
-    );
+      });
 
     const functionCalls = extraerFunctionCalls(response);
 
@@ -844,8 +885,7 @@ async function correrConversacion(historialInicial, contextoSesion = "", carrito
         .join(" ")
         .trim() || "";
 
-    const responseRescate = await conTimeout(
-      ai.models.generateContent({
+    const responseRescate = await generarConReintento({
         model: MODELO,
         contents: [
           ...contents,
@@ -868,10 +908,7 @@ async function correrConversacion(historialInicial, contextoSesion = "", carrito
             }
           }
         }, contextoSesion)
-      }),
-      TIMEOUT_GEMINI_MS,
-      "Timeout en intento de rescate."
-    );
+      });
 
     const rescateFcs = extraerFunctionCalls(responseRescate);
     if (rescateFcs.length > 0) {
@@ -887,8 +924,7 @@ async function correrConversacion(historialInicial, contextoSesion = "", carrito
         });
       }
 
-      const responseFinal = await conTimeout(
-        ai.models.generateContent({
+      const responseFinal = await generarConReintento({
           model: MODELO,
           contents: [
             ...contents,
@@ -896,10 +932,7 @@ async function correrConversacion(historialInicial, contextoSesion = "", carrito
             { role: "user", parts: partesRescateResp }
           ],
           config: configGemini({}, contextoSesion)
-        }),
-        TIMEOUT_GEMINI_MS,
-        "Timeout en respuesta final del rescate."
-      );
+        });
 
       const textoFinal = extraerTexto(responseFinal);
       if (textoFinal && textoFinal.trim() !== "") {

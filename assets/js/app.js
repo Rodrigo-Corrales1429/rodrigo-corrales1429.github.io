@@ -40,22 +40,22 @@ const PRODUCTOS = [
     corto:'Nervio sintético líder en la industria, anatomía interna completa.',
     precio:40183, regular:63900, stock:27,
     img:'https://res.cloudinary.com/dyzgyuixk/image/upload/f_auto,q_auto/endo_ahtc7k',
-    claves:['endodoncia','endo','conducto','conductos','nervio','endodoncista','endodontico','practica endodoncia','kit endo'] },
+    claves:['endodoncia','endo','endos','conducto','conductos','nervio','endodoncista','endodontico','endodonzia','practica endodoncia','kit endo','kit endodoncia','permanentes','instrumentacion','obturacion'] },
   { sku:'ValPulpo', nombre:'Dientes Valquiria para práctica de pulpotomía',
     corto:'Dientes infantiles con cámara y raíces simuladas, tamaño realista.',
     precio:44401, regular:53900, stock:23,
     img:'https://res.cloudinary.com/dyzgyuixk/image/upload/f_auto,q_auto/pulpo_frybuu',
-    claves:['pulpotomia','pulpo','pediatria','pediatrico','infantil','niño','niños','odontopediatria','kit pulpo'] },
+    claves:['pulpotomia','pulpo','pulpos','pediatria','pediatrico','infantil','niño','niños','odontopediatria','kit pulpo','kit pulpotomia','deciduo','temporales','dientes de leche','pulpar'] },
   { sku:'DientesRealistas', nombre:'Kit de 32 dientes realistas',
     corto:'Arcada completa de adulto con nervio simulado y estuche protector.',
     precio:100711, regular:129900, stock:15,
     img:'https://res.cloudinary.com/dyzgyuixk/image/upload/f_auto,q_auto/realistas_dxfhrr',
-    claves:['kit completo','32 dientes','boca completa','arcada','incisivos','caninos','premolares','molares','ultra realista','set completo','kit avanzado'] },
+    claves:['realista','realistas','kit realista','kit completo','completo','32 dientes','boca completa','arcada','incisivos','caninos','premolares','molares','ultra realista','ultrarealista','set completo','kit avanzado','estuche','dentadura','juego completo'] },
   { sku:'Endotnissin', nombre:'Dientes tipo Nissin para endodoncia',
     corto:'Compatibles con tipodonto Nissin, con el nervio sintético Valquiria.',
     precio:71958, regular:99000, stock:10,
     img:'https://res.cloudinary.com/dyzgyuixk/image/upload/f_auto,q_auto/endonissin_b0hlmi',
-    claves:['nissin','nisin','nicin','nissim','tipodonto','tipo nissin','compatible nissin','simulador','fantoma'] }
+    claves:['nissin','nisin','nisiin','nicin','nissim','nissan','nissn','tipodonto','typodont','tipo nissin','compatible nissin','kit nissin','simulador','fantoma','maniqui'] }
 ];
 const porSku = sku => PRODUCTOS.find(p => p.sku === sku);
 
@@ -91,6 +91,19 @@ function md(s) {
 const normaliza = s => String(s).toLowerCase()
   .normalize('NFD').replace(/[̀-ͯ]/g, '')
   .replace(/[^\w\s]/g, ' ').replace(/\s+/g, ' ').trim();
+
+/* "a", "a y b", "a, b y c" — la coma de más delata al programa. */
+const unir = xs => xs.length <= 1 ? (xs[0] || '')
+  : xs.slice(0, -1).join(', ') + ' y ' + xs[xs.length - 1];
+
+/* Lo que hay en el carrito, en prosa. Cuando el asesor local quita algo, el
+   cliente necesita ver con qué se queda sin abrir el cajón. */
+const resumenCarrito = () => unir(
+  [...Carrito.items].map(([sku, n]) => {
+    const p = porSku(sku);
+    return n + ' × ' + (p ? p.nombre : sku);
+  })
+) || 'nada';
 
 /* ═══════════════════════════════════════════════════════════════════════════
    CARRITO
@@ -777,17 +790,45 @@ const Asesor = {
     };
     const cantidad = cantidadDe(q);
 
-    /* "2 de endo y uno de nissin" son DOS líneas, no una. El fallback parte la
-       frase por sus conectores y puntúa cada trozo por separado; quedarse con
-       el primer producto y descartar el resto del pedido es peor que no
-       entender nada, porque el usuario no se da cuenta de lo que falta. */
-    const pedido = new Map();
-    normaliza(texto).split(/\s+(?:y|mas|además|ademas|tambien|también)\s+|,|\+/)
+    /* "2 de endo y uno de nissin" son DOS líneas, no una.
+
+       El corte va sobre el texto CRUDO, y ese detalle era el bug: `normaliza`
+       hace replace(/[^\w\s]/g,' '), o sea que se lleva por delante las comas
+       — y este split intentaba cortar por una coma que ya no existía. Con eso,
+       "2 endos, 3 realistas, 1 nisin, 1 pulpo" colapsaba a un solo fragmento,
+       se quedaba con el mejor producto y con el PRIMER número: "2 × endodoncia",
+       y los otros tres se perdían sin que nadie se enterara. Se normaliza
+       DESPUÉS de cortar, que es cuando ya da igual.
+
+       Cada tramo lleva su propio verbo, y el verbo se arrastra hasta que otro
+       lo cambie: "elimina los 2 endo y agrega el pulpo" son dos operaciones
+       distintas en una sola frase, y tratarlas como una sola es justo lo que
+       hacía que borrar acabara agregando. */
+    const VERBO_QUITA = /\b(elimina|eliminar|elimine|quita|quitar|quite|borra|borrar|saca|sacar|remueve|remover|descarta|descartar|sin)\b/;
+    const VERBO_PON   = /\b(agrega|agregar|añade|anade|añadir|pon|poner|ponme|quiero|dame|suma|sumar|mete|meter)\b/;
+
+    const pedido = new Map();       // sku → { n, verbo }
+    let verboVigente = null;
+
+    String(texto)
+      .split(/\s*[,;]\s*|\s+(?:y|mas|más|además|ademas|tambien|también)\s+|\s*\+\s*/i)
       .map(f => f.trim()).filter(Boolean)
-      .forEach(frag => {
+      .forEach(bruto => {
+        const frag = normaliza(bruto);
+        if (VERBO_QUITA.test(frag)) verboVigente = 'quitar';
+        else if (VERBO_PON.test(frag)) verboVigente = 'agregar';
         const hit = puntuar(frag)[0];
-        if (hit && !pedido.has(hit.p.sku)) pedido.set(hit.p.sku, cantidadDe(frag));
+        if (hit && !pedido.has(hit.p.sku)) {
+          pedido.set(hit.p.sku, { n: cantidadDe(frag), verbo: verboVigente || 'agregar' });
+        }
       });
+
+    /* Intenciones que hablan del carrito entero y no de un producto. */
+    const mencionaCarrito = /\b(carrito|pedido|orden|todo|todos|todas|productos|articulos|art[ií]culos)\b/.test(q);
+    const quiereVaciar =
+      /\b(vacia|vaciar|vacie|limpia|limpiar|resetea|reinicia)\b/.test(q) ||
+      (VERBO_QUITA.test(q) && mencionaCarrito && !pedido.size);
+    const quiereQuitar = VERBO_QUITA.test(q) && !quiereVaciar;
 
     const quiereComprar = /\b(quiero|dame|compr|pedid|llevo|agrega|añade|anade|necesito|pon)/.test(q);
     const quiereCerrar = /\b(pagar|pago|confirmo|confirmar|cierra|cerrar|listo|proced|checkout|si)\b/.test(q);
@@ -899,15 +940,69 @@ const Asesor = {
         acciones:[{ tipo:'pago' }, { tipo:'whatsapp' }] };
     }
 
-    if (encontrados.length && quiereComprar) {
+    /* ── Vaciar el carrito ──────────────────────────────────────────────── */
+    if (quiereVaciar) {
+      if (!Carrito.piezas()) {
+        return { reply: 'Tu carrito ya está vacío. ¿Te armo un pedido? Dime qué ' +
+          'práctica necesitas —endodoncia, pulpotomía, kit completo o tipo Nissin—.' };
+      }
+      Carrito.vaciar();
+      return { reply:
+        'Listo, vacié tu carrito.\n\n¿Qué quieres poner en su lugar?',
+        acciones:[{ tipo:'carrito' }] };
+    }
+
+    /* ── Quitar productos concretos ─────────────────────────────────────── */
+    if (quiereQuitar && pedido.size) {
+      const quitados = [];
+      [...pedido].forEach(([sku, { n, verbo }]) => {
+        if (verbo !== 'quitar') return;
+        const hay = Carrito.items.get(sku) || 0;
+        if (!hay) return;
+        const p = porSku(sku);
+        /* Sin cantidad explícita, o pidiendo más de lo que hay, se va la
+           línea entera: "quita los endo" no significa "quita uno". */
+        const explicita = /\b\d+\b/.test(normaliza(texto));
+        if (!explicita || n >= hay) { Carrito.quitar(sku); quitados.push('**' + p.nombre + '**'); }
+        else { Carrito.fijar(sku, hay - n); quitados.push('**' + n + ' × ' + p.nombre + '**'); }
+      });
+
+      /* En la misma frase puede venir un alta: "quita los endo y pon el pulpo". */
+      const puestos = [];
+      [...pedido].forEach(([sku, { n, verbo }]) => {
+        if (verbo !== 'agregar') return;
+        Carrito.agregar(sku, n);
+        puestos.push('**' + n + ' × ' + porSku(sku).nombre + '**');
+      });
+
+      if (!quitados.length && !puestos.length) {
+        return { reply: 'Eso no lo traías en el carrito. Ahora mismo tienes ' +
+          resumenCarrito() + '.\n\n¿Qué quieres que quite?',
+          acciones:[{ tipo:'carrito' }] };
+      }
+
+      const t = Carrito.totales();
+      let msg = '';
+      if (quitados.length) msg += 'Quité ' + unir(quitados) + ' de tu carrito. ';
+      if (puestos.length) msg += (quitados.length ? 'Y agregué ' : 'Agregué ') + unir(puestos) + '. ';
+      msg += Carrito.piezas()
+        ? '\n\nTe queda ' + resumenCarrito() + ', **' + mxn(t.total) + '**' +
+          (t.gratis ? ' con envío gratis.' : ', más ' + mxn(t.envio) + ' de envío.') +
+          '\n\n¿Cierro el pedido?'
+        : '\n\nCon eso tu carrito queda vacío. ¿Te armo otro pedido?';
+      return { reply: msg,
+        acciones: Carrito.piezas()
+          ? [{ tipo:'pago' }, { tipo:'whatsapp' }, { tipo:'carrito' }]
+          : [{ tipo:'carrito' }] };
+    }
+
+    if (encontrados.length && (quiereComprar || pedido.size > 1)) {
       const lineas = pedido.size
-        ? [...pedido].map(([sku, n]) => ({ p: porSku(sku), n }))
+        ? [...pedido].map(([sku, { n }]) => ({ p: porSku(sku), n }))
         : [{ p: encontrados[0].p, n: cantidad }];
       lineas.forEach(l => Carrito.agregar(l.p.sku, l.n));
       const t = Carrito.totales();
-      const detalle = lineas
-        .map(l => '**' + l.n + ' × ' + l.p.nombre + '**')
-        .join(lineas.length === 2 ? ' y ' : ', ');
+      const detalle = unir(lineas.map(l => '**' + l.n + ' × ' + l.p.nombre + '**'));
       return { reply:
         'Listo, agregué ' + detalle + ' a tu carrito.\n\n' +
         'Tu total va en **' + mxn(t.total) + '**' +
