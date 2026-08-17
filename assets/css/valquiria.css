@@ -23,6 +23,49 @@ body{
   overflow-x:hidden; -webkit-font-smoothing:antialiased;
   text-rendering:optimizeLegibility;
 }
+
+/* ── BLOQUEO DE SCROLL Y SALTO DE LA BARRA ────────────────────────────────
+   `--sb` lo escribe BloqueoScroll midiendo el ensanchamiento REAL al ocultar
+   la barra, así que en móvil —donde la barra flota encima y no ocupa ancho—
+   vale 0 y ninguna de estas reglas hace nada.
+
+   Hay que devolver el hueco en dos sitios distintos y por dos motivos
+   distintos: al `body` para que el texto no se reacomode, y a cada elemento
+   FIJO anclado a la derecha porque esos no viven dentro del body y se van
+   solos hacia el borde nuevo. Olvidar los segundos es lo que hacía que el
+   nav, el botón del Asesor y el toast dieran un tirón lateral al abrir el
+   carrito en Windows. */
+body.sin-scroll{
+  overflow:hidden;
+  padding-right:var(--sb,0px);
+  /* iOS ignora overflow:hidden; el guardia de touchmove del JS es quien
+     remata ahí. `overscroll-behavior` corta además el rebote de la página
+     cuando el panel llega a su tope. */
+  overscroll-behavior:none;
+}
+body.sin-scroll nav#nav{
+  padding-right:calc(clamp(16px,4vw,54px) + var(--sb,0px));
+  /* El nav anima su `padding` al hacerse sticky, y esa transición también
+     alcanzaría a esta compensación: el contenido se DESLIZARÍA 15px en 400ms
+     en vez de quedarse quieto — un efecto peor que el salto que se quería
+     evitar, porque además dura. Se reescribe la lista de transiciones sin
+     `padding`; el fundido del fondo y del borde se conservan. */
+  transition:background .4s var(--ease), border-color .4s;
+}
+body.sin-scroll #asesor-btn,
+body.sin-scroll #toast,
+body.sin-scroll #asesor{margin-right:var(--sb,0px)}
+
+/* Que el navegador reserve el hueco de la barra desde el principio deja el
+   salto en cero sin JavaScript. Donde funciona, la medida de arriba da 0 y
+   las reglas de compensación quedan inertes: se complementan, no se pisan. */
+@supports (scrollbar-gutter:stable){
+  html{scrollbar-gutter:stable}
+}
+
+/* Las zonas que SÍ pueden desplazarse con el dedo mientras el fondo está
+   bloqueado. El atributo lo lee el guardia de touchmove. */
+[data-scrollable]{-webkit-overflow-scrolling:touch; overscroll-behavior:contain}
 ::selection{background:var(--gold); color:var(--void)}
 :focus-visible{outline:1px solid var(--gold); outline-offset:4px}
 img,svg{display:block; max-width:100%}
@@ -463,6 +506,20 @@ h3{font-family:var(--f-display); font-weight:400; font-size:1.3rem; line-height:
   transition:border-color .5s var(--ease), transform .5s var(--ease);
 }
 .card:hover{border-color:var(--line); transform:translateY(-3px)}
+
+/* El Asesor señalando una tarjeta. Dos pulsos de oro y se apaga: lo justo
+   para que el ojo la encuentre después del scroll, sin quedarse parpadeando
+   como un banner. */
+.card.resaltado{animation:cardRes 2.6s var(--ease)}
+@keyframes cardRes{
+  0%,100%{border-color:var(--line-soft); box-shadow:none}
+  12%,62%{border-color:var(--gold); box-shadow:0 0 0 1px var(--gold), 0 10px 40px rgba(201,168,76,.22)}
+  37%{border-color:var(--line-soft); box-shadow:0 0 0 1px rgba(201,168,76,.25)}
+}
+/* Quien pidió menos movimiento recibe el destino, no el viaje. */
+@media(prefers-reduced-motion:reduce){
+  .card.resaltado{animation:none; border-color:var(--gold); box-shadow:0 0 0 1px var(--gold)}
+}
 .media{position:relative; aspect-ratio:4/3; overflow:hidden; background:#0A0A0B}
 .media img{
   width:100%; height:100%; object-fit:cover;
@@ -749,9 +806,14 @@ h3{font-family:var(--f-display); font-weight:400; font-size:1.3rem; line-height:
 #asesor-in{
   flex:1; background:rgba(255,255,255,.03); border:1px solid var(--line-soft);
   color:var(--ivory); font-family:var(--f-body); font-size:.83rem; font-weight:300;
-  padding:11px 12px; resize:none; max-height:104px; line-height:1.5;
+  padding:11px 12px; resize:none; max-height:120px; line-height:1.5;
   transition:border-color .3s;
+  /* El scroll aparece solo cuando el JS marca que se llegó al tope. Dejarlo
+     en `auto` fijo hace que la barra parpadee en cada salto de línea mientras
+     el campo todavía está creciendo. */
+  overflow-y:hidden;
 }
+#asesor-in.tope{overflow-y:auto}
 #asesor-in:focus{outline:none; border-color:var(--line)}
 #asesor-in::placeholder{color:var(--ash-dim)}
 #asesor-send{
@@ -766,11 +828,39 @@ h3{font-family:var(--f-display); font-weight:400; font-size:1.3rem; line-height:
 .asesor-legal a{color:var(--ash); text-decoration:underline; text-underline-offset:2px}
 
 @media(max-width:520px){
+  /* Modo HOJA. El breakpoint tiene que coincidir con `Viewport.esHoja()` del
+     JS: si se separan, el script bloquea el scroll en un layout que todavía
+     es de escritorio, o deja de bloquearlo cuando ya es una hoja. */
   #asesor{
-    right:0; left:0; bottom:0; width:100vw;
-    height:min(78svh,640px); border-left:none; border-right:none; border-bottom:none;
+    right:0; left:0; width:100vw;
+    border-left:none; border-right:none; border-bottom:none;
     transform-origin:bottom center;
+
+    /* Se levanta exactamente lo que mide el teclado. Con el teclado abajo
+       `--kb` es 0 y la hoja queda pegada al borde, como debe. */
+    bottom:var(--kb,0px);
+
+    /* El alto se mide contra el viewport VISUAL, no contra svh: svh no se
+       entera del teclado y dejaba el campo de escribir por debajo de él.
+       El `min()` conserva los topes de diseño y añade el del hueco real que
+       queda libre; gana el más pequeño, que es siempre el que cabe. */
+    height:min(78svh, 640px, calc(var(--vvh,100svh) - 12px));
   }
+
+  /* Sin esto el pie queda debajo de la barra de gestos del iPhone y el botón
+     de enviar se toca a medias. Cuando el teclado está arriba la hoja ya
+     flota sobre él y ese hueco sobraría: por eso se colapsa. */
+  .asesor-pie{padding-bottom:calc(12px + env(safe-area-inset-bottom,0px))}
+  body.teclado .asesor-pie{padding-bottom:12px}
+
+  /* El drawer del carrito comparte los dos problemas. */
+  #drawer{height:100%; padding-bottom:env(safe-area-inset-bottom,0px)}
+
+  /* 16px EXACTOS, y no es una preferencia tipográfica: Safari de iOS hace
+     zoom sobre cualquier campo cuya letra mida menos, y del zoom no vuelve
+     solo — el visitante se queda con la página ampliada y el layout corrido.
+     Es la diferencia más barata entre «web en un teléfono» y «app». */
+  #asesor-in{font-size:16px}
 }
 
 /* ── TOAST ───────────────────────────────────────────────────────────────── */

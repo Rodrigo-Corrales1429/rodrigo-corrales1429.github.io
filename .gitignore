@@ -33,3 +33,6 @@ coverage/
 # irreversible y hace lento cada clone. Consérvalos fuera del control de
 # versiones; la receta para regenerarlos está en MODELO.md.
 /*.glb
+
+# Config local del previsualizador (no es del sitio)
+.claude/

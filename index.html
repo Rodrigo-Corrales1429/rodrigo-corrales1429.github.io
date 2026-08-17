@@ -76,7 +76,7 @@
      el saludo completo —DNS, TCP, TLS— del camino crítico. -->
 <link rel="preconnect" href="https://unpkg.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300&family=Montserrat:wght@200;300;400;500&family=IBM+Plex+Mono:wght@300;400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/css/valquiria.css?v=70">
+<link rel="stylesheet" href="assets/css/valquiria.css?v=71">
 
 <!-- ══ MAPA DE IMPORTACIÓN ══
      three.js moderno como módulo. La versión importa: a partir de r152 la
@@ -132,9 +132,9 @@
      … is not used because the request credentials mode does not match». Si
      algún día tocas esta línea, comprueba ahí que el aviso no vuelve. -->
 <link rel="preload" href="assets/valquiria.glb" as="fetch" crossorigin>
-<link rel="modulepreload" href="assets/js/escena.js?v=70">
-<link rel="modulepreload" href="assets/js/figuras.js?v=70">
-<link rel="modulepreload" href="assets/js/modelo.js?v=70">
+<link rel="modulepreload" href="assets/js/escena.js?v=71">
+<link rel="modulepreload" href="assets/js/figuras.js?v=71">
+<link rel="modulepreload" href="assets/js/modelo.js?v=71">
 
 <script type="application/ld+json">
 {
@@ -274,7 +274,7 @@
 </nav>
 
 <!-- ══ MENÚ MÓVIL ══ -->
-<div id="menu">
+<div id="menu" data-scrollable>
   <ul>
     <li><a href="#/" data-ruta="/">Inicio</a></li>
     <li><a href="#/catalogo" data-ruta="/catalogo">Catálogo</a></li>
@@ -1015,7 +1015,7 @@
       <svg viewBox="0 0 24 24"><path d="M5 5l14 14M19 5L5 19"/></svg>
     </button>
   </div>
-  <div id="drawer-items"></div>
+  <div id="drawer-items" data-scrollable></div>
   <div class="drawer-pie" id="drawer-pie"></div>
 </aside>
 
@@ -1036,7 +1036,7 @@
       <svg viewBox="0 0 24 24"><path d="M5 5l14 14M19 5L5 19"/></svg>
     </button>
   </div>
-  <div id="asesor-log" role="log" aria-live="polite"></div>
+  <div id="asesor-log" role="log" aria-live="polite" data-scrollable></div>
   <div class="asesor-pie">
     <form class="asesor-form" id="asesor-form">
       <textarea id="asesor-in" rows="1" placeholder="Pídeme lo que necesitas…"
@@ -1057,7 +1057,7 @@
   <div class="who">Asesor Valquiria</div><p id="toast-msg"></p>
 </div>
 
-<script type="module" src="assets/js/app.js?v=70"></script>
+<script type="module" src="assets/js/app.js?v=71"></script>
 
 </body>
 </html>

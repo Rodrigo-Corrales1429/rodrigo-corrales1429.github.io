@@ -9,7 +9,7 @@
    ═══════════════════════════════════════════════════════════════════════════ */
 /* La escena se importa por su efecto: al evaluarse deja lista `window.VQ`,
    que es la superficie que usa todo lo de abajo. */
-import './escena.js?v=70';
+import './escena.js?v=71';
 
 /* Aviso al vigilante del index: los módulos llegaron y se están evaluando.
    A partir de aquí lo que tarde es trabajo, no una carga rota, así que puede
@@ -237,11 +237,161 @@ function pintarDrawer() {
     </p>`;
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   BLOQUEO DE SCROLL
+   ───────────────────────────────────────────────────────────────────────────
+   Tres paneles pueden tapar la página —el carrito, el menú de móvil y el
+   Asesor— y cualquiera de ellos necesita que el fondo deje de moverse. Antes
+   cada uno escribía `body.style.overflow` por su cuenta y el que cerraba
+   primero desbloqueaba a los demás; había un `if` suelto comprobando el
+   carrito, que es justo el parche que deja de funcionar al aparecer el tercer
+   panel. Aquí el bloqueo se pide y se suelta por NOMBRE, y solo se levanta
+   cuando no queda nadie pidiéndolo.
+
+   Lo que resuelve el `--sb`: en Windows la barra de scroll ocupa ancho real,
+   así que al ocultarla el viewport se ENSANCHA ~15px de golpe. Todo lo que
+   esté anclado a la derecha —el nav fijo, el botón del Asesor, el toast— da
+   un salto lateral, y eso es lo que se veía «raro». La anchura no se adivina
+   ni se codifica: se mide el clientWidth ANTES y DESPUÉS de bloquear, y la
+   diferencia es exactamente lo que hay que devolver. Medido así da 0 solo
+   cuando de verdad no hay salto —en móvil, con barras superpuestas, o si el
+   navegador ya reserva el hueco con scrollbar-gutter— y entonces no se toca
+   nada.
+   ═══════════════════════════════════════════════════════════════════════════ */
+const BloqueoScroll = {
+  duenos: new Set(),
+
+  pedir(quien) {
+    if (this.duenos.has(quien)) return;
+    const primero = this.duenos.size === 0;
+    this.duenos.add(quien);
+    if (!primero) return;
+
+    const antes = document.documentElement.clientWidth;
+    document.body.classList.add('sin-scroll');
+    const salto = document.documentElement.clientWidth - antes;
+    if (salto > 0) {
+      document.documentElement.style.setProperty('--sb', salto + 'px');
+    }
+    document.addEventListener('touchmove', this.guardiaTactil, { passive: false });
+  },
+
+  soltar(quien) {
+    if (!this.duenos.delete(quien) || this.duenos.size) return;
+    document.body.classList.remove('sin-scroll');
+    document.documentElement.style.removeProperty('--sb');
+    document.removeEventListener('touchmove', this.guardiaTactil, { passive: false });
+  },
+
+  /* iOS ignora `overflow:hidden` en el body: el dedo sigue arrastrando la
+     página por debajo del panel —el «rubber band»— y al soltar la sección
+     que había detrás quedó en otro sitio. La única defensa es cancelar el
+     gesto, pero cancelarlo TODO dejaría el hilo del chat y la lista del
+     carrito igual de muertos. Así que se cancela solo lo que no ocurre
+     dentro de una zona con scroll propio que además pueda moverse: si la
+     zona ya está tocando su tope y el dedo insiste en esa dirección, el
+     desplazamiento se lo comería la página, y ahí también se corta. */
+  guardiaTactil(e) {
+    if (e.touches.length > 1) return;              // pellizco para zoom: es del usuario
+    const zona = e.target.closest && e.target.closest('[data-scrollable]');
+    if (!zona) { e.preventDefault(); return; }
+    const alto = zona.scrollHeight - zona.clientHeight;
+    if (alto <= 0) { e.preventDefault(); return; }
+    const y = e.touches[0].clientY;
+    const dy = y - (zona._ultimoY == null ? y : zona._ultimoY);
+    zona._ultimoY = y;
+    const arriba = zona.scrollTop <= 0 && dy > 0;
+    const abajo = zona.scrollTop >= alto - 1 && dy < 0;
+    if (arriba || abajo) e.preventDefault();
+  }
+};
+
+/* Al empezar a tocar se reinicia la referencia vertical de la zona: sin esto,
+   el primer movimiento de un gesto nuevo se compara contra el último del
+   gesto anterior y da una dirección falsa. */
+addEventListener('touchstart', e => {
+  const zona = e.target.closest && e.target.closest('[data-scrollable]');
+  if (zona) zona._ultimoY = e.touches[0].clientY;
+}, { passive: true });
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   VIEWPORT VISUAL — el teclado del móvil
+   ───────────────────────────────────────────────────────────────────────────
+   En un teléfono hay DOS viewports y esa es la raíz de todo el problema. El
+   de layout (`innerHeight`, y también `svh`/`vh`) no se entera de que el
+   teclado subió: sigue midiendo la pantalla entera. El visual —el trozo que
+   el usuario ve de verdad— sí se encoge. Un panel dimensionado con `svh`, o
+   pegado con `bottom:0`, se queda con su mitad inferior debajo del teclado, y
+   el campo de escribir es justo lo que desaparece.
+
+   `visualViewport` es la única fuente que sabe la verdad. De ahí salen dos
+   medidas que el CSS consume como variables:
+
+     --vvh  alto realmente visible.
+     --kb   cuánto teclado hay tapando por abajo. Es la resta entre el fondo
+            del viewport de layout y el fondo del visual; en iOS hay que
+            sumar `offsetTop` porque al enfocar un campo el sistema además
+            DESPLAZA la página hacia arriba, y sin ese término el panel se va
+            medio teclado de más.
+
+   Se escriben en el <html> y no en el panel para que cualquier pieza futura
+   —un modal, una hoja de filtros— pueda usarlas sin repetir esta lógica.
+   ═══════════════════════════════════════════════════════════════════════════ */
+const Viewport = {
+  vv: window.visualViewport || null,
+  UMBRAL_TECLADO: 90,   // por debajo de esto es la barra del navegador, no un teclado
+
+  /* «Hoja» = el Asesor ocupa el ancho completo pegado abajo. El número tiene
+     que ser el MISMO que el de la media query del CSS: si se separan, el JS
+     bloquea el scroll en un layout que no lo necesita, o al revés. */
+  esHoja: () => matchMedia('(max-width:520px)').matches,
+
+  iniciar() {
+    this.medir();
+    if (this.vv) {
+      /* `resize` cubre el teclado; `scroll` cubre el desplazamiento que iOS
+         hace al enfocar, que no dispara resize. */
+      this.vv.addEventListener('resize', () => this.medir());
+      this.vv.addEventListener('scroll', () => this.medir());
+    }
+    addEventListener('orientationchange', () => setTimeout(() => this.medir(), 120));
+    addEventListener('resize', () => { this.medir(); this.sincronizarBloqueo(); });
+  },
+
+  medir() {
+    const raiz = document.documentElement;
+    if (!this.vv) { raiz.style.setProperty('--vvh', innerHeight + 'px'); return; }
+
+    const alto = this.vv.height;
+    const teclado = Math.max(0, innerHeight - (alto + this.vv.offsetTop));
+
+    const hayTeclado = teclado > this.UMBRAL_TECLADO;
+    raiz.style.setProperty('--vvh', Math.round(alto) + 'px');
+    raiz.style.setProperty('--kb', Math.round(hayTeclado ? teclado : 0) + 'px');
+    document.body.classList.toggle('teclado', hayTeclado);
+
+    /* El panel acaba de encogerse para dejarle sitio al teclado, así que el
+       final del hilo quedó fuera de cuadro. Se vuelve a bajar aquí —y no solo
+       al enfocar— porque el teclado también aparece y desaparece por cuenta
+       propia: al girar el teléfono, o con el autocompletado del sistema. */
+    if (hayTeclado && Asesor.abierto) Asesor.fin();
+  },
+
+  /* El Asesor tapa la pantalla entera solo en modo hoja. En escritorio es un
+     panel de esquina y congelar la página detrás sería un estorbo, no una
+     mejora — por eso el bloqueo se pide según el layout y se revisa cuando la
+     ventana cambia de tamaño o gira. */
+  sincronizarBloqueo() {
+    if (Asesor.abierto && this.esHoja()) BloqueoScroll.pedir('asesor');
+    else BloqueoScroll.soltar('asesor');
+  }
+};
+
 function abrirDrawer(v) {
   $('#drawer').classList.toggle('on', v);
   $('#velo').classList.toggle('on', v);
   $('#drawer').setAttribute('aria-hidden', v ? 'false' : 'true');
-  document.body.style.overflow = v ? 'hidden' : '';
+  v ? BloqueoScroll.pedir('drawer') : BloqueoScroll.soltar('drawer');
 }
 
 /* ── Pedido en texto, para WhatsApp ───────────────────────────────────────
@@ -447,14 +597,16 @@ function cerrarMenu() {
   $('#menu').classList.remove('on');
   $('#burger').classList.remove('on');
   $('#burger').setAttribute('aria-expanded', 'false');
-  if (!$('#drawer').classList.contains('on')) document.body.style.overflow = '';
+  /* Ya no hace falta preguntar por el carrito: el bloqueo se levanta solo
+     cuando lo suelta el último que lo pidió. */
+  BloqueoScroll.soltar('menu');
 }
 $('#burger').addEventListener('click', () => {
   const abre = !$('#menu').classList.contains('on');
   $('#menu').classList.toggle('on', abre);
   $('#burger').classList.toggle('on', abre);
   $('#burger').setAttribute('aria-expanded', abre ? 'true' : 'false');
-  document.body.style.overflow = abre ? 'hidden' : '';
+  abre ? BloqueoScroll.pedir('menu') : BloqueoScroll.soltar('menu');
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -502,6 +654,123 @@ VQ.escena.alProgresar(function (e) {
 /* ═══════════════════════════════════════════════════════════════════════════
    ASESOR
    ═══════════════════════════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════════════════════════
+   ACCIONES DEL ASESOR
+   ───────────────────────────────────────────────────────────────────────────
+   El backend no manipula la página: DESCRIBE lo que quiere que pase y aquí se
+   decide si se hace. Esa dirección importa. La respuesta del chat viene de un
+   modelo de lenguaje que a su vez está leyendo lo que escribió el visitante,
+   así que tratarla como una orden directa sería dejar que un desconocido
+   redirija el navegador o vacíe un carrito escribiendo la frase adecuada. Cada
+   acción de aquí valida sus propios datos contra el catálogo y las rutas
+   reales, y lo que no reconoce lo ignora sin ruido.
+
+   Se dividen en dos familias que NO se mezclan:
+     · las de EFECTO —estas— se ejecutan solas al llegar la respuesta;
+     · las de BOTÓN (pago, whatsapp, carrito, ir) pintan un botón y esperan a
+       que el visitante lo toque. Viven en `Asesor.acciones`.
+   La frontera es deliberada: nada que cueste dinero o saque al visitante del
+   sitio ocurre sin que él lo pida.
+   ═══════════════════════════════════════════════════════════════════════════ */
+const AccionesAsesor = {
+  /* Normaliza [{sku,cantidad}] quedándose solo con SKUs que existen y
+     cantidades sanas. Es la única puerta por la que el carrito recibe datos
+     del servidor. */
+  itemsValidos(items) {
+    if (!Array.isArray(items)) return [];
+    const out = [];
+    items.slice(0, 20).forEach(it => {
+      const p = porSku(it && it.sku);
+      const n = parseInt(it && it.cantidad, 10);
+      if (p && Number.isInteger(n) && n > 0) out.push({ sku: p.sku, cantidad: Math.min(n, 99) });
+    });
+    return out;
+  },
+
+  mapa: {
+    /* ── Carrito ───────────────────────────────────────────────────────────
+       Un solo verbo con tres modos, que es como lo razona el backend:
+       `reemplazar` deja el carrito exactamente así, `sumar` acumula y
+       `restar` descuenta. Sin modo se reemplaza, que es el caso de una
+       cotización nueva. */
+    actualizar_carrito(a) {
+      const items = AccionesAsesor.itemsValidos(a.items);
+      const modo = a.modo || a.accion || 'reemplazar';
+      if (modo === 'sumar') items.forEach(i => Carrito.agregar(i.sku, i.cantidad));
+      else if (modo === 'restar') {
+        items.forEach(i => {
+          const hay = Carrito.items.get(i.sku) || 0;
+          if (hay > i.cantidad) Carrito.fijar(i.sku, hay - i.cantidad);
+          else Carrito.quitar(i.sku);
+        });
+      } else Carrito.reemplazar(items);   // incluye la lista vacía = vaciar
+    },
+
+    /* ── Navegación ───────────────────────────────────────────────────────
+       Solo rutas del propio router. Sin esta comprobación, un `ruta` con una
+       URL externa convertiría al asesor en un redirector abierto. */
+    navegar(a) {
+      const r = String(a.ruta || a.vista || '');
+      if (!RUTAS[r]) return;
+      location.hash = '#' + r;
+    },
+
+    /* ── Resaltar un producto ─────────────────────────────────────────────
+       Para «ese es el que te conviene»: lleva la tarjeta al centro y la
+       marca un momento. Si la tarjeta no está en pantalla —porque la sección
+       es otra— no se fuerza nada: la acción `navegar` es la que decide eso. */
+    resaltar_producto(a) {
+      const p = porSku(a.sku);
+      if (!p) return;
+      const carta = document.querySelector(`.card[data-sku="${CSS.escape(p.sku)}"]`);
+      if (!carta) return;
+      carta.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      carta.classList.remove('resaltado');
+      /* Reiniciar la animación exige un reflujo entre quitar y poner: sin él
+         el navegador funde los dos cambios en uno y no se reproduce nada
+         cuando el asesor resalta dos veces la misma tarjeta. */
+      void carta.offsetWidth;
+      carta.classList.add('resaltado');
+      setTimeout(() => carta.classList.remove('resaltado'), 2600);
+    },
+
+    /* ── Pago inmediato ───────────────────────────────────────────────────
+       Salta el botón y genera el link. `irAPagar` ya se planta solo si el
+       carrito está vacío, así que no puede cobrar la nada. */
+    generar_pago_inmediato() { irAPagar(null); },
+
+    /* ── Compatibilidad ───────────────────────────────────────────────────
+       Los tres nombres de la versión anterior. El backend desplegado todavía
+       manda `carrito_set` con cada cotización, así que quitarlos rompería el
+       carrito el día del despliegue: se quedan hasta que el servidor hable
+       solo el vocabulario nuevo. */
+    carrito_set(a) { Carrito.reemplazar(AccionesAsesor.itemsValidos(a.items)); },
+    carrito_add(a) {
+      const [i] = AccionesAsesor.itemsValidos([{ sku: a.sku, cantidad: a.cantidad }]);
+      if (i) Carrito.agregar(i.sku, i.cantidad);
+    },
+    abrir_carrito() { abrirDrawer(true); }
+  },
+
+  ejecutar(acciones) {
+    if (!Array.isArray(acciones)) return;
+    acciones.forEach(a => {
+      const fn = a && this.mapa[a.tipo];
+      if (!fn) return;   // los tipos de botón y los desconocidos no son de aquí
+      try { fn(a); }
+      catch (e) { console.warn('[asesor] acción "' + a.tipo + '" falló:', e.message); }
+    });
+  }
+};
+
+/* Se publica en el mismo espacio que `VQ.escena` para poder probar y depurar
+   una acción sin tener que provocar la conversación entera que la dispara.
+   No abre ninguna puerta nueva: quien ya puede ejecutar JavaScript en esta
+   página puede tocar el carrito de todos modos, y los precios los decide el
+   servidor, no el navegador. */
+window.VQ = window.VQ || {};
+window.VQ.acciones = AccionesAsesor;
+
 const Asesor = {
   log: $('#asesor-log'),
   historial: [],
@@ -517,8 +786,13 @@ const Asesor = {
     $('#asesor-btn').classList.add('abierto');
     $('#asesor-btn').setAttribute('aria-expanded', 'true');
     $('#asesor-punto').classList.remove('on');
+    Viewport.sincronizarBloqueo();
     if (!this.saludado) { this.saludado = true; this.saludo(); this.despertar(); }
-    setTimeout(() => $('#asesor-in').focus(), 320);
+    /* El foco automático solo en escritorio. En un teléfono, enfocar sin que
+       el visitante haya tocado el campo levanta el teclado encima de un panel
+       que todavía se está abriendo: se ve el salto, y además tapa el saludo
+       antes de que le dé tiempo a leerlo. */
+    if (!Viewport.esHoja()) setTimeout(() => $('#asesor-in').focus(), 320);
   },
 
   /* El backend duerme en el plan gratuito de Render y tarda ~50 s en levantar.
@@ -540,6 +814,10 @@ const Asesor = {
     $('#asesor').setAttribute('aria-hidden', 'true');
     $('#asesor-btn').classList.remove('abierto');
     $('#asesor-btn').setAttribute('aria-expanded', 'false');
+    /* Soltar el campo cierra el teclado; si no, en iOS se queda levantado
+       sobre una página que ya no tiene dónde escribir. */
+    $('#asesor-in').blur();
+    BloqueoScroll.soltar('asesor');
   },
 
   saludo() {
@@ -722,13 +1000,7 @@ const Asesor = {
     if (this.historial.length > 40) this.historial = this.historial.slice(-40);
 
     /* El servidor no toca el carrito: propone, y el cliente aplica. */
-    if (Array.isArray(data.acciones)) {
-      data.acciones.forEach(a => {
-        if (a.tipo === 'carrito_set') Carrito.reemplazar(a.items);
-        else if (a.tipo === 'carrito_add') Carrito.agregar(a.sku, a.cantidad);
-        else if (a.tipo === 'abrir_carrito') abrirDrawer(true);
-      });
-    }
+    AccionesAsesor.ejecutar(data.acciones);
 
     this.tarjetas(data.products);
     this.cotizacion(data.cotizacion);
@@ -1092,12 +1364,36 @@ $('#asesor-form').addEventListener('submit', e => {
   e.preventDefault();
   const campo = $('#asesor-in');
   const t = campo.value;
-  campo.value = ''; campo.style.height = 'auto';
+  campo.value = '';
+  /* Al vaciarse vuelve a una línea, y hay que quitarle también la marca de
+     tope: si el mensaje enviado llegaba al máximo, el campo se quedaba con
+     la barra de scroll puesta sobre un campo ya vacío. */
+  campo.style.height = 'auto';
+  campo.classList.remove('tope');
   Asesor.enviar(t);
 });
-$('#asesor-in').addEventListener('input', function () {
-  this.style.height = 'auto';
-  this.style.height = Math.min(this.scrollHeight, 104) + 'px';
+/* Alto del campo = alto de su contenido, hasta el tope. `height:auto` antes de
+   medir no es opcional: `scrollHeight` incluye el alto ya fijado, así que sin
+   soltarlo el campo crece y nunca vuelve a encogerse al borrar texto. */
+const TOPE_CAMPO = 120;
+function ajustarCampo(campo) {
+  campo.style.height = 'auto';
+  const alto = Math.min(campo.scrollHeight, TOPE_CAMPO);
+  campo.style.height = alto + 'px';
+  /* Solo al llegar al tope hay algo que desplazar. */
+  campo.classList.toggle('tope', campo.scrollHeight > TOPE_CAMPO);
+}
+
+$('#asesor-in').addEventListener('input', function () { ajustarCampo(this); });
+
+/* Al enfocar en móvil el teclado tapa media pantalla. Para cuando el sistema
+   termina de levantarlo y `visualViewport` ya reporta el alto nuevo, el hilo
+   tiene que estar abajo del todo: si no, el visitante ve el centro de la
+   conversación y su propio mensaje queda fuera de cuadro. Los dos tiempos
+   cubren los dos ritmos de animación de teclado que hay entre iOS y Android. */
+$('#asesor-in').addEventListener('focus', function () {
+  if (!Viewport.esHoja()) return;
+  [180, 420].forEach(t => setTimeout(() => Asesor.fin(), t));
 });
 $('#asesor-in').addEventListener('keydown', function (e) {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('#asesor-form').requestSubmit(); }
@@ -1122,6 +1418,7 @@ function arrancar() {
   $('#anio').textContent = new Date().getFullYear();
   Carrito.cargar();
   $('#cart-n').textContent = Carrito.piezas();
+  Viewport.iniciar();
   pintarDrawer();
   lineasHero = $$('#v-hub [data-at]');
 
