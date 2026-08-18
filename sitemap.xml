@@ -1,13 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- El sitio es una sola página con router de hash. Un buscador descarta todo
-     lo que va después de "#", así que listar #/catalogo, #/dental y compañía
-     no añade ninguna URL indexable: las once entradas se colapsan en la raíz.
-     Se declara la raíz y ya. -->
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url>
-    <loc>https://valquiriainc.com/</loc>
-    <lastmod>2026-08-09</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>1.0</priority>
-  </url>
+  <url><loc>https://valquiriainc.com/</loc><lastmod>2026-08-18</lastmod></url>
+  <url><loc>https://valquiriainc.com/dental/</loc><lastmod>2026-08-18</lastmod></url>
+  <url><loc>https://valquiriainc.com/catalogo/</loc><lastmod>2026-08-18</lastmod></url>
+  <url><loc>https://valquiriainc.com/ia/</loc><lastmod>2026-08-18</lastmod></url>
+  <url><loc>https://valquiriainc.com/3d/</loc><lastmod>2026-08-18</lastmod></url>
+  <url><loc>https://valquiriainc.com/pack/</loc><lastmod>2026-08-18</lastmod></url>
+  <url><loc>https://valquiriainc.com/lux/</loc><lastmod>2026-08-18</lastmod></url>
 </urlset>
