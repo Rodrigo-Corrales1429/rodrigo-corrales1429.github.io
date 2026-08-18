@@ -1,16 +1,13 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="es-MX">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Valquiria Inc.</title>
-<meta name="robots" content="noindex">
-<!-- GitHub Pages sirve este archivo ante cualquier ruta que no exista. El
-     sitio entero vive en index.html con router de hash, así que aquí no hay
-     nada que decidir: se devuelve al visitante a la raíz y la aplicación se
-     encarga. El redirect va en <script> y no en un meta refresh porque así
-     no deja una entrada extra en el historial: el botón "atrás" del navegador
-     lleva a donde el visitante estaba, no de vuelta al 404. -->
+<title>Página no encontrada | Valquiria Inc.</title>
+<meta name="robots" content="noindex,follow">
+<!-- Las rutas comerciales válidas tienen su propio index.html. GitHub Pages
+     usa este archivo únicamente para URLs inexistentes; en ese caso se vuelve
+     a la portada y se conserva cualquier fragmento del router interactivo. -->
 <script>location.replace('/' + location.hash);</script>
 <style>
   html,body{height:100%;margin:0;background:#060606;color:#c9a84c;
