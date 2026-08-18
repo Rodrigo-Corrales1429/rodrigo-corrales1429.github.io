@@ -1,10 +1,11 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="es-MX">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Valquiria Inc. — Manufactura aditiva en México</title>
-<meta name="description" content="Holding mexicano de manufactura aditiva. Valquiria Dental, 3D, Pack, Lux e IA. Modelos anatómicos dentales con nervio sintético, prototipado, empaque termoformado e iluminación impresa.">
+<meta name="description" content="Valquiria Inc. reúne modelos dentales didácticos, impresión 3D, empaque termoformado, iluminación e inteligencia artificial aplicada en México.">
+<meta name="robots" content="index,follow,max-image-preview:large">
 <meta name="theme-color" content="#060606">
 <link rel="canonical" href="https://valquiriainc.com/">
 
@@ -66,7 +67,13 @@
 <meta property="og:description" content="Manufactura aditiva y automatización con IA. Cinco divisiones, una plataforma.">
 <meta property="og:url" content="https://valquiriainc.com/">
 <meta property="og:locale" content="es_MX">
+<meta property="og:image" content="https://valquiriainc.com/assets/og-valquiria.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Valquiria Inc.: lo que se diseña bien, se sostiene.">
 <meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://valquiriainc.com/assets/og-valquiria.png">
+<meta name="twitter:image:alt" content="Valquiria Inc.: lo que se diseña bien, se sostiene.">
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -75,7 +82,7 @@
      única sin la que no hay nada que ver. Abrir el TLS con antelación ahorra
      el saludo completo —DNS, TCP, TLS— del camino crítico. -->
 <link rel="preconnect" href="https://unpkg.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300&family=Montserrat:wght@200;300;400;500&family=IBM+Plex+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300&amp;family=Montserrat:wght@200;300;400;500&amp;family=IBM+Plex+Mono:wght@300;400;500&amp;display=swap" rel="stylesheet">
 <link rel="stylesheet" href="assets/css/valquiria.css?v=71">
 
 <!-- ══ MAPA DE IMPORTACIÓN ══
@@ -139,18 +146,31 @@
 <script type="application/ld+json">
 {
   "@context":"https://schema.org",
-  "@type":"Organization",
-  "name":"Valquiria Inc.",
-  "url":"https://valquiriainc.com/",
-  "logo":"https://valquiriainc.com/assets/isotipo_gold.svg",
-  "description":"Holding mexicano de manufactura aditiva con cinco divisiones: Dental, 3D, Pack, Lux e IA.",
-  "areaServed":"MX",
-  "contactPoint":{
-    "@type":"ContactPoint",
-    "telephone":"+52-55-5467-5821",
-    "contactType":"sales",
-    "availableLanguage":["es"]
-  }
+  "@graph":[
+    {
+      "@type":"Organization",
+      "@id":"https://valquiriainc.com/#organization",
+      "name":"Valquiria Inc.",
+      "url":"https://valquiriainc.com/",
+      "logo":"https://valquiriainc.com/assets/isotipo_gold.svg",
+      "description":"Holding mexicano de manufactura aditiva con cinco divisiones: Dental, 3D, Pack, Lux e IA.",
+      "areaServed":"MX",
+      "contactPoint":{
+        "@type":"ContactPoint",
+        "telephone":"+52-55-5467-5821",
+        "contactType":"sales",
+        "availableLanguage":["es"]
+      }
+    },
+    {
+      "@type":"WebSite",
+      "@id":"https://valquiriainc.com/#website",
+      "url":"https://valquiriainc.com/",
+      "name":"Valquiria Inc.",
+      "inLanguage":"es-MX",
+      "publisher":{"@id":"https://valquiriainc.com/#organization"}
+    }
+  ]
 }
 </script>
 </head>
@@ -254,7 +274,7 @@
 <!-- ══ NAV ══ -->
 <nav id="nav">
   <a href="#/" class="brand" aria-label="Valquiria Inc., inicio">
-    <img class="brand-mark" src="assets/isotipo_gold.svg" alt="" aria-hidden="true">
+    <img class="brand-mark" src="assets/isotipo_gold.svg" alt="" width="26" height="26" aria-hidden="true">
     <span class="brand-txt">Valquiria</span>
   </a>
   <div class="nav-right">
@@ -332,31 +352,31 @@
       <nav class="portales" aria-label="Divisiones de Valquiria">
         <a class="portal" href="#/dental" data-estado="activa" style="--av:1">
           <span class="portal-n">División 02</span>
-          <h3>Dental</h3>
+          <h2>Dental</h2>
           <p>Modelos anatómicos con nervio sintético.</p>
           <span class="portal-est">Activa</span>
         </a>
         <a class="portal es-ia" href="#/ia" data-estado="beta" style="--av:.94">
           <span class="portal-n">División 05</span>
-          <h3>Valquiria IA</h3>
+          <h2>Valquiria IA</h2>
           <p>Consultoría y automatización con inteligencia artificial.</p>
           <span class="portal-est">En beta</span>
         </a>
         <a class="portal" href="#/3d" data-estado="obra" style="--av:.62">
           <span class="portal-n">División 01</span>
-          <h3>3D</h3>
+          <h2>3D</h2>
           <p>Prototipado y producción en serie.</p>
           <span class="portal-est">En impresión</span>
         </a>
         <a class="portal" href="#/pack" data-estado="obra" style="--av:.55">
           <span class="portal-n">División 03</span>
-          <h3>Pack</h3>
+          <h2>Pack</h2>
           <p>Empaque termoformado a la medida.</p>
           <span class="portal-est">En impresión</span>
         </a>
         <a class="portal" href="#/lux" data-estado="obra" style="--av:.68">
           <span class="portal-n">División 04</span>
-          <h3>Lux</h3>
+          <h2>Lux</h2>
           <p>Iluminación donde la capa es el material.</p>
           <span class="portal-est">En impresión</span>
         </a>
@@ -991,6 +1011,16 @@
     <div>
       <span class="mono">Valquiria Inc. · Manufactura aditiva · México</span>
     </div>
+    <nav class="foot-links" aria-label="Servicios de Valquiria">
+      <a href="/dental/">Dental</a>
+      <a href="/ia/">Inteligencia artificial</a>
+      <a href="/3d/">Impresión 3D</a>
+      <a href="/pack/">Empaque termoformado</a>
+      <a href="/lux/">Iluminación</a>
+      <a href="/catalogo/">Catálogo dental</a>
+    </nav>
+  </div>
+  <div class="foot-grid foot-secondary">
     <div class="foot-links">
       <a href="#/catalogo">Catálogo</a>
       <a href="#/ia">Valquiria IA</a>
@@ -1021,13 +1051,13 @@
 
 <!-- ══ ASESOR ══ -->
 <button id="asesor-btn" aria-label="Abrir el Asesor Valquiria" aria-expanded="false">
-  <img src="assets/isotipo_gold.svg" alt="" aria-hidden="true">
+  <img src="assets/isotipo_gold.svg" alt="" width="34" height="34" aria-hidden="true">
   <span id="asesor-punto"></span>
 </button>
 
 <section id="asesor" aria-label="Asesor Valquiria" aria-hidden="true">
   <div class="asesor-head">
-    <img src="assets/isotipo_gold.svg" alt="" aria-hidden="true">
+    <img src="assets/isotipo_gold.svg" alt="" width="28" height="28" aria-hidden="true">
     <div class="asesor-id">
       <b>Asesor Valquiria</b>
       <small>En línea · Valquiria IA</small>

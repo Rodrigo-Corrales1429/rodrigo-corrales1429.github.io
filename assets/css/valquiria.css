@@ -362,8 +362,8 @@ h3{font-family:var(--f-display); font-weight:400; font-size:1.3rem; line-height:
 }
 .portal:hover{background:rgba(22,20,16,.92)}
 .portal-n{font-family:var(--f-mono); font-size:.54rem; letter-spacing:.2em; color:var(--ash-dim)}
-.portal h3{font-size:1.22rem; color:var(--ivory); transition:color .35s}
-.portal:hover h3{color:var(--gold-lit)}
+.portal h2{font-size:1.22rem; color:var(--ivory); transition:color .35s}
+.portal:hover h2{color:var(--gold-lit)}
 .portal p{font-size:.72rem; line-height:1.55; color:var(--ash); margin-top:auto}
 .portal-est{
   font-family:var(--f-mono); font-size:.52rem; letter-spacing:.16em;
@@ -377,7 +377,7 @@ h3{font-family:var(--f-display); font-weight:400; font-size:1.3rem; line-height:
 .portal[data-estado="beta"] .portal-est::before{background:var(--cure); box-shadow:0 0 7px var(--cure)}
 .portal.es-ia:hover{background:rgba(20,16,34,.92)}
 .portal.es-ia::before{background:var(--cure)}
-.portal.es-ia:hover h3{color:var(--cure-lit)}
+.portal.es-ia:hover h2{color:var(--cure-lit)}
 
 @media(max-width:1000px){.portales{grid-template-columns:repeat(3,1fr)}}
 @media(max-width:640px){.portales{grid-template-columns:repeat(2,1fr)}
@@ -891,6 +891,8 @@ footer{
   text-transform:uppercase; color:var(--ash); text-decoration:none; transition:color .3s;
 }
 .foot-links a:hover{color:var(--gold-lit)}
+.foot-links a:focus-visible{outline:2px solid var(--gold-lit); outline-offset:4px}
+.foot-secondary{margin-top:18px; justify-content:flex-end}
 .foot-fin{margin-top:24px; padding-top:18px; border-top:1px solid rgba(255,255,255,.04)}
 
 /* ── CARRIL DEL RIEL ───────────────────────────────────────────────────────
