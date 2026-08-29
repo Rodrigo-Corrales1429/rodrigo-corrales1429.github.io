@@ -167,6 +167,7 @@
      algún día tocas esta línea, comprueba ahí que el aviso no vuelve. -->
 <link rel="preload" href="assets/valquiria.glb" as="fetch" crossorigin>
 <link rel="modulepreload" href="assets/js/escena.js?v=74">
+<link rel="modulepreload" href="assets/js/veredicto-pago.js?v=74">
 <link rel="modulepreload" href="assets/js/figuras.js?v=74">
 <link rel="modulepreload" href="assets/js/modelo.js?v=74">
 
@@ -697,19 +698,23 @@
   <!-- ═══ GRACIAS (retorno de Mercado Pago) ═══ -->
   <section class="vista" id="v-gracias">
     <div class="seccion">
+      <!-- Titular y entradilla los reescribe `recibirDePago` según lo que
+           diga el SERVIDOR sobre el pago. El texto de fábrica es el neutro: si
+           el JavaScript no llega a correr, la página no afirma una compra que
+           quizá no ocurrió. -->
       <div class="sec-head">
-        <span class="mono">Pedido recibido</span>
-        <h2>Gracias. Tu pedido ya está con nosotros.</h2>
-        <p>
-          En cuanto Mercado Pago confirme el pago te escribimos por correo con
-          el número de guía. Si algo no cuadra, escríbenos y lo resolvemos con
+        <span class="mono" id="gracias-mono">Tu pedido</span>
+        <h2 id="gracias-titulo">Estamos confirmando tu pago.</h2>
+        <p id="gracias-intro">
+          En cuanto Mercado Pago lo confirme te escribimos por correo con el
+          número de guía. Si algo no cuadra, escríbenos y lo resolvemos con
           una persona, no con un formulario.
         </p>
       </div>
       <!-- Lo rellena `recibirDePago` al volver de Mercado Pago: estado real,
            folio y desglose de lo que se compró. Vacío no ocupa espacio. -->
       <div id="gracias-estado"></div>
-      <div class="prosa">
+      <div class="prosa" id="gracias-siguiente">
         <h3>Lo que sigue</h3>
         <ul>
           <li>Recibes el comprobante de Mercado Pago en tu correo.</li>

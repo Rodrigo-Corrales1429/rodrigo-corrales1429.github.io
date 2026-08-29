@@ -10,6 +10,9 @@
 /* La escena se importa por su efecto: al evaluarse deja lista `window.VQ`,
    que es la superficie que usa todo lo de abajo. */
 import './escena.js?v=74';
+/* Las reglas de «qué se puede creer al volver de pagar» viven aparte y sin
+   DOM, para que las pruebas puedan ejecutarlas contra un ataque real. */
+import { decidirVeredicto, folioDeLaUrl } from './veredicto-pago.js?v=74';
 
 /* Aviso al vigilante del index: los módulos llegaron y se están evaluando.
    A partir de aquí lo que tarde es trabajo, no una carga rota, así que puede
@@ -285,6 +288,24 @@ const Envio = {
   olvidar() { this.dato = null; Memoria.borrar(this.LLAVE, true); }
 };
 
+/* La consulta que alimenta al veredicto de pago. Devuelve `{status, body}` en
+   vez de lanzar: el módulo de veredicto tiene que distinguir un 404 —«ese
+   folio no existe», que es concluyente— de un fallo de red, que solo significa
+   «vuelve a intentarlo». Confundirlos borraría el carrito de alguien que sí
+   pagó, o daría por bueno un folio inventado. */
+async function consultarPedido(folio) {
+  const ctrl = new AbortController();
+  const reloj = setTimeout(() => ctrl.abort(), 10000);
+  try {
+    const r = await fetch(
+      CFG.backend + '/api/pedido/' + encodeURIComponent(folio),
+      { signal: ctrl.signal }
+    );
+    const body = r.status === 200 ? await r.json().catch(() => null) : null;
+    return { status: r.status, body };
+  } finally { clearTimeout(reloj); }
+}
+
 /* Cotiza el envío contra el SERVIDOR y lo recuerda. El costo y la fecha los
    decide envios.js —el mismo motor que usa el Asesor—: aquí solo se guarda lo
    que respondió. Devuelve la opción recomendada, o null si no se pudo. */
@@ -348,11 +369,22 @@ const CAMPOS_COMPRADOR = [
 ];
 
 const Comprador = {
+  /* sessionStorage, NO localStorage.
+     ─────────────────────────────────────────────────────────────────────
+     Aquí viven nombre, correo, WhatsApp y domicilio. En localStorage se
+     quedaban indefinidamente —también después de pagar—, así que en la
+     computadora de una clínica, un cibercafé o un laboratorio de la
+     universidad, el siguiente que abriera el sitio encontraba el pedido
+     rellenado con los datos del anterior. Un dato de contacto que sobrevive
+     a su dueño es una fuga, aunque nadie la esté buscando.
+
+     El precio es que quien vuelve la semana próxima teclea otra vez su
+     dirección. Es un precio que se paga con gusto. */
   LLAVE: 'vq_comprador_v1',
   datos: { nombre:'', whatsapp:'', email:'', cp:'', direccion:'', referencias:'' },
 
   cargar() {
-    const d = Memoria.leer(this.LLAVE, true);
+    const d = Memoria.leer(this.LLAVE);
     if (!d || typeof d !== 'object') return;
     CAMPOS_COMPRADOR.forEach(c => {
       const r = this.revisar(c.id, d[c.id]);
@@ -369,7 +401,16 @@ const Comprador = {
     }
   },
 
-  guardar() { Memoria.escribir(this.LLAVE, this.datos, true); },
+  guardar() { Memoria.escribir(this.LLAVE, this.datos); },
+
+  /* Se llama al confirmar el pago: cumplida su función, el contacto se va.
+     El código postal se queda —lo usa el calculador de envío del carrito y
+     por sí solo no identifica a nadie—. */
+  olvidar() {
+    this.datos = { nombre:'', whatsapp:'', email:'', cp:this.datos.cp || '',
+                   direccion:'', referencias:'' };
+    Memoria.borrar(this.LLAVE);
+  },
 
   /* Normaliza y valida UN campo. Devuelve { ok, valor, error }. Es la única
      puerta por la que estos datos entran: lo que sale de aquí ya viaja al
@@ -861,11 +902,57 @@ const urlWhatsApp = txt => `https://wa.me/${CFG.whatsapp}?text=${encodeURICompon
    hace `guardarAntesDeSaltar`. */
 const PAGO_EN_CURSO = 'vq_pago_en_curso';
 
+/* El único destino al que este sitio manda a alguien fuera de sí mismo por
+   dinero es Mercado Pago. Comprobarlo cuesta cuatro líneas y cierra la puerta
+   a que una respuesta del backend —o algo que se cuele en ella— convierta el
+   botón de pagar en un redirector abierto hacia una pasarela falsa. */
+const HOSTS_MP = ['mercadopago.com', 'mercadopago.com.mx', 'mercadolibre.com',
+                  'mercadolibre.com.mx', 'mercadopago.com.ar'];
+
+function esLinkDeMercadoPago(url) {
+  try {
+    const u = new URL(String(url), location.origin);
+    if (u.protocol !== 'https:') return false;
+    return HOSTS_MP.some(h => u.hostname === h || u.hostname.endsWith('.' + h));
+  } catch { return false; }
+}
+
 function guardarAntesDeSaltar(datos) {
   Asesor.recordar();
   Comprador.guardar();
   Carrito.guardar();
   Memoria.escribir(PAGO_EN_CURSO, { ...datos, cuando: Date.now() });
+}
+
+/**
+ * Guarda el desglose que devolvió el servidor y responde si el total que el
+ * cliente tenía delante cambió. Devolver `null` significa «lo que se enseñaba
+ * ya era correcto»; devolver un objeto significa «hay que enseñarle esto
+ * antes de cobrarle».
+ */
+function adoptarDesgloseDelServidor(d) {
+  if (!d || !Number.isInteger(d.total_centavos)) return null;
+
+  const t = Carrito.totales();
+  const e = Envio.vigente();
+  const antes = t.subtotal + (t.gratis ? 0 : (e ? e.costo_centavos : t.envio));
+
+  if (d.envio && /^\d{5}$/.test(String(d.envio.cp || ''))) {
+    Envio.recordar({
+      cp: String(d.envio.cp),
+      costo_centavos: d.envio.costo_centavos,
+      gratis: !!d.envio.gratis,
+      servicio: d.envio.servicio || '',
+      texto: d.envio.texto || ''
+    });
+  }
+
+  if (antes === d.total_centavos) return null;
+  return {
+    total: mxn(d.total_centavos),
+    totalAntes: mxn(antes),
+    envio: d.envio && d.envio.gratis ? 'gratis' : mxn(d.envio_centavos)
+  };
 }
 
 async function irAPagar(boton) {
@@ -912,13 +999,44 @@ async function irAPagar(boton) {
     }
 
     if (!r.ok || !data.url) throw new Error(data.error || 'Sin link de pago');
+    if (!esLinkDeMercadoPago(data.url)) throw new Error('link de pago no reconocido');
+
+    /* EL TOTAL DE LA PANTALLA SE SUSTITUYE POR EL DEL SERVIDOR, Y SI CAMBIA,
+       NO SE SALTA.
+       ────────────────────────────────────────────────────────────────────
+       El servidor cotiza el envío por código postal; el carrito, mientras no
+       se calcula, enseña una tarifa de referencia. Cuando no coincidían, el
+       cliente veía $536.83 en la página y $551.83 en el banco. Quince pesos
+       de diferencia y toda la confianza: el importe de la pasarela
+       desmintiendo al del sitio.
+
+       Ahora el desglose del servidor entra al mismo sitio del que sale el que
+       se enseña, y si el total cambió se enseña el bueno y se espera un
+       segundo toque. El link ya está creado: confirmar no genera otro. */
+    const listo = { url: data.url, folio: data.folio || '', total: data.total || '' };
+    const cambio = adoptarDesgloseDelServidor(data.desglose);
+
+    if (cambio) {
+      abrirDrawer(false);
+      Asesor.abrir();
+      Asesor.decir(
+        'Con tu código postal el envío queda en **' + cambio.envio + '**, así que ' +
+        'el total es **' + cambio.total + '** y no ' + cambio.totalAntes + '.\n\n' +
+        desglosePedido() +
+        '\n\nEs el importe exacto que vas a ver en Mercado Pago. ¿Lo confirmo?');
+      Asesor.acciones([
+        { tipo:'pago_listo', rotulo:'Confirmar y pagar ' + cambio.total, pago: listo },
+        { tipo:'carrito' }
+      ]);
+      return;
+    }
 
     guardarAntesDeSaltar({
-      folio: data.folio || '',
-      total: data.total || '',
+      folio: listo.folio,
+      total: listo.total,
       items: Carrito.lista()
     });
-    location.href = data.url;
+    location.href = listo.url;
   } catch (e) {
     if (boton) { boton.innerHTML = original; boton.disabled = false; }
     /* Sin popup automático: se ofrece el botón y lo toca quien quiera. Un
@@ -939,101 +1057,160 @@ async function irAPagar(boton) {
 }
 
 /* ── La vuelta de Mercado Pago ─────────────────────────────────────────────
-   El momento más frágil de la compra: el cliente vuelve de un dominio ajeno
-   a un documento recién cargado. Aquí se decide qué se le dice y —solo si el
-   pago se aprobó— cuándo se le vacía el carrito: DESPUÉS de enseñarle qué
-   compró, nunca antes. */
-function estadoDelPago() {
-  const p = parametrosVisita();
-  const propio = (p.get('estado') || '').toLowerCase();
-  const mp = (p.get('collection_status') || p.get('status') ||
-              p.get('payment_status') || '').toLowerCase();
+   El momento más frágil de la compra: el cliente vuelve de un dominio ajeno a
+   un documento recién cargado, y lo único que trae consigo son unos
+   parámetros en la URL.
 
-  if (mp === 'approved' || propio === 'aprobado') return 'aprobado';
-  if (mp === 'rejected' || mp === 'cancelled' || mp === 'failure' || propio === 'fallo') return 'fallo';
-  if (mp === 'pending' || mp === 'in_process' || mp === 'in_mediation' || propio === 'pendiente') return 'pendiente';
-  return 'desconocido';
-}
-
+   La decisión de QUÉ creer no vive aquí: vive en `veredicto-pago.js`, sin DOM
+   y sin red, para que `npm test` pueda ejecutarla contra el ataque real en vez
+   de comprobar que el código «parece» correcto. Aquí solo queda lo que hay
+   que pintar. */
 let graciasAtendido = false;
 
 async function recibirDePago() {
   if (graciasAtendido) return;
   graciasAtendido = true;
 
-  const p = parametrosVisita();
   const enCurso = Memoria.leer(PAGO_EN_CURSO);
-  const folioPedido = p.get('external_reference') || (enCurso && enCurso.folio) || '';
-  let estado = estadoDelPago();
+  const params = parametrosVisita();
+  const folioPrevio = folioDeLaUrl(params.get('external_reference')) ||
+                      (enCurso && enCurso.folio) || '';
 
-  /* Si nadie dijo cómo fue, se le pregunta al servidor por el folio: el
-     webhook firmado es quien sabe la verdad, el navegador solo trae pistas. */
-  if (estado === 'desconocido' && folioPedido) {
-    try {
-      const r = await fetch(CFG.backend + '/api/pedido/' + encodeURIComponent(folioPedido));
-      const d = await r.json();
-      if (r.ok && d.estado === 'approved') estado = 'aprobado';
-      else if (r.ok && (d.estado === 'rejected' || d.estado === 'cancelled')) estado = 'fallo';
-      else if (r.ok) estado = 'pendiente';
-    } catch { /* el backend duerme: se trata como pendiente */ }
-  }
-  if (estado === 'desconocido') {
-    /* Nadie viene de pagar: alguien abrió /gracias a pelo, o llegó por un
-       enlace viejo. Aquí NO se dice nada — afirmar «pago confirmado» a quien
-       no ha pagado es la peor cosa que puede decir una tienda, y la que más
-       tarda en descubrirse porque suena bien. */
-    if (!enCurso && !folioPedido) return;
-    estado = 'pendiente';
-  }
+  /* Nadie viene de pagar: alguien abrió /gracias a pelo, o llegó por un enlace
+     viejo. Aquí NO se dice nada. */
+  if (!folioPrevio && !enCurso) return;
 
-  const desglose = desglosePedido();
   const ROTULO = {
     aprobado: 'Pago confirmado',
-    pendiente: 'Pago en proceso',
-    fallo: 'El pago no se completó'
+    pendiente: 'Confirmando el pago',
+    revision: 'Pago en revisión',
+    fallo: 'El pago no se completó',
+    'sin-verificar': 'No pudimos verificar el pago'
   };
 
-  /* La vista de gracias cuenta lo mismo que el Asesor: quien cerró el panel
-     tiene derecho a ver su folio sin volver a abrirlo. */
+  /* La cabecera de la vista también es una afirmación. Dejarla en «Gracias,
+     tu pedido ya está con nosotros» mientras el recuadro de abajo dice «no
+     pudimos verificar el pago» es la misma mentira, escrita más grande. */
+  const CABECERA = {
+    aprobado: ['Pedido recibido', 'Gracias. Tu pedido ya está con nosotros.',
+      'Te escribimos por correo con el número de guía en cuanto salga. Si algo ' +
+      'no cuadra, escríbenos y lo resolvemos con una persona, no con un formulario.'],
+    pendiente: ['Pago en proceso', 'Estamos confirmando tu pago.',
+      'Mercado Pago todavía no lo confirma. Puede tardar unos minutos —y con ' +
+      'SPEI o pago en efectivo, más—. No vuelvas a pagar: te avisamos en cuanto ' +
+      'se acredite.'],
+    revision: ['Pago en revisión', 'Estamos revisando tu pago.',
+      'El importe cobrado no coincide con el del pedido, así que lo mira una ' +
+      'persona antes de mover nada. No vuelvas a pagar: escríbenos con tu folio ' +
+      'y lo resolvemos hoy.'],
+    fallo: ['Pago no completado', 'El pago no se completó.',
+      'Tu pedido sigue guardado tal como lo dejaste. Puedes reintentar el link ' +
+      'o cerrarlo por WhatsApp con una persona.'],
+    'sin-verificar': ['Sin confirmar', 'No pudimos confirmar tu pago.',
+      'No hemos tocado tu pedido. Si ya pagaste, escríbenos con tu folio y lo ' +
+      'verificamos a mano; si no, puedes reintentar el link.']
+  };
+
+  const pintarCabecera = estado => {
+    const c = CABECERA[estado];
+    if (!c) return;
+    const mono = $('#gracias-mono'), titulo = $('#gracias-titulo'), intro = $('#gracias-intro');
+    if (mono) mono.textContent = c[0];
+    if (titulo) titulo.textContent = c[1];
+    if (intro) intro.textContent = c[2];
+    /* «Lo que sigue» describe una compra hecha: preparar, empacar, mandar la
+       guía. Solo tiene sentido con el pago confirmado. */
+    const siguiente = $('#gracias-siguiente');
+    if (siguiente) siguiente.hidden = estado !== 'aprobado';
+  };
+
   const slot = $('#gracias-estado');
-  if (slot) {
+  const pintarSlot = (estado, folio, desglose) => {
+    if (!slot) return;
     slot.innerHTML =
       '<div class="gr-estado gr-' + estado + '">' +
-        '<span class="mono">' + esc(ROTULO[estado]) + '</span>' +
-        (folioPedido ? '<b>Folio ' + esc(folioPedido) + '</b>' : '') +
+        '<span class="mono">' + esc(ROTULO[estado] || '') + '</span>' +
+        (folio ? '<b>Folio ' + esc(folio) + '</b>' : '') +
       '</div>' +
       (desglose ? '<div class="gr-desglose">' + md(desglose) + '</div>' : '');
-  }
+  };
 
-  /* El Asesor habla primero. Que el cliente vuelva a un chat mudo —o peor, a
-     uno ofreciéndole el catálogo desde cero— es justo lo que había que matar. */
+  /* Mientras se pregunta, se dice que se está preguntando. Es la diferencia
+     entre una pantalla que espera y una pantalla que miente. */
+  pintarSlot('pendiente', folioPrevio, '');
+  pintarCabecera('pendiente');
+  Asesor.saludado = true;
+  Asesor.abrir();
+  const esperando = Asesor.burbuja('bot', md(
+    'Estoy **confirmando tu pago** con Mercado Pago' +
+    (folioPrevio ? ', folio **' + folioPrevio + '**' : '') + '. Un momento…'));
+
+  const { estado, folio, vaciarCarrito } = await decidirVeredicto({
+    params,
+    enCurso,
+    consultar: consultarPedido
+  });
+
+  if (esperando) esperando.remove();
+
+  const desglose = desglosePedido();
+  pintarSlot(estado, folio, desglose);
+  pintarCabecera(estado);
+
   const mensaje =
     estado === 'aprobado'
-      ? '**Pago confirmado.**' + (folioPedido ? ' Tu folio es **' + folioPedido + '**.' : '') +
+      ? '**Pago confirmado.**' + (folio ? ' Tu folio es **' + folio + '**.' : '') +
         (desglose ? '\n\nEsto es lo que compraste:\n\n' + desglose : '') +
         '\n\nTe llega el comprobante de Mercado Pago al correo y la guía en cuanto salga.'
     : estado === 'fallo'
       ? 'El pago no se completó, así que **aquí sigue tu pedido** tal como lo dejaste:' +
         (desglose ? '\n\n' + desglose : '') +
         '\n\nPodemos reintentar el link o cerrarlo por WhatsApp, como prefieras.'
-      : 'Tu pago está **en proceso**' + (folioPedido ? ', folio **' + folioPedido + '**' : '') +
-        '. En cuanto Mercado Pago lo confirme te avisamos.' +
-        (desglose ? '\n\nAquí sigue tu pedido:\n\n' + desglose : '');
+    : estado === 'revision'
+      ? 'Tu pago entró, pero **el importe no coincide** con el del pedido, así ' +
+        'que lo estamos revisando a mano antes de mover nada. **No vuelvas a ' +
+        'pagar**: escríbenos con tu folio' +
+        (folio ? ' **' + folio + '**' : '') + ' y lo resolvemos hoy.'
+    : estado === 'pendiente'
+      ? 'Mercado Pago **todavía no confirma** tu pago' +
+        (folio ? ', folio **' + folio + '**' : '') +
+        '. Puede tardar unos minutos —y con SPEI o pago en efectivo, más—. ' +
+        '**No vuelvas a pagar**: en cuanto se confirme te escribimos.' +
+        (desglose ? '\n\nTu pedido sigue guardado:\n\n' + desglose : '')
+      : 'No pude confirmar el pago' +
+        (folio ? ' del folio **' + folio + '**' : '') +
+        '. **No he tocado tu pedido**: sigue tal cual.' +
+        (desglose ? '\n\n' + desglose : '') +
+        '\n\nSi ya pagaste, escríbenos con tu folio y lo verificamos a mano; ' +
+        'si no, puedes reintentar el link.';
 
-  Asesor.saludado = true;
   Asesor.burbuja('bot', md(mensaje));
-  if (estado !== 'aprobado' && Carrito.piezas() > 0) {
-    Asesor.acciones([{ tipo:'pago' }, { tipo:'whatsapp' }, { tipo:'carrito' }]);
+
+  /* Los botones se eligen por el riesgo de cada estado. Ofrecer «Pagar» a
+     quien puede haber pagado ya es invitarlo a pagar dos veces. */
+  if (estado === 'fallo' && Carrito.piezas() > 0) {
+    Asesor.acciones([{ tipo: 'pago' }, { tipo: 'whatsapp' }, { tipo: 'carrito' }]);
+  } else if (estado !== 'aprobado') {
+    Asesor.acciones([
+      { tipo: 'whatsapp', rotulo: 'Escribir por WhatsApp',
+        texto: 'Hola Valquiria, quiero confirmar el estado de mi pedido' +
+               (folio ? ' con folio ' + folio : '') + '.' },
+      { tipo: 'carrito' }
+    ]);
   }
   Asesor.recordar();
-  Asesor.abrir();
 
   Memoria.borrar(PAGO_EN_CURSO);
 
-  /* Ahora sí. El carrito se vacía cuando el cliente YA vio qué compró, y solo
-     con el pago aprobado: quien vuelve de un pago rechazado necesita su
-     pedido intacto para reintentar. */
-  if (estado === 'aprobado') { Carrito.vaciar(); Envio.olvidar(); }
+  /* EL CARRITO SOLO SE VACÍA CON UN APROBADO DEL SERVIDOR. Ni con la URL, ni
+     con un «probablemente», ni con el silencio del backend. */
+  if (vaciarCarrito) {
+    Carrito.vaciar();
+    Envio.olvidar();
+    /* Los datos de entrega ya cumplieron su función y no tienen por qué
+       quedarse esperando al siguiente que use esta computadora. */
+    Comprador.olvidar();
+  }
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -1624,6 +1801,9 @@ const Asesor = {
         return `<button class="chat-act wa" data-acc="wa"${
           a.texto ? ` data-txt="${esc(a.texto)}"` : ''}>${
           esc(a.rotulo || 'Cerrar por WhatsApp')}</button>`;
+      if (a.tipo === 'pago_listo')
+        return `<button class="chat-act" data-acc="pago-listo">${
+          esc(a.rotulo || 'Confirmar y pagar')}</button>`;
       if (a.tipo === 'carrito')
         return `<button class="chat-act sec" data-acc="carrito">Ver mi carrito</button>`;
       if (a.tipo === 'ir')
@@ -1634,6 +1814,17 @@ const Asesor = {
       const b = e.target.closest('[data-acc]'); if (!b) return;
       const t = b.dataset.acc;
       if (t === 'pago') irAPagar(b);
+      else if (t === 'pago-listo') {
+        /* El link ya existe y la mercancía ya está apartada: confirmar NO
+           crea otra preferencia. Volver a llamar a /api/pago aquí gastaría
+           una reserva más del visitante por el simple hecho de haber leído
+           el total corregido. */
+        const listo = (lista.find(x => x.tipo === 'pago_listo') || {}).pago;
+        if (!listo || !esLinkDeMercadoPago(listo.url)) return;
+        b.disabled = true;
+        guardarAntesDeSaltar({ folio: listo.folio, total: listo.total, items: Carrito.lista() });
+        location.href = listo.url;
+      }
       else if (t === 'wa') {
         /* Una consulta de servicios de IA no debe abrir WhatsApp con un
            pedido de dientes: la acción puede traer su propio texto. */
