@@ -9,7 +9,7 @@
    ═══════════════════════════════════════════════════════════════════════════ */
 /* La escena se importa por su efecto: al evaluarse deja lista `window.VQ`,
    que es la superficie que usa todo lo de abajo. */
-import './escena.js?v=72';
+import './escena.js?v=74';
 
 /* Aviso al vigilante del index: los módulos llegaron y se están evaluando.
    A partir de aquí lo que tarde es trabajo, no una carga rota, así que puede
@@ -212,6 +212,298 @@ const Carrito = {
   }
 };
 
+/* ════════════════════════════════════════════════════════════════════════════
+   MEMORIA DE LA VISITA
+   ───────────────────────────────────────────────────────────────────────────────
+   Mercado Pago no abre una pestaña nueva: se lleva la que hay. Cuando el
+   cliente vuelve, este documento se cargó otra vez desde cero y todo lo que
+   vivía en RAM —el hilo del Asesor, sobre todo— ya no existe. El síntoma era
+   un Asesor con amnesia ofreciendo el catálogo genérico a alguien que
+   acababa de mandar a pagar dos kits de endodoncia.
+
+   El carrito ya vivía en localStorage. Aquí se le añade lo que faltaba:
+     · el hilo de la conversación (sessionStorage: dura lo que la pestaña,
+       que es exactamente lo que dura una compra),
+     · los datos de entrega ya tecleados (localStorage: quien vuelve la
+       semana que viene no tiene por qué volver a escribir su dirección),
+     · la señal de que se fue a pagar y hay que recibirlo de vuelta.
+
+   Nada de esto guarda tokens, llaves ni nada que sirva fuera de este
+   navegador. Si el almacenamiento está bloqueado —modo privado de iOS con
+   el disco lleno— todo sigue funcionando en memoria: se pierde el rescate,
+   no la tienda.
+   ═════════════════════════════════════════════════════════════════════════════ */
+const Memoria = {
+  escribir(llave, valor, persistente) {
+    try {
+      (persistente ? localStorage : sessionStorage).setItem(llave, JSON.stringify(valor));
+      return true;
+    } catch { return false; }
+  },
+  leer(llave, persistente) {
+    try {
+      const raw = (persistente ? localStorage : sessionStorage).getItem(llave);
+      return raw ? JSON.parse(raw) : null;
+    } catch { return null; }
+  },
+  borrar(llave, persistente) {
+    try { (persistente ? localStorage : sessionStorage).removeItem(llave); } catch {}
+  }
+};
+
+/* ── Envío cotizado ─────────────────────────────────────────────────────
+   La última cotización de envío que dio el SERVIDOR, para que el desglose del
+   Asesor y el del carrito digan el mismo número. Caduca a las seis horas: una
+   tarifa de anteayer es peor que no tener tarifa, porque se dice con la misma
+   seguridad. */
+const Envio = {
+  LLAVE: 'vq_envio_v1',
+  VIDA_MS: 6 * 60 * 60 * 1000,
+  dato: null,
+
+  cargar() {
+    const d = Memoria.leer(this.LLAVE, true);
+    if (d && /^\d{5}$/.test(String(d.cp || '')) && Number.isInteger(d.costo_centavos)) {
+      this.dato = d;
+    }
+  },
+
+  recordar(d) {
+    this.dato = { ...d, cuando: Date.now() };
+    Memoria.escribir(this.LLAVE, this.dato, true);
+  },
+
+  /* La cotización solo vale para el código postal con el que se pidió. */
+  vigente() {
+    const d = this.dato;
+    if (!d) return null;
+    if (Date.now() - (d.cuando || 0) > this.VIDA_MS) return null;
+    if (Comprador.datos.cp && Comprador.datos.cp !== d.cp) return null;
+    return d;
+  },
+
+  olvidar() { this.dato = null; Memoria.borrar(this.LLAVE, true); }
+};
+
+/* Cotiza el envío contra el SERVIDOR y lo recuerda. El costo y la fecha los
+   decide envios.js —el mismo motor que usa el Asesor—: aquí solo se guarda lo
+   que respondió. Devuelve la opción recomendada, o null si no se pudo. */
+async function cotizarEnvio(cp) {
+  if (!/^\d{5}$/.test(String(cp || ''))) return null;
+  /* Reloj corto y propio. El backend duerme en el plan gratuito de Render y
+     tarda ~50 s en levantar: esperarlo con los tres puntitos puestos convierte
+     «te digo cuánto cuesta el envío» en un minuto de pantalla muerta a mitad
+     del checkout. Doce segundos y se sigue con la tarifa estimada, que es lo
+     que el carrito ya enseñaba. */
+  const ctrl = new AbortController();
+  const reloj = setTimeout(() => ctrl.abort(), 12000);
+  try {
+    const r = await fetch(CFG.backend + '/api/envio', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cp_destino: String(cp), items: Carrito.lista() }),
+      signal: ctrl.signal
+    });
+    const d = await r.json();
+    if (!r.ok || !d.ok || !Array.isArray(d.opciones) || !d.opciones.length) return null;
+    const rec = d.opciones.find(o => o.recomendada) || d.opciones[0];
+    Envio.recordar({
+      cp: (d.destino && d.destino.cp) ? String(d.destino.cp) : String(cp),
+      costo_centavos: rec.costo_centavos,
+      gratis: !!rec.envio_gratis,
+      servicio: rec.servicio || '',
+      texto: rec.texto || '',
+      destino: (d.destino && d.destino.estado) || ''
+    });
+    return rec;
+  } catch { return null; }
+  finally { clearTimeout(reloj); }
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+   COMPRADOR — a quién hay que escribirle
+   ───────────────────────────────────────────────────────────────────────────────
+   El hueco más caro que tenía la tienda: se podía generar un link de pago sin
+   pedir un solo dato de contacto. Si el pago se queda a medias —y una parte
+   siempre se queda a medias— no hay a quién escribirle. El pedido existe,
+   el dinero no llegó, y nadie sabe de quién era.
+
+   Estos cinco campos son el mínimo para poder ENVIAR y para poder RESCATAR.
+   Se piden en el chat, uno detrás de otro y con lo que ya se sabe relleno:
+   un formulario de doce campos delante de alguien que ya decidió comprar es
+   la forma más cara de perder una venta.
+   ═════════════════════════════════════════════════════════════════════════════ */
+const CAMPOS_COMPRADOR = [
+  { id:'nombre', rotulo:'Nombre completo', tipo:'text', modo:'text',
+    auto:'name', ph:'Nombre y apellido' },
+  { id:'whatsapp', rotulo:'WhatsApp', tipo:'tel', modo:'numeric',
+    auto:'tel-national', ph:'10 dígitos con lada' },
+  { id:'email', rotulo:'Correo', tipo:'email', modo:'email',
+    auto:'email', ph:'donde te llega el comprobante' },
+  { id:'cp', rotulo:'Código postal', tipo:'text', modo:'numeric',
+    auto:'postal-code', ph:'5 dígitos' },
+  { id:'direccion', rotulo:'Calle y número, colonia y ciudad', tipo:'text', modo:'text',
+    auto:'street-address', ph:'Av. Juárez 120, Centro, Pachuca' },
+  { id:'referencias', rotulo:'Referencias de entrega', tipo:'text', modo:'text',
+    auto:'off', ph:'opcional — portón negro, entre dos farmacias', opcional:true }
+];
+
+const Comprador = {
+  LLAVE: 'vq_comprador_v1',
+  datos: { nombre:'', whatsapp:'', email:'', cp:'', direccion:'', referencias:'' },
+
+  cargar() {
+    const d = Memoria.leer(this.LLAVE, true);
+    if (!d || typeof d !== 'object') return;
+    CAMPOS_COMPRADOR.forEach(c => {
+      const r = this.revisar(c.id, d[c.id]);
+      if (r.ok && r.valor) this.datos[c.id] = r.valor;
+    });
+    /* El código postal ya se guardaba por su cuenta para el calculador del
+       carrito. Si el comprador todavía no tiene, se hereda: teclearlo dos
+       veces en la misma visita es justo lo que hay que evitar. */
+    if (!this.datos.cp) {
+      try {
+        const cp = localStorage.getItem(CP_GUARDADO);
+        if (/^\d{5}$/.test(String(cp || ''))) this.datos.cp = cp;
+      } catch {}
+    }
+  },
+
+  guardar() { Memoria.escribir(this.LLAVE, this.datos, true); },
+
+  /* Normaliza y valida UN campo. Devuelve { ok, valor, error }. Es la única
+     puerta por la que estos datos entran: lo que sale de aquí ya viaja al
+     servidor y de ahí al aviso de Telegram. */
+  revisar(id, bruto) {
+    const v = String(bruto == null ? '' : bruto)
+      .replace(/[\u0000-\u001F\u007F]/g, ' ').replace(/\s+/g, ' ').trim();
+
+    if (id === 'referencias') return { ok:true, valor: v.slice(0, 140) };
+
+    if (!v) return { ok:false, valor:'', error:'Este dato me hace falta.' };
+
+    if (id === 'nombre') {
+      if (v.length < 3 || !/[a-z\u00e1\u00e9\u00ed\u00f3\u00fa\u00f1]/i.test(v)) {
+        return { ok:false, valor:'', error:'Escribe tu nombre completo.' };
+      }
+      return { ok:true, valor: v.slice(0, 80) };
+    }
+
+    if (id === 'whatsapp') {
+      /* Mexico: diez dígitos. Se aceptan tal cual, con 52 delante, con el 1
+         viejo de WhatsApp o con espacios y paréntesis, y se guardan SIEMPRE
+         como 52 + diez dígitos, que es como hay que marcarlos desde fuera. */
+      let n = v.replace(/\D/g, '');
+      if (n.length === 13 && n.startsWith('521')) n = n.slice(3);
+      else if (n.length === 12 && n.startsWith('52')) n = n.slice(2);
+      else if (n.length === 11 && n.startsWith('1')) n = n.slice(1);
+      if (n.length !== 10) {
+        return { ok:false, valor:'', error:'Necesito los 10 dígitos, con lada.' };
+      }
+      return { ok:true, valor:'52' + n };
+    }
+
+    if (id === 'email') {
+      const e = v.toLowerCase().slice(0, 160);
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(e)) {
+        return { ok:false, valor:'', error:'Ese correo no tiene forma de correo.' };
+      }
+      return { ok:true, valor:e };
+    }
+
+    if (id === 'cp') {
+      const cp = v.replace(/\D/g, '');
+      if (!/^\d{5}$/.test(cp)) {
+        return { ok:false, valor:'', error:'Son 5 dígitos.' };
+      }
+      return { ok:true, valor:cp };
+    }
+
+    if (id === 'direccion') {
+      /* Un número exterior no es un capricho: sin él la guía no se puede
+         imprimir y el paquete vuelve. */
+      if (v.length < 10 || !/\d/.test(v)) {
+        return { ok:false, valor:'',
+          error:'Falta calle CON número, colonia y ciudad.' };
+      }
+      return { ok:true, valor: v.slice(0, 180) };
+    }
+
+    return { ok:true, valor: v.slice(0, 180) };
+  },
+
+  fijar(id, bruto) {
+    const r = this.revisar(id, bruto);
+    if (r.ok) { this.datos[id] = r.valor; this.guardar(); }
+    return r;
+  },
+
+  /* Qué falta para poder cobrar. El orden es el orden en que se pregunta. */
+  faltantes() {
+    return CAMPOS_COMPRADOR
+      .filter(c => !c.opcional && !this.revisar(c.id, this.datos[c.id]).ok)
+      .map(c => c.id);
+  },
+
+  completo() { return this.faltantes().length === 0; },
+
+  telefonoBonito() {
+    const n = String(this.datos.whatsapp || '').replace(/^52/, '');
+    return n.length === 10 ? n.slice(0, 3) + ' ' + n.slice(3, 6) + ' ' + n.slice(6) : n;
+  },
+
+  /* Lo que viaja al servidor. Nada más: ni el historial ni el carrito, que
+     el servidor recalcula por su cuenta. */
+  paraServidor() {
+    const d = this.datos;
+    return {
+      nombre: d.nombre,
+      whatsapp: d.whatsapp,
+      email: d.email,
+      cp: d.cp,
+      direccion: d.direccion,
+      referencias: d.referencias || ''
+    };
+  }
+};
+
+/* ── Desglose del pedido ──────────────────────────────────────────────
+   Lo que el Asesor tiene que saber decir SIEMPRE, con backend o sin él. Un
+   asesor que no sabe recitar el pedido que acaba de armar no es un asesor:
+   es un buscador con burbujas. */
+function desglosePedido() {
+  const t = Carrito.totales();
+  if (!t.lineas.length) return '';
+
+  const e = Envio.vigente();
+  const envio = t.gratis ? 0 : (e ? e.costo_centavos : t.envio);
+  const total = t.subtotal + envio;
+
+  let txt = t.lineas
+    .map(l => '• **' + l.cantidad + ' × ' + l.p.nombre + '** — ' + mxn(l.linea))
+    .join('\n');
+
+  const cp = Comprador.datos.cp;
+  txt += '\n\nSubtotal: **' + mxn(t.subtotal) + '**';
+  if (t.gratis) txt += '\nEnvío: **gratis**';
+  else if (e) {
+    txt += '\nEnvío a CP ' + e.cp + ': **' + mxn(envio) + '**' +
+           (e.texto ? ' · ' + e.texto : '');
+  } else {
+    /* Tarifa de referencia, y se dice que lo es. Prometer un número que luego
+       cambia cuesta más caro que no darlo. */
+    txt += '\nEnvío estimado' + (cp ? ' a CP ' + cp : '') + ': **' + mxn(envio) + '**';
+  }
+  txt += '\nTotal: **' + mxn(total) + '**';
+  if (CFG.ivaIncluido) txt += '\nIVA ' + CFG.ivaTasa + '% incluido: ' + mxn(ivaDe(total));
+  if (!t.gratis && !e) {
+    txt += cp
+      ? '\n\nEs tarifa de referencia; la fecha y el costo en firme salen al preparar tu guía.'
+      : '\n\nDime tu **código postal** y te doy el costo y la fecha exactos.';
+  }
+  return txt;
+}
+
 /* ── Panel del carrito ───────────────────────────────────────────────────── */
 function pintarDrawer() {
   const cont = $('#drawer-items'), pie = $('#drawer-pie');
@@ -338,6 +630,17 @@ function montarCalculadorEnvio() {
          la forma más rápida de que alguien abandone en el checkout. */
       const rec = d.opciones.find(o => o.recomendada);
       if (rec) {
+        /* Se recuerda para que el Asesor desglose el MISMO número. Que el
+           chat diga $150 y el carrito $170 es la forma más barata de que
+           alguien deje de creerse los dos. */
+        Envio.recordar({
+          cp: d.destino && d.destino.cp ? String(d.destino.cp) : cp,
+          costo_centavos: rec.costo_centavos,
+          gratis: !!rec.envio_gratis,
+          servicio: rec.servicio || '',
+          texto: rec.texto || ''
+        });
+        if (!Comprador.datos.cp) Comprador.fijar('cp', cp);
         const costo = $('#env-costo'), total = $('#env-total');
         if (costo) costo.textContent = rec.envio_gratis ? 'Gratis' : rec.costo;
         const totalCentavos = Carrito.totales().subtotal + rec.costo_centavos;
@@ -526,10 +829,20 @@ function textoPedido(f) {
   }
   const l = t.lineas.map(x =>
     `• ${x.cantidad} × ${x.p.nombre} — ${mxn(x.linea)}`).join('\n');
+  /* Los datos de entrega ya tecleados viajan con el pedido: del otro lado se
+     responde, no se vuelve a preguntar lo que el cliente ya escribió. */
+  const d = Comprador.datos;
+  const entrega = [
+    d.nombre ? `Nombre: ${d.nombre}` : '',
+    d.cp ? `CP: ${d.cp}` : '',
+    d.direccion ? `Dirección: ${d.direccion}` : ''
+  ].filter(Boolean).join('\n');
+
   return 'Hola Valquiria, quiero confirmar este pedido:\n\n' + l +
     `\n\nSubtotal: ${mxn(t.subtotal)}` +
     `\nEnvío: ${t.gratis ? 'gratis' : mxn(t.envio)}` +
     `\nTotal: ${mxn(t.total)}` +
+    (entrega ? `\n\n${entrega}` : '') +
     `\n\nFolio: ${f}`;
 }
 
@@ -539,9 +852,39 @@ const urlWhatsApp = txt => `https://wa.me/${CFG.whatsapp}?text=${encodeURICompon
    Al servidor se le mandan SKUs y cantidades, nunca precios: los importes se
    recalculan allá contra el catálogo. Un carrito manipulado desde la consola
    no puede cambiar lo que se cobra. */
+/* El viaje a Mercado Pago se hace en la MISMA pestaña, a propósito. Abrir
+   una segunda con `window.open` parece más amable y en un iPhone es lo
+   contrario: o la bloquea el navegador —porque la llamada llega después de
+   un `await` y ya no cuenta como gesto del usuario— o deja al comprador con
+   dos pestañas y sin saber en cuál está su pedido. Ir en la misma solo es
+   seguro si el estado está escrito ANTES de saltar, y eso es justo lo que
+   hace `guardarAntesDeSaltar`. */
+const PAGO_EN_CURSO = 'vq_pago_en_curso';
+
+function guardarAntesDeSaltar(datos) {
+  Asesor.recordar();
+  Comprador.guardar();
+  Carrito.guardar();
+  Memoria.escribir(PAGO_EN_CURSO, { ...datos, cuando: Date.now() });
+}
+
 async function irAPagar(boton) {
   const t = Carrito.totales();
   if (!t.lineas.length) return;
+
+  /* SIN CONTACTO NO HAY LINK. Es la regla que le faltaba a la tienda: un
+     pago que se queda a medias sin nombre ni WhatsApp es un pedido del que
+     no se puede rescatar nada. El servidor también lo exige —esta
+     comprobación es por cortesía, no por seguridad—, pero pedirlo aquí
+     evita el viaje y deja al Asesor haciendo la pregunta, que es su oficio. */
+  const faltan = Comprador.faltantes();
+  if (faltan.length) {
+    abrirDrawer(false);
+    Asesor.abrir();
+    Asesor.pedirDatos(faltan);
+    return;
+  }
+
   const original = boton ? boton.innerHTML : '';
   if (boton) { boton.innerHTML = '<span>Generando link…</span>'; boton.disabled = true; }
 
@@ -550,18 +893,147 @@ async function irAPagar(boton) {
     const reloj = setTimeout(() => ctrl.abort(), CFG.timeoutMs);
     const r = await fetch(CFG.backend + '/api/pago', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ items: Carrito.lista() }), signal: ctrl.signal
+      body: JSON.stringify({
+        items: Carrito.lista(),
+        comprador: Comprador.paraServidor()
+      }), signal: ctrl.signal
     });
     clearTimeout(reloj);
     const data = await r.json();
+
+    /* El servidor dice QUÉ dato le falta. Se convierte en la siguiente
+       pregunta del Asesor, no en un error rojo sin salida. */
+    if (r.status === 400 && Array.isArray(data.faltan) && data.faltan.length) {
+      if (boton) { boton.innerHTML = original; boton.disabled = false; }
+      abrirDrawer(false);
+      Asesor.abrir();
+      Asesor.pedirDatos(data.faltan.filter(id => CAMPOS_COMPRADOR.some(c => c.id === id)));
+      return;
+    }
+
     if (!r.ok || !data.url) throw new Error(data.error || 'Sin link de pago');
+
+    guardarAntesDeSaltar({
+      folio: data.folio || '',
+      total: data.total || '',
+      items: Carrito.lista()
+    });
     location.href = data.url;
   } catch (e) {
     if (boton) { boton.innerHTML = original; boton.disabled = false; }
-    const f = folio();
-    toast('No pude generar el link de pago en este momento. Te abro WhatsApp con tu pedido ya escrito para cerrarlo ahí.');
-    setTimeout(() => window.open(urlWhatsApp(textoPedido(f)), '_blank', 'noopener'), 1400);
+    /* Sin popup automático: se ofrece el botón y lo toca quien quiera. Un
+       `window.open` disparado por código después de una espera es
+       exactamente lo que Safari bloquea. */
+    abrirDrawer(false);
+    Asesor.abrir();
+    Asesor.burbuja('bot', md(
+      'No pude generar el link de pago en este momento. Tu pedido **no se ha ' +
+      'perdido**: sigue aquí.\n\n' + desglosePedido() +
+      '\n\nPuedo pasártelo por WhatsApp y lo cerramos con una persona.'));
+    Asesor.acciones([
+      { tipo:'whatsapp', rotulo:'Cerrar por WhatsApp', texto: textoPedido(folio()) },
+      { tipo:'pago' }
+    ]);
+    Asesor.recordar();
   }
+}
+
+/* ── La vuelta de Mercado Pago ─────────────────────────────────────────────
+   El momento más frágil de la compra: el cliente vuelve de un dominio ajeno
+   a un documento recién cargado. Aquí se decide qué se le dice y —solo si el
+   pago se aprobó— cuándo se le vacía el carrito: DESPUÉS de enseñarle qué
+   compró, nunca antes. */
+function estadoDelPago() {
+  const p = parametrosVisita();
+  const propio = (p.get('estado') || '').toLowerCase();
+  const mp = (p.get('collection_status') || p.get('status') ||
+              p.get('payment_status') || '').toLowerCase();
+
+  if (mp === 'approved' || propio === 'aprobado') return 'aprobado';
+  if (mp === 'rejected' || mp === 'cancelled' || mp === 'failure' || propio === 'fallo') return 'fallo';
+  if (mp === 'pending' || mp === 'in_process' || mp === 'in_mediation' || propio === 'pendiente') return 'pendiente';
+  return 'desconocido';
+}
+
+let graciasAtendido = false;
+
+async function recibirDePago() {
+  if (graciasAtendido) return;
+  graciasAtendido = true;
+
+  const p = parametrosVisita();
+  const enCurso = Memoria.leer(PAGO_EN_CURSO);
+  const folioPedido = p.get('external_reference') || (enCurso && enCurso.folio) || '';
+  let estado = estadoDelPago();
+
+  /* Si nadie dijo cómo fue, se le pregunta al servidor por el folio: el
+     webhook firmado es quien sabe la verdad, el navegador solo trae pistas. */
+  if (estado === 'desconocido' && folioPedido) {
+    try {
+      const r = await fetch(CFG.backend + '/api/pedido/' + encodeURIComponent(folioPedido));
+      const d = await r.json();
+      if (r.ok && d.estado === 'approved') estado = 'aprobado';
+      else if (r.ok && (d.estado === 'rejected' || d.estado === 'cancelled')) estado = 'fallo';
+      else if (r.ok) estado = 'pendiente';
+    } catch { /* el backend duerme: se trata como pendiente */ }
+  }
+  if (estado === 'desconocido') {
+    /* Nadie viene de pagar: alguien abrió /gracias a pelo, o llegó por un
+       enlace viejo. Aquí NO se dice nada — afirmar «pago confirmado» a quien
+       no ha pagado es la peor cosa que puede decir una tienda, y la que más
+       tarda en descubrirse porque suena bien. */
+    if (!enCurso && !folioPedido) return;
+    estado = 'pendiente';
+  }
+
+  const desglose = desglosePedido();
+  const ROTULO = {
+    aprobado: 'Pago confirmado',
+    pendiente: 'Pago en proceso',
+    fallo: 'El pago no se completó'
+  };
+
+  /* La vista de gracias cuenta lo mismo que el Asesor: quien cerró el panel
+     tiene derecho a ver su folio sin volver a abrirlo. */
+  const slot = $('#gracias-estado');
+  if (slot) {
+    slot.innerHTML =
+      '<div class="gr-estado gr-' + estado + '">' +
+        '<span class="mono">' + esc(ROTULO[estado]) + '</span>' +
+        (folioPedido ? '<b>Folio ' + esc(folioPedido) + '</b>' : '') +
+      '</div>' +
+      (desglose ? '<div class="gr-desglose">' + md(desglose) + '</div>' : '');
+  }
+
+  /* El Asesor habla primero. Que el cliente vuelva a un chat mudo —o peor, a
+     uno ofreciéndole el catálogo desde cero— es justo lo que había que matar. */
+  const mensaje =
+    estado === 'aprobado'
+      ? '**Pago confirmado.**' + (folioPedido ? ' Tu folio es **' + folioPedido + '**.' : '') +
+        (desglose ? '\n\nEsto es lo que compraste:\n\n' + desglose : '') +
+        '\n\nTe llega el comprobante de Mercado Pago al correo y la guía en cuanto salga.'
+    : estado === 'fallo'
+      ? 'El pago no se completó, así que **aquí sigue tu pedido** tal como lo dejaste:' +
+        (desglose ? '\n\n' + desglose : '') +
+        '\n\nPodemos reintentar el link o cerrarlo por WhatsApp, como prefieras.'
+      : 'Tu pago está **en proceso**' + (folioPedido ? ', folio **' + folioPedido + '**' : '') +
+        '. En cuanto Mercado Pago lo confirme te avisamos.' +
+        (desglose ? '\n\nAquí sigue tu pedido:\n\n' + desglose : '');
+
+  Asesor.saludado = true;
+  Asesor.burbuja('bot', md(mensaje));
+  if (estado !== 'aprobado' && Carrito.piezas() > 0) {
+    Asesor.acciones([{ tipo:'pago' }, { tipo:'whatsapp' }, { tipo:'carrito' }]);
+  }
+  Asesor.recordar();
+  Asesor.abrir();
+
+  Memoria.borrar(PAGO_EN_CURSO);
+
+  /* Ahora sí. El carrito se vacía cuando el cliente YA vio qué compró, y solo
+     con el pago aprobado: quien vuelve de un pago rechazado necesita su
+     pedido intacto para reintentar. */
+  if (estado === 'aprobado') { Carrito.vaciar(); Envio.olvidar(); }
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -641,8 +1113,32 @@ const RUTAS = {
   '/terminos':   { vista:'v-terminos',   fig:null, titulo:'Términos de uso — Valquiria Inc.' }
 };
 
+/* El hash puede traer cola de parámetros. Mercado Pago devuelve al cliente
+   con `?collection_status=approved&payment_id=…` pegado a la URL de retorno,
+   y leyendo la ruta en crudo `/gracias?collection_status=approved` no
+   coincidía con ninguna ruta conocida: el visitante que ACABABA DE PAGAR
+   aterrizaba en el home, sin folio y sin confirmación. Se parte una sola vez
+   y se usa en los dos sitios. */
+function hashPartido() {
+  const frag = (location.hash || '').replace(/^#/, '');
+  const i = frag.indexOf('?');
+  return {
+    ruta: i === -1 ? frag : frag.slice(0, i),
+    cola: i === -1 ? '' : frag.slice(i + 1)
+  };
+}
+
+/* Todo lo que llegue por query —del hash o del path— en un solo sitio: la
+   página puente /gracias/ pasa lo suyo por el hash, pero si algún día
+   Mercado Pago lo deja en el path, se lee igual. */
+function parametrosVisita() {
+  const p = new URLSearchParams(location.search || '');
+  new URLSearchParams(hashPartido().cola).forEach((v, k) => p.set(k, v));
+  return p;
+}
+
 const rutaActual = () => {
-  const fragmento = (location.hash || '').replace(/^#/, '');
+  const fragmento = hashPartido().ruta;
   const anclasHome = {
     filosofia: '/filosofia', contacto: '/contacto',
     privacidad: '/privacidad', terminos: '/terminos'
@@ -706,9 +1202,11 @@ function navegar(primera) {
 
   if (clave === '/catalogo') pintarCatalogo();
 
-  /* Si el cliente vuelve de Mercado Pago, el pedido ya se pagó: dejarle el
-     carrito lleno lo expone a pagar dos veces lo mismo. */
-  if (clave === '/gracias' && Carrito.piezas() > 0) Carrito.vaciar();
+  /* La vuelta de Mercado Pago. NO se vacía el carrito aquí: `recibirDePago`
+     enseña primero qué se compró y solo entonces lo vacía, y únicamente si
+     el pago salió aprobado. Vaciarlo de entrada dejaba a quien volvía de un
+     pago RECHAZADO sin pedido y sin forma de reintentar. */
+  if (clave === '/gracias') recibirDePago();
 
   cerrarMenu();
   if (!primera) window.scrollTo({ top: 0, behavior: 'instant' in document.documentElement.style ? 'instant' : 'auto' });
@@ -903,6 +1401,72 @@ const Asesor = {
   saludado: false,
   modoLocal: false,
 
+  /* ── Memoria del hilo ───────────────────────────────────────────────────
+     El historial vivía SOLO en RAM. Bastaba con recargar —o con irse a pagar,
+     que es una recarga con otro dominio en medio— para que el Asesor olvidara
+     que acababa de armar un pedido de dos kits de endodoncia y un pulpo.
+
+     Se guarda en sessionStorage: dura lo que la pestaña, que es exactamente
+     lo que dura una compra, y no deja rastro en el equipo de quien usa una
+     computadora prestada. Solo texto: ni tokens, ni llaves, ni el carrito
+     —ese ya tiene su propio cajón—.
+
+     El tope es doble a propósito. Cuarenta turnos son los que manda el
+     servidor; los 24 000 caracteres son los que el servidor RECORTA, así que
+     guardar más es guardar algo que nunca se va a enviar. */
+  LLAVE: 'vq_asesor_v1',
+  MAX_TURNOS: 40,
+  MAX_TEXTO: 24000,
+
+  textoDe(m) {
+    return ((m && m.parts) || []).map(x => (x && x.text) || '').join(' ');
+  },
+
+  /* Recorta por los DOS topes y devuelve lo que cabe, de lo más reciente
+     hacia atrás. Cortar por el principio y no por el final no es un detalle:
+     lo último dicho es lo que da contexto al siguiente mensaje. */
+  hiloRecortado() {
+    const salida = [];
+    let chars = 0;
+    for (let i = this.historial.length - 1; i >= 0; i--) {
+      const m = this.historial[i];
+      const n = this.textoDe(m).length;
+      if (salida.length >= this.MAX_TURNOS || chars + n > this.MAX_TEXTO) break;
+      chars += n;
+      salida.unshift(m);
+    }
+    return salida;
+  },
+
+  recordar() {
+    this.historial = this.hiloRecortado();
+    Memoria.escribir(this.LLAVE, { v: 1, saludado: this.saludado, h: this.historial });
+  },
+
+  /* Repinta la conversación tal cual quedó. Las tarjetas de producto y los
+     botones NO se reconstruyen: son acciones de un turno que ya pasó, y
+     revivir un botón de pago viejo con un carrito nuevo sería mentir. Lo que
+     sí vuelve —porque es lo que importa— es el hilo y el pedido. */
+  restaurar() {
+    const d = Memoria.leer(this.LLAVE);
+    if (!d || d.v !== 1 || !Array.isArray(d.h) || !d.h.length) return false;
+
+    const limpio = d.h.filter(m =>
+      m && (m.role === 'user' || m.role === 'model') && this.textoDe(m).trim());
+    if (!limpio.length) return false;
+
+    this.historial = limpio;
+    this.saludado = true;
+    limpio.forEach(m => {
+      const t = this.textoDe(m);
+      this.burbuja(m.role === 'user' ? 'yo' : 'bot',
+        m.role === 'user' ? '<p>' + esc(t) + '</p>' : md(t));
+    });
+    return true;
+  },
+
+  olvidar() { this.historial = []; Memoria.borrar(this.LLAVE); },
+
   abrir() {
     this.abierto = true;
     $('#asesor').classList.add('on');
@@ -911,7 +1475,12 @@ const Asesor = {
     $('#asesor-btn').setAttribute('aria-expanded', 'true');
     $('#asesor-punto').classList.remove('on');
     Viewport.sincronizarBloqueo();
-    if (!this.saludado) { this.saludado = true; this.saludo(); this.despertar(); }
+    if (!this.saludado) { this.saludado = true; this.saludo(); }
+    /* El ping va SIEMPRE, no solo con el saludo. Quien vuelve de pagar llega
+       con el hilo restaurado y `saludado` ya en true: sin este empujón su
+       primer mensaje se volvería a comer los ~50 s que tarda Render en
+       despertar, justo en el turno que menos lo perdona. */
+    this.despertar();
     /* El foco automático solo en escritorio. En un teléfono, enfocar sin que
        el visitante haya tocado el campo levanta el teclado encima de un panel
        que todavía se está abriendo: se ve el salto, y además tapa el saludo
@@ -1081,12 +1650,142 @@ const Asesor = {
     this.acciones([{ tipo:'pago' }, { tipo:'whatsapp' }, { tipo:'carrito' }]);
   },
 
+  /* Decir algo Y recordarlo. Las intervenciones del propio front —pedir la
+     dirección, confirmar el pedido, avisar de la vuelta del pago— entran al
+     historial como turnos del modelo. Si no entraran, al recargar la página
+     el cliente vería su respuesta sin la pregunta, y el modelo volvería a
+     pedirle los datos que ya dio. */
+  decir(texto) {
+    this.burbuja('bot', md(texto));
+    this.historial.push({ role: 'model', parts: [{ text: texto }] });
+    this.recordar();
+  },
+
+  /* ── Checkout conversacional ────────────────────────────────────────────
+     No es un formulario de doce campos: son los que FALTAN, en el orden en
+     que hacen falta, dentro del mismo hilo donde el cliente ya está. Lo que
+     ya se sabe de él no se vuelve a preguntar. */
+  pedirDatos(faltan) {
+    const ids = (Array.isArray(faltan) && faltan.length ? faltan : Comprador.faltantes())
+      .filter(id => CAMPOS_COMPRADOR.some(c => c.id === id));
+
+    if (!ids.length) { this.confirmarPedido(); return; }
+
+    /* Si ya hay un formulario abierto no se apila otro: se lleva el foco al
+       que hay. Dos formularios pidiendo lo mismo es la forma más rápida de
+       que alguien escriba su dirección en el equivocado. */
+    const abierto = this.log.querySelector('.chat-datos');
+    if (abierto) {
+      abierto.scrollIntoView({ behavior:'smooth', block:'center' });
+      const primero = abierto.querySelector('input');
+      if (primero && !Viewport.esHoja()) primero.focus();
+      return;
+    }
+
+    const campos = CAMPOS_COMPRADOR.filter(c => ids.includes(c.id));
+    /* Las referencias van de propina cuando ya se está pidiendo la dirección:
+       preguntar por ellas en un turno aparte no vale un turno aparte. */
+    if (ids.includes('direccion') && !ids.includes('referencias')) {
+      campos.push(CAMPOS_COMPRADOR.find(c => c.id === 'referencias'));
+    }
+
+    const nombre = (Comprador.datos.nombre || '').split(' ')[0];
+    this.decir(
+      (nombre ? nombre + ', para' : 'Para') + ' generar tu link de pago me ' +
+      (campos.filter(c => !c.opcional).length === 1 ? 'falta un dato' : 'faltan estos datos') +
+      '. Es lo mínimo para poder mandarte la caja y para poder escribirte si ' +
+      'algo se atora con el pago.');
+
+    const f = document.createElement('form');
+    f.className = 'chat-datos';
+    f.setAttribute('novalidate', '');
+    f.innerHTML = campos.map(c => `
+      <label class="cd-campo">
+        <span>${esc(c.rotulo)}</span>
+        <input name="${esc(c.id)}" type="${esc(c.tipo)}" inputmode="${esc(c.modo)}"
+               autocomplete="${esc(c.auto)}" placeholder="${esc(c.ph)}"
+               value="${esc(Comprador.datos[c.id] || '')}"
+               maxlength="180" ${c.opcional ? '' : 'required'}>
+        <em class="cd-err" aria-live="polite"></em>
+      </label>`).join('') +
+      `<button class="chat-act" type="submit">Continuar</button>`;
+
+    f.addEventListener('submit', async e => {
+      e.preventDefault();
+      let todoBien = true;
+      campos.forEach(c => {
+        const inp = f.elements[c.id];
+        const err = inp.closest('.cd-campo').querySelector('.cd-err');
+        const r = Comprador.revisar(c.id, inp.value);
+        if (r.ok) {
+          err.textContent = '';
+          inp.classList.remove('mal');
+          inp.value = r.valor;
+        } else {
+          err.textContent = r.error;
+          inp.classList.add('mal');
+          if (todoBien) inp.focus();
+          todoBien = false;
+        }
+      });
+      if (!todoBien) { this.fin(); return; }
+
+      campos.forEach(c => Comprador.fijar(c.id, f.elements[c.id].value));
+      f.querySelectorAll('input, button').forEach(x => { x.disabled = true; });
+      f.classList.add('listo');
+
+      /* Lo que el cliente tecleó entra al hilo como turno SUYO —sin el
+         correo ni el teléfono: el modelo no necesita el dato para razonar y
+         no hay motivo para pasearlo por la red más veces de las debidas. */
+      this.historial.push({ role: 'user', parts: [{ text:
+        'Mis datos de entrega: ' + (Comprador.datos.nombre || '') +
+        ', CP ' + (Comprador.datos.cp || '') + ', ' + (Comprador.datos.direccion || '') }] });
+
+      await this.confirmarPedido();
+    });
+
+    this.log.appendChild(f);
+    this.fin();
+    if (!Viewport.esHoja()) {
+      const primero = f.querySelector('input');
+      if (primero) setTimeout(() => primero.focus(), 120);
+    }
+  },
+
+  /* Desglose final antes del link: productos, envío real y total. Es el
+     último momento en que el cliente puede decir «espera, eso no». */
+  async confirmarPedido() {
+    if (!Carrito.piezas()) {
+      this.decir('Tu carrito está vacío. Dime qué necesitas y te lo armo.');
+      return;
+    }
+
+    const cp = Comprador.datos.cp;
+    if (cp && !Envio.vigente()) {
+      this.pensando(true);
+      await cotizarEnvio(cp);
+      this.pensando(false);
+    }
+
+    const nombre = (Comprador.datos.nombre || '').split(' ')[0];
+    this.decir(
+      (nombre ? 'Listo, ' + nombre + '.' : 'Listo.') + ' Va a **' +
+      (Comprador.datos.direccion || 'la dirección que me diste') + '**, CP ' +
+      (cp || '—') + ', y te aviso al **' + Comprador.telefonoBonito() + '**.' +
+      '\n\n' + desglosePedido() +
+      '\n\nSi está bien, te genero el link de pago.');
+    this.acciones([{ tipo:'pago' }, { tipo:'whatsapp' }, { tipo:'carrito' }]);
+  },
+
   async enviar(texto) {
     texto = String(texto || '').trim();
     if (!texto || this.ocupado) return;
 
     this.burbuja('yo', '<p>' + esc(texto) + '</p>');
     this.historial.push({ role: 'user', parts: [{ text: texto }] });
+    /* Se guarda YA, antes de esperar al servidor: si el visitante recarga
+       mientras el Asesor piensa, su pregunta no se pierde. */
+    this.recordar();
     this.ocupado = true;
     $('#asesor-send').disabled = true;
     this.pensando(true);
@@ -1103,14 +1802,21 @@ const Asesor = {
              asesor de repuesto durante toda su visita. */
           console.warn('[asesor] fallo pasajero (' + (e.motivo || '?') +
                        '), contesto en local y reintento en el siguiente mensaje.');
-          avisoServidor = e.mensajeUsuario || '';
+          /* El tope propio del servidor no es la cuota de Gemini, y decirlo
+             como si el asesor «llegara a su límite» asusta sin informar. Se
+             dice cuánto hay que esperar y —esto es lo importante— que el
+             pedido sigue donde estaba: la respuesta local que viene detrás
+             lo desglosa. */
+          avisoServidor = e.motivo === 'rate-limit' && e.espera
+            ? 'El Asesor está ocupado ~' + e.espera + ' s. **Tu carrito sigue aquí.**'
+            : (e.mensajeUsuario || '');
         } else {
           console.warn('[asesor] backend no disponible, paso a modo local:', e.message);
           this.modoLocal = true;
         }
       }
     }
-    if (!data) data = this.responderLocal(texto);
+    if (!data) data = await this.responderLocal(texto);
     /* Si el servidor explicó por qué no pudo, se dice UNA vez y arriba del
        todo: el visitante merece saber que está hablando con el suplente. */
     if (avisoServidor) data = { ...data, reply: avisoServidor + '\n\n' + data.reply };
@@ -1121,7 +1827,9 @@ const Asesor = {
 
     this.burbuja('bot', md(data.reply));
     this.historial.push({ role: 'model', parts: [{ text: data.reply }] });
-    if (this.historial.length > 40) this.historial = this.historial.slice(-40);
+    /* `recordar` recorta por turnos Y por caracteres, y deja el hilo escrito.
+       Antes solo se recortaba por turnos y no se escribía en ningún sitio. */
+    this.recordar();
 
     /* El servidor no toca el carrito: propone, y el cliente aplica. */
     AccionesAsesor.ejecutar(data.acciones);
@@ -1135,6 +1843,14 @@ const Asesor = {
     else if (data.cotizacion || (data.acciones || []).some(a => a.tipo && a.tipo.indexOf('carrito') === 0)) {
       this.trasCarrito();
     }
+
+    /* Si la respuesta pide datos de entrega, el formulario va DETRÁS del
+       texto y de los botones: primero se entiende, luego se teclea. Los
+       campos se filtran contra la lista real, igual que las acciones: lo que
+       llega del servidor propone, aquí se decide. */
+    if (Array.isArray(data.datos) && data.datos.length) {
+      this.pedirDatos(data.datos.filter(id => CAMPOS_COMPRADOR.some(c => c.id === id)));
+    }
   },
 
   async pedirAlServidor() {
@@ -1143,7 +1859,7 @@ const Asesor = {
     try {
       const r = await fetch(CFG.backend + '/api/chat', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: this.historial, carrito: Carrito.lista() }),
+        body: JSON.stringify({ messages: this.hiloRecortado(), carrito: Carrito.lista() }),
         signal: ctrl.signal
       });
       const j = await r.json();
@@ -1154,6 +1870,11 @@ const Asesor = {
         e.motivo = j.motivo || '';
         e.pasajero = r.status === 429 || r.status === 503 || r.status === 504;
         e.mensajeUsuario = j.error || '';
+        /* Los segundos vienen en el cuerpo y no en Retry-After: la cabecera
+           existe, pero leerla desde otro origen exige exponerla en el CORS, y
+           un dato de cortesía no justifica ampliar lo que el navegador deja
+           leer al JavaScript de la página. */
+        e.espera = parseInt(j.espera_s, 10) || 0;
         throw e;
       }
       if (!j.reply) throw new Error('respuesta vacía');
@@ -1164,7 +1885,7 @@ const Asesor = {
   /* ── Modo local ────────────────────────────────────────────────────────
      Sin backend el Asesor no se disculpa: busca en el catálogo, entiende
      cantidades y cierra por WhatsApp. Es peor que el modelo, pero vende. */
-  responderLocal(texto) {
+  async responderLocal(texto) {
     const q = normaliza(texto);
 
     const puntuar = frag => PRODUCTOS.map(p => {
@@ -1327,13 +2048,50 @@ const Asesor = {
         acciones:[{ tipo:'whatsapp' }] };
     }
 
-    if (quiereCerrar && Carrito.piezas() > 0) {
-      const t = Carrito.totales();
-      return { reply:
-        'Perfecto. Tu pedido suma **' + mxn(t.total) + '**' +
-        (t.gratis ? ' con envío gratis incluido' : ', envío ' + mxn(t.envio)) + '.\n\n' +
-        'Puedes pagar con Mercado Pago ahora mismo, o cerrarlo por WhatsApp si prefieres transferencia.',
-        acciones:[{ tipo:'pago' }, { tipo:'whatsapp' }] };
+    /* ── EL CARRITO MANDA ──────────────────────────────────────────────
+       Con piezas dentro, «cuánto es», «desglosa», «qué pedí» y «el link» son
+       preguntas sobre ESE pedido, no sobre el catálogo. Este era el bug caro:
+       sin backend, alguien con dos kits de endodoncia y un pulpo en el
+       carrito preguntaba «cuánto es» y recibía el menú de tipodontos Nissin,
+       como si acabara de llegar. Un asesor con amnesia no vende: descoloca.
+
+       Un código postal suelto también cuenta. «03330» a secas no trae verbo
+       ni producto, pero después de armar un pedido solo puede significar una
+       cosa, y responder «¿en qué te ayudo?» a eso es de recepcionista. */
+    const hayCarrito = Carrito.piezas() > 0;
+
+    /* Un número de cinco dígitos solo es un código postal si el mensaje habla
+       de envío, o si el mensaje ENTERO es ese número. Sin esa cautela «quiero
+       12000 dientes» acabaría cotizando un envío a la Ciudad de México, y el
+       cliente vería una fecha de entrega que nadie le prometió. */
+    const cpSuelto = (String(texto).match(/(?:^|\D)(\d{5})(?:\D|$)/) || [])[1];
+    const pistaEnvio = /\b(envio|envios|enviar|envia|manda|mandar|mandas|entrega|entregar|cp|codigo postal|llega|llegar|domicilio|direccion)\b/.test(q);
+    const cpNuevo = cpSuelto && (pistaEnvio || /^\s*\d{5}\s*$/.test(String(texto).trim()))
+      ? cpSuelto : null;
+    const preguntaPedido = /\b(desglos\w*|cuanto (es|sale|seria|queda|cuesta|va|me sale)|el total|mi total|total|que pedi|que llevo|que traigo|mi pedido|el pedido|mi carrito|el carrito|resumen|el link|link de pago|mi orden|mis datos|donde lo mandas)\b/.test(q);
+
+    if (hayCarrito && !pedido.size && !quiereVaciar && !quiereQuitar &&
+        (preguntaPedido || quiereCerrar || cpNuevo)) {
+
+      if (cpNuevo) {
+        Comprador.fijar('cp', cpNuevo);
+        /* El costo y la fecha los da el servidor de envíos, que sí responde
+           aunque Gemini no: son dos servicios distintos del mismo backend. */
+        await cotizarEnvio(cpNuevo);
+      }
+
+      const cabecera = cpNuevo
+        ? 'Cotizado a **CP ' + cpNuevo + '**. Tu pedido queda así:\n\n'
+        : 'Tu pedido, punto por punto:\n\n';
+
+      const faltan = Comprador.faltantes();
+      if (faltan.length) {
+        return { reply: cabecera + desglosePedido() +
+          '\n\nPara generar el link de pago necesito tus datos de entrega.',
+          datos: faltan };
+      }
+      return { reply: cabecera + desglosePedido() + '\n\n¿Te genero el link de pago?',
+        acciones:[{ tipo:'pago' }, { tipo:'whatsapp' }, { tipo:'carrito' }] };
     }
 
     /* ── Vaciar el carrito ──────────────────────────────────────────────── */
@@ -1397,13 +2155,18 @@ const Asesor = {
         ? [...pedido].map(([sku, { n }]) => ({ p: porSku(sku), n }))
         : [{ p: encontrados[0].p, n: cantidad }];
       lineas.forEach(l => Carrito.agregar(l.p.sku, l.n));
-      const t = Carrito.totales();
+
+      /* «2 kits de endo y envío a 03330» es UNA frase con dos peticiones. El
+         código postal se atiende aquí mismo: hacerle repetirlo en el turno
+         siguiente es exactamente el trato que se le da a un formulario. */
+      if (cpNuevo) { Comprador.fijar('cp', cpNuevo); await cotizarEnvio(cpNuevo); }
+
       const detalle = unir(lineas.map(l => '**' + l.n + ' × ' + l.p.nombre + '**'));
+      const t = Carrito.totales();
       return { reply:
-        'Listo, agregué ' + detalle + ' a tu carrito.\n\n' +
-        'Tu total va en **' + mxn(t.total) + '**' +
-        (t.gratis ? ' con envío gratis.' : ', más ' + mxn(t.envio) + ' de envío. Te faltan ' +
-          mxn(t.falta) + ' para que el envío salga gratis.') +
+        'Listo, agregué ' + detalle + ' a tu carrito.\n\n' + desglosePedido() +
+        (t.gratis || Envio.vigente() ? '' :
+          '\n\nTe faltan ' + mxn(t.falta) + ' para que el envío salga gratis.') +
         '\n\n¿Cierro el pedido?',
         acciones:[{ tipo:'pago' }, { tipo:'whatsapp' }, { tipo:'carrito' }] };
     }
@@ -1411,6 +2174,15 @@ const Asesor = {
     if (encontrados.length) {
       return { reply: 'Esto es lo que tengo para lo que me pides:',
         products: encontrados.slice(0, 3).map(x => ({ sku:x.p.sku, nombre:x.p.nombre, imagen:x.p.img })) };
+    }
+
+    /* Última red. Con carrito, NUNCA el catálogo desde cero: quien ya eligió
+       no quiere que le vuelvan a preguntar qué práctica hace. */
+    if (hayCarrito) {
+      return { reply:
+        'No te entendí del todo, pero **tu pedido sigue aquí**:\n\n' + desglosePedido() +
+        '\n\n¿Lo cierro, le agrego algo o quito una línea?',
+        acciones:[{ tipo:'pago' }, { tipo:'carrito' }, { tipo:'whatsapp' }] };
     }
 
     return { reply:
@@ -1541,10 +2313,51 @@ const FASES = [[0,'Calibrando plataforma'],[0.18,'Muestreando geometría'],
 function arrancar() {
   $('#anio').textContent = new Date().getFullYear();
   Carrito.cargar();
+  Comprador.cargar();
+  Envio.cargar();
   $('#cart-n').textContent = Carrito.piezas();
   Viewport.iniciar();
   pintarDrawer();
   lineasHero = $$('#v-hub [data-at]');
+
+  /* El hilo del Asesor se repinta ANTES de navegar: si el visitante viene de
+     pagar, lo primero que tiene que ver al abrir el panel es su propia
+     conversación, y encima de ella la confirmación. */
+  const hiloRestaurado = Asesor.restaurar();
+
+  /* Los botones no se repintan con el hilo —son acciones de un turno que ya
+     pasó—, así que una conversación restaurada terminaba en texto y sin nada
+     que tocar. Si el carrito sigue lleno, la botonera vuelve al final: con el
+     carrito de AHORA, no con el de ayer. */
+  if (hiloRestaurado && Carrito.piezas() > 0 && rutaActual() !== '/gracias') {
+    Asesor.acciones([{ tipo:'pago' }, { tipo:'whatsapp' }, { tipo:'carrito' }]);
+  }
+
+  /* Volvió de Mercado Pago sin pasar por /gracias: el botón de atrás del
+     navegador, o un fallo que devuelve al home. Callarse aquí es lo peor que
+     puede hacer la tienda — el cliente no sabe si pagó, si perdió el pedido
+     ni a quién preguntarle. */
+  const pagoPendiente = Memoria.leer(PAGO_EN_CURSO);
+  if (pagoPendiente && rutaActual() !== '/gracias' && Carrito.piezas() > 0) {
+    Memoria.borrar(PAGO_EN_CURSO);
+    Asesor.saludado = true;
+    Asesor.decir(
+      'Volviste sin terminar el pago. **Aquí sigue tu pedido:**\n\n' +
+      desglosePedido() + '\n\n¿Reintento el link o lo cerramos por WhatsApp?');
+    Asesor.acciones([{ tipo:'pago' }, { tipo:'whatsapp' }, { tipo:'carrito' }]);
+    Asesor.abrir();
+  }
+
+  /* Entradas desde las páginas estáticas. Aquellas enlazaban a `#/catalogo` o
+     `#/pack`, y el redirector de rutas antiguas del index las devolvía a la
+     misma página de la que venían: el botón de comprar no llevaba a ninguna
+     parte. Con un parámetro de query el redirector no se activa —solo mira el
+     hash, y ahí ya no hay nada que reconozca— y la aplicación abre lo que se
+     le pide. `?asesor=1` abre el Asesor, que es la tienda. */
+  const entrada = parametrosVisita();
+  const irA = '/' + (entrada.get('ir') || '');
+  if (irA !== '/' && RUTAS[irA]) location.hash = '#' + irA;
+  if (entrada.get('asesor')) Asesor.abrir();
 
   const R = RUTAS[rutaActual()];
   const primera = R.fig || 'valquiria';

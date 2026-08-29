@@ -110,7 +110,7 @@
      el saludo completo —DNS, TCP, TLS— del camino crítico. -->
 <link rel="preconnect" href="https://unpkg.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300&amp;family=Montserrat:wght@200;300;400;500&amp;family=IBM+Plex+Mono:wght@300;400;500&amp;display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/css/valquiria.css?v=73">
+<link rel="stylesheet" href="assets/css/valquiria.css?v=74">
 
 <!-- ══ MAPA DE IMPORTACIÓN ══
      three.js moderno como módulo. La versión importa: a partir de r152 la
@@ -166,9 +166,9 @@
      … is not used because the request credentials mode does not match». Si
      algún día tocas esta línea, comprueba ahí que el aviso no vuelve. -->
 <link rel="preload" href="assets/valquiria.glb" as="fetch" crossorigin>
-<link rel="modulepreload" href="assets/js/escena.js?v=73">
-<link rel="modulepreload" href="assets/js/figuras.js?v=73">
-<link rel="modulepreload" href="assets/js/modelo.js?v=73">
+<link rel="modulepreload" href="assets/js/escena.js?v=74">
+<link rel="modulepreload" href="assets/js/figuras.js?v=74">
+<link rel="modulepreload" href="assets/js/modelo.js?v=74">
 
 <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Organization","@id":"https://valquiriainc.com/#organization","name":"Valquiria Inc.","url":"https://valquiriainc.com/","logo":"https://valquiriainc.com/assets/isotipo_gold.svg","description":"Holding mexicano de manufactura aditiva con cinco divisiones: Dental, 3D, Pack, Lux e IA.","areaServed":"MX","contactPoint":{"@type":"ContactPoint","telephone":"+52-771-795-9131","contactType":"sales","availableLanguage":["es"]},"sameAs":["https://valquiriainc.com/"],"email":"ventas@valquiriadental.com"},{"@type":"WebSite","@id":"https://valquiriainc.com/#website","url":"https://valquiriainc.com/","name":"Valquiria Inc.","inLanguage":"es-MX","publisher":{"@id":"https://valquiriainc.com/#organization"}},{"@type":"LocalBusiness","@id":"https://valquiriainc.com/#localbusiness","name":"Valquiria Inc.","parentOrganization":{"@id":"https://valquiriainc.com/#organization"},"url":"https://valquiriainc.com/","image":"https://valquiriainc.com/assets/og-valquiria.jpg","telephone":"+52-771-795-9131","email":"ventas@valquiriadental.com","priceRange":"$$","currenciesAccepted":"MXN","paymentAccepted":"Tarjeta de crédito, tarjeta de débito, transferencia","address":{"@type":"PostalAddress","addressLocality":"Pachuca de Soto","addressRegion":"Hidalgo","postalCode":"42000","addressCountry":"MX"},"areaServed":{"@type":"Country","name":"México"},"openingHoursSpecification":[{"@type":"OpeningHoursSpecification","dayOfWeek":["Monday","Tuesday","Wednesday","Thursday","Friday"],"opens":"09:00","closes":"18:00"}]},{"@type":"ItemList","@id":"https://valquiriainc.com/#divisiones","name":"Divisiones de Valquiria Inc.","itemListElement":[{"@type":"ListItem","position":1,"name":"Valquiria 3D","url":"https://valquiriainc.com/3d/"},{"@type":"ListItem","position":2,"name":"Valquiria Dental","url":"https://valquiriainc.com/dental/"},{"@type":"ListItem","position":3,"name":"Valquiria Pack","url":"https://valquiriainc.com/pack/"},{"@type":"ListItem","position":4,"name":"Valquiria Lux","url":"https://valquiriainc.com/lux/"},{"@type":"ListItem","position":5,"name":"Valquiria IA","url":"https://valquiriainc.com/ia/"}]}]}</script>
 </head>
@@ -706,6 +706,9 @@
           una persona, no con un formulario.
         </p>
       </div>
+      <!-- Lo rellena `recibirDePago` al volver de Mercado Pago: estado real,
+           folio y desglose de lo que se compró. Vacío no ocupa espacio. -->
+      <div id="gracias-estado"></div>
       <div class="prosa">
         <h3>Lo que sigue</h3>
         <ul>
@@ -1090,8 +1093,8 @@
   <div class="who">Asesor Valquiria</div><p id="toast-msg"></p>
 </div>
 
-<script type="module" src="assets/js/app.js?v=73"></script>
+<script type="module" src="assets/js/app.js?v=74"></script>
 
-<script src="/assets/js/pulso.js?v=73" defer></script>
+<script src="/assets/js/pulso.js?v=74" defer></script>
 </body>
 </html>
