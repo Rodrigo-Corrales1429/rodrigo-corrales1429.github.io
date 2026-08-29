@@ -344,6 +344,16 @@ const REDACCION = {
     (e.resumen ? `${esc(e.resumen)}\n` : "") +
     `👉 Respóndele hoy: un interés de más de 24 h ya se enfrió.`,
 
+  /* No es una alarma: es una lectura del mostrador. Salta cuando las reservas
+     sin pagar llegan al techo de un producto, y eso significa una de dos —una
+     racha de ventas o alguien abriendo links para bloquear el catálogo—; las
+     dos se quieren saber, ninguna merece despertar a nadie. */
+  inventario_apretado: e =>
+    `\u{1F4E6} Tope de apartado alcanzado en ${esc(e.sku)}\n` +
+    `Apartado sin pagar: ${e.apartado}/${e.techo} · sigue disponible: ${e.disponible}\n` +
+    `Si es una racha buena, toca reponer; si no, alguien está abriendo links ` +
+    `que no completa.`,
+
   cotizacion: e =>
     `🧾 Cotización armada — ${pesos(e.total_centavos)}\n` +
     (e.items ? `${esc(e.items)}\n` : "") +

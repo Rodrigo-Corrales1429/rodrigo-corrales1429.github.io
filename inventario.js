@@ -51,10 +51,26 @@ const { getProductoPorSku } = require("./catalog.js");
    registra igual y el aviso lo dice, para comprobar el stock antes de
    prometer fecha. Es preferible avisar de una colisión rara que bloquear el
    inventario de todos los días. */
-const MINUTOS_RESERVA = Math.max(
-  1,
-  parseInt(process.env.INVENTARIO_MINUTOS_RESERVA || "15", 10) || 15
+const MINUTOS_RESERVA_PEDIDO =
+  parseInt(process.env.INVENTARIO_MINUTOS_RESERVA || "15", 10) || 15;
+
+/* El tope está TOPADO. Un despliegue no es un `git pull`: la variable vieja
+   sigue viva en el panel de Render mucho después de que el código cambie, y
+   un `INVENTARIO_MINUTOS_RESERVA=1440` heredado devolvería el agujero entero
+   sin que nadie tocara una línea. Sesenta minutos es el techo duro; si algún
+   día hace falta más, se sube aquí a la vista de todos. */
+const TECHO_MINUTOS_RESERVA = 60;
+const MINUTOS_RESERVA = Math.min(
+  TECHO_MINUTOS_RESERVA,
+  Math.max(1, MINUTOS_RESERVA_PEDIDO)
 );
+if (MINUTOS_RESERVA_PEDIDO > TECHO_MINUTOS_RESERVA) {
+  console.warn(
+    `[inventario] INVENTARIO_MINUTOS_RESERVA=${MINUTOS_RESERVA_PEDIDO} está por ` +
+    `encima del techo; se usa ${MINUTOS_RESERVA}. Una reserva larga deja el ` +
+    `catálogo agotable con links de pago que nadie completa.`
+  );
+}
 
 /* Topes de una SOLA reserva. El mostrador de autoservicio no es el canal de
    mayoreo —el sitio manda a WhatsApp a quien compra por volumen—, así que
@@ -71,11 +87,32 @@ const MAX_UNIDADES = Math.max(
   parseInt(process.env.INVENTARIO_MAX_UNIDADES || "12", 10) || 12
 );
 
-/* Reservas vivas que puede tener a la vez un mismo visitante. Sin esto, el
-   tope por reserva se esquiva abriendo cinco. */
+/* UNA reserva viva por visitante. Estaba en tres, y tres por identidad son
+   dieciocho piezas de un mismo producto en manos de alguien que no ha pagado
+   nada. O estás pagando o no estás: no hay motivo legítimo para tener dos
+   links de pago abiertos a la vez. */
 const MAX_RESERVAS_POR_IDENTIDAD = Math.max(
   1,
-  parseInt(process.env.INVENTARIO_MAX_RESERVAS_POR_IDENTIDAD || "3", 10) || 3
+  parseInt(process.env.INVENTARIO_MAX_RESERVAS_POR_IDENTIDAD || "1", 10) || 1
+);
+
+/* ═══ EL TECHO QUE NO DEPENDE DE QUIÉN PIDA ═══
+   Los topes de arriba son por visitante, y un visitante son cinco pestañas o
+   cinco IPs. Con reserva de 15 min, 6 por SKU y 3 por identidad, dos
+   identidades bastaban para dejar un producto de 27 piezas en cero:
+   6+6+6 desde una y 6+3 desde otra. El tope por identidad es fricción, no
+   defensa.
+
+   La defensa es esta: las reservas SIN PAGAR nunca pueden retener más de una
+   fracción de lo que queda por vender. Da igual cuántas IPs use quien lo
+   intente — siempre queda mercancía comprable para quien sí va a pagar. Las
+   ventas confirmadas no cuentan aquí: esas son reales y descuentan de verdad.
+
+   El suelo de MAX_POR_SKU existe para que una compra normal quepa siempre,
+   incluso con el catálogo casi agotado. */
+const FRACCION_RESERVABLE = Math.min(
+  0.9,
+  Math.max(0.1, parseFloat(process.env.INVENTARIO_FRACCION_RESERVABLE || "0.5") || 0.5)
 );
 
 /* folio → { lineas:[{sku,cantidad}], creada:ms, estado:'reservada'|'vendida',
@@ -109,6 +146,25 @@ function disponible(sku) {
   const p = getProductoPorSku(sku);
   if (!p) return 0;
   return Math.max(0, (p.stock || 0) - comprometido(sku));
+}
+
+/** Unidades de un SKU apartadas y todavía SIN pagar. */
+function apartadoSinPagar(sku) {
+  purgarCaducadas();
+  let n = 0;
+  for (const r of RESERVAS.values()) {
+    if (r.estado !== "reservada") continue;
+    for (const l of r.lineas) if (l.sku === sku) n += l.cantidad;
+  }
+  return n;
+}
+
+/** Cuánto de un SKU pueden retener a la vez TODAS las reservas sin pagar. */
+function techoReservable(sku) {
+  const p = getProductoPorSku(sku);
+  if (!p) return 0;
+  const porVender = Math.max(0, (p.stock || 0) - (VENDIDO.get(sku) || 0));
+  return Math.max(MAX_POR_SKU, Math.floor(porVender * FRACCION_RESERVABLE));
 }
 
 /** Reservas vivas —ni vendidas ni caducadas— de un mismo visitante. */
@@ -170,15 +226,43 @@ function reservar(folio, lineas, opciones = {}) {
         `con precio de volumen.`
     };
   }
-  if (reservasVivasDe(identidad) >= MAX_RESERVAS_POR_IDENTIDAD) {
-    return {
-      ok: false,
-      motivo: "tope-reservas",
-      error:
-        `Tienes ${MAX_RESERVAS_POR_IDENTIDAD} pedidos con link de pago sin ` +
-        `terminar. Págalos o espera ${MINUTOS_RESERVA} minutos a que se ` +
-        `liberen, y vuelve a intentar.`
-    };
+  /* Una reserva viva por visitante, y se consigue REEMPLAZANDO, no negando.
+     Negar la segunda castiga al caso común —quien deja un pago a medias y a
+     los dos minutos vuelve a intentarlo— con trece minutos de espera y una
+     llamada a soporte. Reemplazar deja el mismo invariante («una viva por
+     identidad») y libera de inmediato la mercancía del intento anterior, que
+     es justo lo que se quería.
+
+     Si el cliente acaba pagando el link viejo, no se pierde nada: `confirmar`
+     registra la venta desde las líneas del pedido y avisa de que la reserva
+     había caducado. */
+  const sobrantes = [];
+  for (const [f, r] of RESERVAS) {
+    if (r.estado === "reservada" && identidad && r.identidad === identidad) sobrantes.push(f);
+  }
+  /* Se deja hueco para la nueva: si el tope algún día sube de 1, se sueltan
+     las más viejas primero. */
+  sobrantes
+    .slice(0, Math.max(0, sobrantes.length - (MAX_RESERVAS_POR_IDENTIDAD - 1)))
+    .forEach(f => RESERVAS.delete(f));
+
+  /* El techo global va ANTES del stock: no es «no queda», es «no queda
+     disponible para apartar sin pagar», y eso se cuenta distinto. */
+  for (const l of lineas) {
+    const techo = techoReservable(l.sku);
+    if (apartadoSinPagar(l.sku) + l.cantidad > techo) {
+      const p = getProductoPorSku(l.sku);
+      return {
+        ok: false,
+        motivo: "tope-global",
+        sku: l.sku,
+        error:
+          `Hay varias personas comprando ${p?.nombre || l.sku} ahora mismo y ` +
+          `estamos guardando existencias para que nadie se quede sin la suya. ` +
+          `Intenta de nuevo en ${MINUTOS_RESERVA} minutos, o escríbenos por ` +
+          `WhatsApp al +52 771 795 9131 y te lo apartamos a mano.`
+      };
+    }
   }
 
   const faltantes = [];
@@ -276,6 +360,8 @@ function _reiniciar() {
 module.exports = {
   reservar, confirmar, liberar,
   disponible, comprometido, estadoInventario, reservasVivasDe,
-  MINUTOS_RESERVA, MAX_POR_SKU, MAX_UNIDADES, MAX_RESERVAS_POR_IDENTIDAD,
+  apartadoSinPagar, techoReservable,
+  MINUTOS_RESERVA, TECHO_MINUTOS_RESERVA, MAX_POR_SKU, MAX_UNIDADES,
+  MAX_RESERVAS_POR_IDENTIDAD, FRACCION_RESERVABLE,
   _reiniciar
 };

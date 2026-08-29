@@ -1391,6 +1391,19 @@ app.post("/api/pago", limitarPagos, async (req, res) => {
          volumen, no un atacante. */
       if (reserva.motivo && reserva.motivo !== "stock") {
         console.warn(`[pago] Reserva rechazada por ${reserva.motivo}`);
+        /* El techo global saltando es información: o hay una racha de ventas
+           de verdad —y conviene reponer— o alguien está abriendo links para
+           bloquear el catálogo. Las dos cosas se quieren saber, y ninguna
+           merece despertar a nadie: va al resumen del día. */
+        if (reserva.motivo === "tope-global") {
+          avisos.avisar({
+            tipo: "inventario_apretado",
+            sku: reserva.sku,
+            apartado: inventario.apartadoSinPagar(reserva.sku),
+            techo: inventario.techoReservable(reserva.sku),
+            disponible: inventario.disponible(reserva.sku)
+          });
+        }
         return res.status(400).json({ error: reserva.error, motivo: reserva.motivo });
       }
       const detalle = reserva.faltantes
