@@ -5,7 +5,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "node test-quote-engine.js && node test-tools-dispatcher.js && node test-impresion3d.js && node test-carrito.js && node test-phase-1-5.js && node test-envios-avisos.js && node test-asesor-mostrador.js",
+    "test": "node test-quote-engine.js && node test-tools-dispatcher.js && node test-impresion3d.js && node test-carrito.js && node test-phase-1-5.js && node test-envios-avisos.js && node test-asesor-mostrador.js && node test-blindaje-pago.js",
     "test:carrito": "node test-carrito.js",
     "test:engine": "node test-quote-engine.js",
     "test:tools": "node test-tools-dispatcher.js",
@@ -13,6 +13,7 @@
     "test:phase-1-5": "node test-phase-1-5.js",
     "test:envios": "node test-envios-avisos.js",
     "test:mostrador": "node test-asesor-mostrador.js",
+    "test:blindaje": "node test-blindaje-pago.js",
     "csp": "node scripts/csp-hashes.js",
     "csp:fix": "node scripts/csp-hashes.js --escribir"
   },

@@ -138,3 +138,50 @@ negritas y párrafos, que es el orden correcto—. Se deja anotado para que no s
 - **Base de datos.** La instantánea cubre el caso de un solo proceso. Cuando
   haya más de una instancia sirviendo, dos procesos escribiendo el mismo
   archivo se pisan y ahí sí toca Postgres.
+
+---
+
+# Segunda auditoría — el checkout conversacional (rama `asesor-mostrador`)
+
+Revisión externa de la fase «el Asesor es el mostrador». Bloqueó el merge, y
+tenía razón: lo que encontró no era robo de credenciales —eso quedó cerrado en
+la primera auditoría— sino algo peor de explicar a un cliente. Mentirle sobre
+su pago, cobrarle un importe distinto del que vio, o quedarse sin existencias
+porque alguien abrió un link y se fue.
+
+## Cerrado en este diff
+
+| ID | Qué pasaba | Qué lo cierra |
+|---|---|---|
+| **B-01** | `/#/gracias?collection_status=approved&external_reference=VQ-FALSO` decía «Pago confirmado», enseñaba el folio inventado y **borraba el carrito**. | De la URL solo se acepta el folio. El estado lo dice `GET /api/pedido/:folio`, que solo lo sabe por el webhook firmado. Sin confirmación no se afirma nada y no se toca el carrito. Reglas en `assets/js/veredicto-pago.js`, sin DOM, para poder ejecutarlas en pruebas. |
+| **B-02** | El webhook respondía 200 **antes** de consultar el pago. Si la API de Mercado Pago fallaba después, el cobro quedaba sin registrar y sin reintento. | Firma → consultar → persistir y avisar → 200. Si algo falla, 5xx y Mercado Pago reintenta. |
+| **B-03** | Una sola preferencia apartaba las 27 unidades de un SKU durante 24 h, gratis. | Reserva de 15 min (era 1 440), tope de 6 por producto, 12 por compra y 3 reservas vivas por visitante. El rechazo ofrece el canal de mayoreo. |
+| **B-04** | La página cotizaba el envío por código postal y el checkout cobraba una tarifa plana: $15 de diferencia en CP 03330. | `/api/pago` cotiza con el mismo motor que `/api/envio` y devuelve el desglose. Si el total cambia, el front lo enseña y espera confirmación en vez de saltar. |
+| **M-01** | Nombre, correo, WhatsApp y domicilio vivían indefinidamente en `localStorage`, también después de pagar. | `sessionStorage`, y se borran al confirmarse el pago. |
+| **M-02** | El descuadre se detectaba, se avisaba… y seguía por la ruta de aprobado: descontaba inventario y pedía surtir. | Estado `revision`: sin inventario, sin aviso de preparación, sin contar como venta. |
+| **M-03** | Cada reintento de Mercado Pago repetía el aviso. | Idempotencia por `payment_id + estado`. |
+| **M-04** | El panel aceptaba el token por `?t=`. | Solo cabecera `X-Leads-Token`. |
+| **M-06** | Telegram usa `parse_mode: HTML` e interpolaba datos del comprador sin escapar. Una etiqueta sin cerrar hace que Telegram rechace el mensaje: el aviso de la venta no llega. | Todo lo que no escribe el servidor se escapa. |
+| **M-08** | El log volcaba el pedido completo, con correo, teléfono y domicilio. | El log lleva folio, estado, importe y SKUs; el contacto viaja por el webhook, que es quien lo necesita. |
+
+## Sigue pendiente, y es tuyo
+
+- **M-05 — tope global de gasto en Gemini.** El limitador es por IP y en
+  memoria: frena a un visitante, no a mil. Lo que de verdad lo acota es el
+  presupuesto de Google. Ver `IA_PRO.md`.
+- **M-07 — disco persistente.** Sin `ALMACEN_RUTA`, un reinicio de Render borra
+  pedidos, reservas y bitácora. La dirección del fallo es segura —se liberan
+  reservas, no se inventa stock— pero un folio olvidado hace que la página de
+  gracias diga «no pudimos verificar» a alguien que sí pagó.
+
+## Cómo comprobar que B-01 está cerrado
+
+Con el sitio servido, y con algo en el carrito:
+
+```
+/#/gracias?collection_status=approved&status=approved&external_reference=VQ-FALSO1-ABCDEF
+```
+
+Debe decir **«No pudimos confirmar tu pago»**, conservar el carrito íntegro y
+no enseñar en ninguna parte la frase «Pago confirmado». El mismo ataque, sin
+navegador, está en `node test-blindaje-pago.js`.

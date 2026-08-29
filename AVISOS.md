@@ -21,7 +21,7 @@ y a la semana de silenciarlo se te pasa un pago real. Así que hay dos carriles:
 | 🟡 **Pago iniciado** | Alguien se fue al banco. Si no llega el "aprobado" en un rato, es un carrito abandonado que puedes rescatar. |
 | 🟠 **Pago pendiente** | SPEI, OXXO o pago en revisión. El dinero NO ha entrado: no lo mandes todavía. |
 | 🔴 **Pago rechazado** | Casi siempre es el banco, no el cliente. Escribirle recupera la venta. |
-| ⚠️ **Descuadre** | Se cobró un importe distinto del calculado. **No surtas ese pedido sin revisarlo.** |
+| ⚠️ **Descuadre** | Se cobró un importe distinto del calculado. El pedido queda en REVISIÓN: no descuenta inventario y no pide surtir. |
 | 🔔 **Interés con contacto** | Un prospecto dejó su teléfono o correo. A las 24 h ya se enfrió. |
 | 🧾 **Cotización grande** | Por encima de $1,500 MXN. Es intención, no curiosidad. |
 | 🚨 **Configuración rota** | El sitio no puede vender. Es lo único que te despierta de madrugada con razón. |
@@ -43,6 +43,22 @@ Esos datos los valida el servidor antes de crear el link de pago (`/api/pago`
 responde 400 si falta alguno), así que un aviso sin contacto solo puede
 significar un pedido creado antes de este cambio. Cuando pasa, el aviso lo
 dice: **⚠️ SIN datos de contacto**.
+
+### Lo que NO llega dos veces
+
+Mercado Pago reintenta sus notificaciones, y desde que el webhook responde 200
+solo al terminar, reintenta más. Los avisos son idempotentes por
+`payment_id + estado`: el mismo pago aprobado no vuelve a sonar el teléfono.
+Una transición de verdad —de pendiente a aprobado— sí es noticia nueva y sí
+suena.
+
+### Lo que un comprador escriba no puede romper el aviso
+
+Los avisos van a Telegram con `parse_mode: HTML` y dentro llevan cosas que
+teclea un desconocido: nombre, dirección, la pregunta que le hizo al Asesor.
+Todo eso se escapa antes de interpolarse. No es una precaución teórica: una
+etiqueta sin cerrar hace que Telegram **rechace el mensaje entero** con un 400,
+y entonces el aviso de esa venta simplemente no llega.
 
 ### Cortafuegos
 

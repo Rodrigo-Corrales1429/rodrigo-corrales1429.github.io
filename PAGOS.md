@@ -180,18 +180,86 @@ parámetros a la aplicación (`/#/gracias?...`). Antes las `back_urls` llevaban
 caso: el cliente que acababa de pagar aterrizaba en el home, sin folio y sin
 confirmación.
 
+### Esos parámetros NO son una prueba de pago
+
+Es la regla más importante de esta página, y saltársela costaba caro: con
+`/#/gracias?collection_status=approved&external_reference=VQ-LOQUESEA` escrito
+a mano, el sitio decía «Pago confirmado», enseñaba el folio inventado y
+**borraba el carrito**. No despachaba mercancía —el webhook firmado sigue
+siendo el que manda— pero le mentía al cliente y le destruía el pedido.
+
+Ahora:
+
+1. De la URL solo se acepta el **folio**, y solo con la forma exacta que genera
+   este servidor.
+2. El estado se le pregunta a `GET /api/pedido/:folio`, que solo lo sabe por el
+   webhook firmado. Se pregunta varias veces durante ~17 s, porque Mercado Pago
+   devuelve al cliente antes de que llegue su propia notificación.
+3. Mientras no haya respuesta, la página dice **«Estamos confirmando tu pago»**
+   —titular, entradilla y recuadro, todo a la vez— y no toca nada.
+4. **El carrito se vacía únicamente con un `approved` del servidor.** Ni con la
+   URL, ni con un «probablemente», ni con el silencio del backend.
+5. La única pista de la URL que se lee es la mala (`rejected`), porque no puede
+   hacer daño: conserva el carrito y ahorra la espera.
+
+Las reglas viven en `assets/js/veredicto-pago.js`, sin DOM y sin red, para que
+`npm test` pueda ejecutarlas contra el ataque de verdad
+(`node test-blindaje-pago.js`).
+
 Al volver, el Asesor **restaura la conversación** (vive en `sessionStorage`,
 así que sobrevive al viaje a la pasarela) y habla primero: confirma el folio y
-desglosa lo comprado. **El carrito se vacía después de enseñarlo, y solo si el
-pago fue aprobado** — quien vuelve de un pago rechazado necesita su pedido
-intacto para reintentar.
+desglosa lo comprado.
+
+---
+
+## 8 · Cuánto se puede apartar, y por cuánto tiempo
+
+Generar un link de pago **aparta mercancía**, y eso convertía el checkout
+público en una palanca: una sola petición pidiendo las 27 unidades de un
+producto lo dejaba agotado 24 horas sin pagar un peso. Tres topes lo cierran:
+
+| Variable | Por omisión | Qué impide |
+|---|---|---|
+| `INVENTARIO_MINUTOS_RESERVA` | 15 | Que una reserva sin pagar bloquee stock más de lo que dura una compra con tarjeta. |
+| `INVENTARIO_MAX_POR_SKU` | 6 | Que una sola compra se lleve todo un producto. |
+| `INVENTARIO_MAX_UNIDADES` | 12 | Lo mismo, repartido entre varios productos. |
+| `INVENTARIO_MAX_RESERVAS_POR_IDENTIDAD` | 3 | Que los topes se esquiven abriendo pedidos seguidos. |
+
+El rechazo es un **400 que ofrece el canal de mayoreo**, no un portazo: quien
+pide 27 piezas casi siempre es un cliente de volumen, y ese cliente se atiende
+por WhatsApp con precio de volumen.
+
+Un pago que llega **después** de que caducó la reserva —SPEI, efectivo— no se
+pierde: se registra igual y el aviso de Telegram avisa de que la reserva ya
+había caducado, para comprobar el stock antes de prometer fecha.
+
+---
+
+## 9 · El webhook responde 200 cuando ya terminó
+
+Antes acusaba recibo **antes** de consultar el pago, «para no hacer esperar a
+Mercado Pago». Si su API fallaba después de ese 200, el error se escribía en un
+log que nadie mira y Mercado Pago ya daba el aviso por entregado: cobro hecho,
+pedido sin registrar, sin inventario y sin avisar.
+
+Ahora el orden es: **firma → consultar el pago → persistir y avisar → 200**. Si
+algo falla, se responde 5xx y Mercado Pago reintenta. Para que reintentar sea
+barato, los avisos son idempotentes por `payment_id + estado`: el mismo aviso
+repetido no vuelve a sonar el teléfono.
+
+### El descuadre no surte
+
+Si el importe cobrado no coincide con el calculado, el pedido queda en estado
+`revision`: **no** se descuenta inventario, **no** sale el aviso de preparar y
+**no** cuenta como venta en el panel. Lo único que sale es la alarma de
+descuadre, que dice explícitamente que no se surta.
 
 Si cambias `SITIO_URL`, la página `/gracias/` tiene que existir en el dominio
 nuevo o el comprador vuelve a un 404 justo después de pagarte.
 
 ---
 
-## 8 · Las reglas que no se rompen
+## 10 · Las reglas que no se rompen
 
 - **Sin contacto no hay link de pago.** `/api/pago` responde 400 si falta
   nombre, WhatsApp (10 dígitos), correo, código postal o calle con número, y

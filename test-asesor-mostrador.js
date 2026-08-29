@@ -48,6 +48,10 @@ function afirmar(condicion, mensaje) {
   if (!condicion) throw new Error(mensaje);
 }
 
+/* Los comentarios del propio código explican POR QUÉ no se usa `window.open`,
+   así que buscarlo en crudo encuentra la explicación y no la infracción. */
+const sinComentarios = t => t.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/\/\/[^\n]*/g, " ");
+
 const app = leer("assets/js/app.js");
 const figuras = leer("assets/js/figuras.js");
 const config = leer("assets/js/division-config.js");
@@ -207,16 +211,12 @@ prueba("el front tampoco pide el link sin contacto, y manda el comprador", () =>
 console.log("\n[MOSTRADOR] Ir a pagar y volver sin perder nada");
 // ---------------------------------------------------------------------------
 
-/* Los comentarios del propio código explican POR QUÉ no se usa `window.open`,
-   así que buscarlo en crudo encuentra la explicación y no la infracción. */
-const sinComentarios = t => t.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/\/\/[^\n]*/g, " ");
-
 prueba("el pago va en la MISMA pestaña, nunca en una ventana nueva", () => {
   const bloque = sinComentarios(app.slice(app.indexOf("async function irAPagar"),
-                                          app.indexOf("async function recibirDePago")));
+                                          app.indexOf("/* ── La vuelta de Mercado Pago")));
   afirmar(!bloque.includes("window.open"),
     "el checkout volvió a abrir una pestaña: en iOS eso se bloquea");
-  afirmar(bloque.includes("location.href = data.url"),
+  afirmar(bloque.includes("location.href = listo.url"),
     "el checkout no navega en la misma pestaña");
 });
 
@@ -228,13 +228,20 @@ prueba("el estado se escribe ANTES de saltar a Mercado Pago", () => {
     afirmar(bloque.includes(t), `no se persiste ${t} antes del salto`);
   });
   const guarda = app.indexOf("guardarAntesDeSaltar({");
-  afirmar(guarda > 0 && guarda < app.indexOf("location.href = data.url"),
+  afirmar(guarda > 0 && guarda < app.indexOf("location.href = listo.url"),
     "se salta a la pasarela ANTES de guardar el estado");
+});
+
+prueba("solo se navega a un dominio de Mercado Pago", () => {
+  afirmar(app.includes("function esLinkDeMercadoPago"),
+    "el link de pago se sigue a ciegas: es un redirector abierto");
+  const usos = (app.match(/esLinkDeMercadoPago\(/g) || []).length;
+  afirmar(usos >= 3, "queda algún salto sin comprobar el destino");
 });
 
 prueba("las URLs de retorno son rutas reales, sin fragmento", () => {
   const pref = construirPreferencia({
-    cot: { lineas: [], _raw: { envio_centavos: 0, total_centavos: 100000 } },
+    cot: { lineas: [], _raw: { subtotal_centavos: 100000, envio_centavos: 0, total_centavos: 100000 } },
     productoPorSku: () => ({ precio_centavos: 100000 }),
     folio: "VQ-TEST",
     sitioUrl: "https://valquiriainc.com"
@@ -253,7 +260,7 @@ prueba("el comprador viaja a Mercado Pago con lada, número y CP separados", () 
   const { datos } = sanearComprador({ nombre: "Ana Ruiz Soto", whatsapp: "7717959131",
     email: "a@b.mx", cp: "42000", direccion: "Calle 5 num 3, Centro, Pachuca" });
   const pref = construirPreferencia({
-    cot: { lineas: [], _raw: { envio_centavos: 0, total_centavos: 100000 } },
+    cot: { lineas: [], _raw: { subtotal_centavos: 100000, envio_centavos: 0, total_centavos: 100000 } },
     productoPorSku: () => ({ precio_centavos: 100000 }),
     folio: "VQ-TEST",
     sitioUrl: "https://valquiriainc.com",
@@ -282,17 +289,6 @@ prueba("el router entiende una ruta con cola de parámetros", () => {
     "`rutaActual` sigue leyendo el hash en crudo");
   afirmar(app.includes("function parametrosVisita()"),
     "no hay lectura unificada de los parámetros de retorno");
-});
-
-prueba("el carrito se vacía DESPUÉS de enseñarlo y solo con pago aprobado", () => {
-  const i = app.indexOf("async function recibirDePago");
-  const bloque = app.slice(i, app.indexOf("\n}\n", i));
-  const muestra = bloque.indexOf("Asesor.burbuja('bot', md(mensaje))");
-  const vacia = bloque.indexOf("Carrito.vaciar()");
-  afirmar(muestra > 0 && vacia > muestra,
-    "se vacía el carrito antes de que el cliente vea qué compró");
-  afirmar(/if \(estado === 'aprobado'\) \{ Carrito\.vaciar\(\)/.test(bloque),
-    "el carrito se vacía aunque el pago no se haya aprobado");
 });
 
 // ---------------------------------------------------------------------------

@@ -510,11 +510,27 @@ test("reservar aparta la mercancía y baja lo disponible", () => {
 
 test("no se puede vender más de lo que hay: el segundo comprador se rechaza", () => {
   /* Este es el agujero que cerró el módulo: antes los dos recibían link de
-     pago y el segundo se enteraba cuando no le llegaba nada. */
+     pago y el segundo se enteraba cuando no le llegaba nada.
+
+     Ya no basta con una reserva para agotar un SKU —ese era otro agujero, y
+     lo cierra el tope por compra—, así que el stock se consume con varias
+     reservas dentro del tope hasta dejarlo en cero. */
   inventario._reiniciar();
   const hay = inventario.disponible("Endotnissin");
-  assert.strictEqual(inventario.reservar("A", [{ sku: "Endotnissin", cantidad: hay }]).ok, true);
-  const segundo = inventario.reservar("B", [{ sku: "Endotnissin", cantidad: 1 }]);
+  const paso = inventario.MAX_POR_SKU;
+  let puestas = 0;
+  for (let quedan = hay, i = 0; quedan > 0; i++) {
+    const n = Math.min(paso, quedan);
+    assert.strictEqual(
+      inventario.reservar("A" + i, [{ sku: "Endotnissin", cantidad: n }],
+        { identidad: "ip-" + i }).ok,
+      true
+    );
+    quedan -= n; puestas += n;
+  }
+  assert.strictEqual(puestas, hay);
+  const segundo = inventario.reservar("B", [{ sku: "Endotnissin", cantidad: 1 }],
+    { identidad: "otra-ip" });
   assert.strictEqual(segundo.ok, false);
   assert.strictEqual(segundo.faltantes[0].disponible, 0);
 });
@@ -546,7 +562,7 @@ test("confirmar convierte la reserva en venta y ya no se puede liberar", () => {
   inventario._reiniciar();
   const antes = inventario.disponible("ValPulpo");
   inventario.reservar("E", [{ sku: "ValPulpo", cantidad: 2 }]);
-  assert.strictEqual(inventario.confirmar("E"), true);
+  assert.strictEqual(inventario.confirmar("E").ok, true);
   assert.strictEqual(inventario.liberar("E"), false, "una venta no se libera");
   assert.strictEqual(inventario.disponible("ValPulpo"), antes - 2);
 });
@@ -565,11 +581,27 @@ test("un SKU inexistente no tiene disponibilidad", () => {
   assert.strictEqual(inventario.disponible("NoExiste"), 0);
 });
 
-test("la reserva dura al menos lo que vive el link de pago", () => {
-  /* Si el link vive más que la reserva, alguien puede pagar mercancía que ya
-     se le dio a otro. */
-  const vigenciaLink = parseInt(process.env.MP_VIGENCIA_MINUTOS || "1440", 10);
-  assert.ok(inventario.MINUTOS_RESERVA >= vigenciaLink);
+test("la reserva es corta, y un pago tardío se registra igual y se marca", () => {
+  /* La regla anterior era «la reserva dura al menos lo que el link». Sonaba
+     prudente y salía carísima: ataba el inventario a la vigencia del link
+     —1 440 minutos— y bastaba una petición para dejar un SKU en cero un día
+     entero sin pagar nada.
+
+     La regla nueva separa las dos cosas. La reserva es corta porque su
+     trabajo es cubrir el rato que el comprador pasa en la pasarela; y el
+     pago que llega tarde —SPEI, efectivo— no se pierde: `confirmar` lo
+     registra desde las líneas del pedido y avisa de que la reserva ya había
+     caducado, para comprobar el stock antes de prometer fecha. */
+  assert.ok(inventario.MINUTOS_RESERVA <= 30,
+    `la reserva volvió a durar ${inventario.MINUTOS_RESERVA} minutos`);
+
+  inventario._reiniciar();
+  const antes = inventario.disponible("ValPulpo");
+  const tardio = inventario.confirmar("SIN-RESERVA", [{ sku: "ValPulpo", cantidad: 2 }]);
+  assert.strictEqual(tardio.ok, true, "un pago tardío no descontó nada");
+  assert.strictEqual(tardio.caducada, true, "no se avisó de la reserva caducada");
+  assert.strictEqual(inventario.disponible("ValPulpo"), antes - 2);
+  inventario._reiniciar();
 });
 
 // ══════════════════════════════════════════════════════════════════════
