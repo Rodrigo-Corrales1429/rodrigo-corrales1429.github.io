@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="es-MX">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Confirmando tu pago | Valquiria Inc.</title>
+<meta name="description" content="Página de retorno del pago. Confirmamos tu pedido y te llevamos de vuelta con tu Asesor Valquiria.">
+<!-- Esta página no es contenido: es el puente de vuelta desde la pasarela.
+     Indexarla llenaría los resultados de búsqueda de una pantalla que no
+     significa nada sin un pago detrás. -->
+<meta name="robots" content="noindex,follow">
+<meta name="theme-color" content="#060606">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self' https://wa.me; script-src 'self' 'sha256-O92AzKPRoGmcHNRNibRGbq+2SmIgPVhVHBygP9epY+E='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://rodrigo-corrales1429-github-io.onrender.com; upgrade-insecure-requests">
+<link rel="canonical" href="https://valquiriainc.com/gracias/">
+<link rel="icon" href="/favicon.ico">
+<link rel="apple-touch-icon" sizes="180x180" href="/assets/apple-touch-icon.png">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600&amp;family=Montserrat:wght@300;400;500&amp;family=IBM+Plex+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/css/seo-pages.css">
+<script>
+/* ══ EL PUENTE DE VUELTA ══
+   Mercado Pago devuelve al comprador aquí y pega sus parámetros a la query:
+   collection_status, payment_id, external_reference. Las URLs de retorno NO
+   pueden llevar un `#` —los parámetros acaban a un lado u otro del fragmento
+   según el caso, y en ninguno de los dos el router del sitio los veía—, así
+   que el retorno aterriza en una ruta real y esta línea los entrega intactos
+   a la aplicación, que es donde vive el pedido y la conversación del Asesor.
+
+   `replace` y no `href`: el botón de atrás debe devolver al comprador a la
+   tienda, no a un checkout que ya se consumió.
+
+   Sin JavaScript no se pierde nada: debajo hay una página de verdad con el
+   mensaje y un enlace. */
+(function () {
+  var cola = location.search ? location.search.slice(1) : '';
+  location.replace('/#/gracias' + (cola ? '?' + cola : ''));
+})();
+</script>
+</head>
+<body>
+<a class="skip-link" href="#contenido">Saltar al contenido</a>
+<header class="topbar">
+<div class="wrap">
+<a class="brand" href="/">
+<img src="/assets/isotipo_gold.svg" alt="" width="30" height="30">
+<span>Valquiria Inc.</span>
+</a>
+<nav class="nav" aria-label="Principal">
+<a href="/">Inicio</a>
+<a href="/dental/">Dental</a>
+<a href="/ia/">IA</a>
+<a href="/3d/">3D</a>
+<a href="/pack/">Pack</a>
+<a href="/lux/">Lux</a>
+<a href="/catalogo/">Catálogo</a>
+</nav>
+</div>
+</header>
+<main id="contenido">
+<section class="hero">
+<div class="wrap">
+<div class="kicker">Pedido · Valquiria Inc.</div>
+<h1>Estamos confirmando tu pago.</h1>
+<p class="lead">En un segundo te devolvemos con tu Asesor, que tiene tu pedido y tu folio a la mano. Si esta pantalla se queda quieta, entra tú mismo: tu pedido sigue guardado.</p>
+<div class="actions">
+<a class="btn" href="/#/gracias">Ver mi pedido</a>
+<a class="btn ghost" href="https://wa.me/527717959131">Preguntar por WhatsApp</a>
+</div>
+</div>
+</section>
+<section class="section">
+<div class="wrap">
+<div class="mono">Lo que sigue</div>
+<h2>El comprobante y la guía.</h2>
+<ul class="list">
+<li>Mercado Pago te manda el comprobante al correo con el que pagaste.</li>
+<li>Preparamos y empacamos el pedido en las siguientes 24 a 48 horas hábiles.</li>
+<li>Te avisamos por WhatsApp en cuanto sale la guía.</li>
+</ul>
+<p class="note">¿Necesitas factura o cambiar algo del pedido? Escríbenos al +52 771 795 9131 con tu folio a la mano y lo resuelve una persona.</p>
+</div>
+</section>
+</main>
+<footer class="footer">
+<div class="wrap">
+<div>© Valquiria Inc. · Manufactura aditiva en México</div>
+<nav class="seo-links" aria-label="Divisiones y catálogo">
+<a href="/dental/">Dental</a>
+<a href="/ia/">IA</a>
+<a href="/3d/">3D</a>
+<a href="/pack/">Pack</a>
+<a href="/lux/">Lux</a>
+<a href="/catalogo/">Catálogo</a>
+</nav>
+</div>
+</footer>
+</body>
+</html>

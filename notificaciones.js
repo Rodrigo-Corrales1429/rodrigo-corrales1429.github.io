@@ -261,24 +261,47 @@ async function repartir(evento, texto) {
  * primero QUÉ pasó y CUÁNTO, después el detalle.
  */
 const REDACCION = {
+  /* El bloque de contacto es lo que convierte un aviso en una acción. Sin él,
+     «PAGO APROBADO — $1,200» obliga a ir al panel de Mercado Pago a averiguar
+     de quién era y adónde va. Con él, se empaca y se manda. */
   pago_aprobado: e =>
     `💰 <b>PAGO APROBADO — ${pesos(e.total_centavos)}</b>\n` +
     `Folio ${e.folio}\n` +
-    (e.comprador ? `Cliente: ${e.comprador}\n` : "") +
+    (e.comprador ? `Cliente: ${e.comprador}\n` : "⚠️ SIN datos de contacto\n") +
+    (e.whatsapp ? `WhatsApp: https://wa.me/${e.whatsapp}\n` : "") +
+    (e.direccion ? `Envío a: ${e.direccion}${e.cp ? ` (CP ${e.cp})` : ""}\n` : "") +
     (e.items ? `Pedido: ${e.items}\n` : "") +
-    (e.envio ? `Envío: ${e.envio}\n` : "") +
+    (e.envio ? `Paquetería: ${e.envio}\n` : "") +
     `Método: ${e.metodo || "Mercado Pago"}\n` +
     `👉 Prepara y manda la guía.`,
 
   pago_iniciado: e =>
     `🟡 <b>Alguien está pagando — ${pesos(e.total_centavos)}</b>\n` +
     `Folio ${e.folio}\n` +
+    (e.comprador ? `Cliente: ${e.comprador}\n` : "") +
+    (e.whatsapp ? `WhatsApp: https://wa.me/${e.whatsapp}\n` : "") +
     (e.items ? `Pedido: ${e.items}\n` : "") +
-    `Todavía no cobra. Si en un rato no llega el "APROBADO", abandonó el pago.`,
+    `Todavía no cobra. Si en un rato no llega el "APROBADO", abandonó el pago ` +
+    `— y ahora sí sabes a quién escribirle.`,
+
+  /* pending / in_process: ni entró ni se rechazó. Un SPEI o un pago en
+     efectivo se quedaba invisible hasta que el cliente escribía preguntando
+     por qué no le llegaba nada. */
+  pago_pendiente: e =>
+    `🟠 <b>Pago pendiente — ${pesos(e.total_centavos)}</b>\n` +
+    `Folio ${e.folio}. Estado: ${e.detalle || "en proceso"}\n` +
+    (e.comprador ? `Cliente: ${e.comprador}\n` : "") +
+    (e.whatsapp ? `WhatsApp: https://wa.me/${e.whatsapp}\n` : "") +
+    (e.items ? `Pedido: ${e.items}\n` : "") +
+    (e.metodo ? `Método: ${e.metodo}\n` : "") +
+    `👉 NO lo mandes todavía: el dinero no ha entrado.`,
 
   pago_rechazado: e =>
     `🔴 <b>Pago rechazado — ${pesos(e.total_centavos)}</b>\n` +
     `Folio ${e.folio}. Motivo: ${e.detalle || "no especificado"}\n` +
+    (e.comprador ? `Cliente: ${e.comprador}\n` : "") +
+    (e.whatsapp ? `WhatsApp: https://wa.me/${e.whatsapp}\n` : "") +
+    (e.items ? `Pedido: ${e.items}\n` : "") +
     `👉 Vale la pena escribirle: casi siempre es el banco, no el cliente.`,
 
   descuadre: e =>
@@ -310,7 +333,8 @@ const REDACCION = {
 };
 
 const URGENTES = new Set([
-  "pago_aprobado", "pago_iniciado", "pago_rechazado", "descuadre", "config"
+  "pago_aprobado", "pago_iniciado", "pago_pendiente", "pago_rechazado",
+  "descuadre", "config"
 ]);
 
 /** Decide el carril. Aquí vive toda la política de "no me hagas spam". */
@@ -534,6 +558,12 @@ async function probar() {
 
 module.exports = {
   avisar,
+  /* Se exporta para poder AFIRMAR en las pruebas qué lleva cada aviso. El
+     canal silenciado recorta el texto a 120 caracteres, así que sin esto no
+     hay forma de comprobar que el WhatsApp del comprador viaja en el aviso
+     de un pago aprobado — que es justo el dato cuya ausencia dejaba un pago
+     sin dueño. */
+  REDACCION,
   bitacoraCruda,
   restaurarBitacora,
   quizaResumenDiario,

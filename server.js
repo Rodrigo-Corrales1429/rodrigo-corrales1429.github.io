@@ -50,7 +50,9 @@ const {
   construirPreferencia,
   crearPreferencia,
   validarFirmaWebhook,
-  consultarPago
+  consultarPago,
+  sanearComprador,
+  contactoEnUnaLinea
 } = require("./pagos.js");
 const { estadoEnvios, cotizarEnvio } = require("./envios.js");
 const avisos = require("./notificaciones.js");
@@ -218,10 +220,18 @@ function crearLimitador({ nombre, max, maxDiario, mensaje }) {
 
     const marcas = (minuto.get(quien) || []).filter(t => t > ahora - VENTANA_MS);
     if (marcas.length >= max) {
-      const esperaS = Math.ceil((marcas[0] + VENTANA_MS - ahora) / 1000);
+      const esperaS = Math.max(1, Math.ceil((marcas[0] + VENTANA_MS - ahora) / 1000));
       console.warn(`[rate-limit:${nombre}] ${quien} frenada (${marcas.length}/min)`);
-      res.set("Retry-After", String(Math.max(1, esperaS)));
-      return res.status(429).json({ error: mensaje, motivo: "rate-limit" });
+      res.set("Retry-After", String(esperaS));
+      /* Los segundos van TAMBIÉN en el cuerpo. La cabecera Retry-After ya
+         estaba, pero el navegador no deja leerla desde otro origen si no se
+         expone en el CORS, y ampliar lo que el JavaScript de la página puede
+         leer de nuestras respuestas por un dato de cortesía no compensa. Con
+         el número dentro, el Asesor puede decir «vuelvo en 12 s» en vez de
+         «llegué a mi límite», que suena a avería y no lo es. */
+      return res.status(429).json({
+        error: mensaje, motivo: "rate-limit", espera_s: esperaS
+      });
     }
 
     const reg = dia.get(quien) || { desde: ahora, n: 0 };
@@ -247,7 +257,11 @@ function crearLimitador({ nombre, max, maxDiario, mensaje }) {
 
 const limitarTasa = crearLimitador({
   nombre: "chat",
-  max: parseInt(process.env.RATE_LIMIT_POR_MINUTO || "15", 10),
+  /* 30, no 15. Quince por minuto es hostil con el propio dueño probando la
+     tienda —y con quien manda tres mensajes cortos seguidos, que es como se
+     escribe desde el teléfono—. Sigue habiendo tope, y sigue estando el tope
+     diario debajo: esto frena bucles automatizados, no conversaciones. */
+  max: parseInt(process.env.RATE_LIMIT_POR_MINUTO || "30", 10),
   maxDiario: parseInt(process.env.RATE_LIMIT_POR_DIA || "400", 10),
   mensaje:
     "Estás enviando mensajes muy rápido. Espera un momento y vuelve a " +
@@ -762,7 +776,18 @@ function contextoCarrito(carritoSaneado) {
     "· «vacía y ponme 3 pulpo»  → accion='reemplazar', items=[{producto:'pulpo',cantidad:3}]\n" +
     "· «vacía el carrito»       → accion='vaciar'\n" +
     "El servidor calcula el estado final y te lo devuelve en 'carrito_final'. " +
-    "No hagas tú esa aritmética."
+    "No hagas tú esa aritmética.\n\n" +
+    /* Sin esto el modelo trataba «¿cuánto es?» como una consulta nueva y
+       contestaba con el catálogo, delante de un cliente que ya tenía el
+       pedido armado. Con carrito lleno, esas preguntas son SIEMPRE sobre
+       este pedido. */
+    "REGLA CON CARRITO LLENO: si te preguntan «cuánto es», «el total», «qué " +
+    "pedí», «desglosa» o «el link», están hablando de ESTE pedido. Desglósalo " +
+    "con calcular_cotizacion —nunca de memoria— y ofrece cerrar. NO enseñes el " +
+    "catálogo ni preguntes qué necesita: eso ya lo decidió.\n" +
+    "Antes del link de pago hacen falta nombre, WhatsApp, correo, código " +
+    "postal y calle con número. Si falta alguno, pídelos en ese orden, de dos " +
+    "en dos como mucho, y cotiza el envío en cuanto tengas el CP."
   );
 }
 
@@ -1284,6 +1309,17 @@ app.post("/api/pago", limitarPagos, async (req, res) => {
       cantidad: it?.cantidad
     }));
 
+    /* SIN CONTACTO NO HAY PREFERENCIA. Se comprueba antes de calcular nada y
+       antes de apartar mercancía: un pedido que no se puede entregar ni
+       rescatar no debería llegar a reservar stock. */
+    const comprador = sanearComprador(req.body?.comprador);
+    if (!comprador.ok) {
+      return res.status(400).json({
+        error: `Antes de generar el link de pago necesito ${comprador.texto}.`,
+        faltan: comprador.faltan
+      });
+    }
+
     const cot = calcularCotizacion(items);
     if (!cot.ok) {
       return res.status(400).json({ error: cot.error });
@@ -1320,7 +1356,7 @@ app.post("/api/pago", limitarPagos, async (req, res) => {
       folio,
       sitioUrl: SITIO_URL,
       notificacionUrl: BACKEND_URL ? `${BACKEND_URL}/api/pago/webhook` : null,
-      comprador: req.body?.comprador
+      comprador: comprador.datos
     });
 
     let data;
@@ -1342,6 +1378,9 @@ app.post("/api/pago", limitarPagos, async (req, res) => {
       items: cot.lineas.map(l => ({
         sku: l.sku, cantidad: l.cantidad, titulo: l.titulo || l.nombre || l.sku
       })),
+      /* Aquí es donde el pedido deja de ser anónimo. Cuando el webhook llegue
+         media hora después, el aviso ya sabe a quién pertenece el dinero. */
+      comprador: comprador.datos,
       preferencia_id: data.id
     });
 
@@ -1352,7 +1391,12 @@ app.post("/api/pago", limitarPagos, async (req, res) => {
       tipo: "pago_iniciado",
       folio,
       total_centavos: cot._raw.total_centavos,
-      items: cot.lineas.map(l => `${l.cantidad}× ${l.titulo || l.sku}`).join(", ")
+      items: cot.lineas.map(l => `${l.cantidad}× ${l.titulo || l.sku}`).join(", "),
+      /* Con esto el carrito abandonado deja de ser una estadística y pasa a
+         ser un número de WhatsApp al que se le puede escribir. */
+      comprador: contactoEnUnaLinea(comprador.datos),
+      whatsapp: comprador.datos.whatsapp,
+      cp: comprador.datos.cp
     });
 
     console.log(`[pago] Preferencia ${folio} → ${cot.total} (pref ${data.id})`);
@@ -1502,21 +1546,33 @@ app.post("/api/pago/webhook", async (req, res) => {
       else if (estado === "rejected" || estado === "cancelled") inventario.liberar(folio);
     }
 
+    /* Quien compró. Se prefiere lo que ESTE servidor validó al crear la
+       preferencia sobre lo que devuelve Mercado Pago: el correo del payer de
+       MP puede ser el de la cuenta con la que pagó —el de su pareja, el de la
+       clínica— y no aquel donde el cliente pidió el comprobante. */
+    const quien = guardado.comprador || null;
+
     if (estado === "approved") {
       avisarPedido({
         folio, pago_id: pago.id, estado,
         total: centavosAPesos(cobrado),
         metodo: pago.payment_type_id,
-        email: pago.payer?.email || null,
+        email: quien?.email || pago.payer?.email || null,
+        comprador: quien,
         items: guardado.items || []
       });
       /* ESTE es el aviso que evita que "solo caiga dinero": suena el teléfono
-         con el folio, el importe y qué hay que empacar. */
+         con el folio, el importe, qué hay que empacar y A QUIÉN. Sin el
+         contacto, un pago aprobado seguía siendo un enigma que había que ir a
+         buscar al panel de Mercado Pago. */
       avisos.avisar({
         tipo: "pago_aprobado",
         folio,
         total_centavos: cobrado,
-        comprador: pago.payer?.email || null,
+        comprador: contactoEnUnaLinea(quien) || pago.payer?.email || null,
+        whatsapp: quien?.whatsapp || null,
+        direccion: quien?.direccion || null,
+        cp: quien?.cp || null,
         items: descripcionItems,
         envio: guardado.envio || null,
         metodo: `${pago.payment_type_id || "—"}/${pago.payment_method_id || "—"}`,
@@ -1527,7 +1583,26 @@ app.post("/api/pago/webhook", async (req, res) => {
         tipo: "pago_rechazado",
         folio,
         total_centavos: cobrado || esperado || 0,
-        detalle: pago.status_detail || estado
+        detalle: pago.status_detail || estado,
+        /* Un rechazo casi siempre es el banco, no el cliente. Sin su
+           WhatsApp aquí, ese pedido no se recupera nunca. */
+        comprador: contactoEnUnaLinea(quien),
+        whatsapp: quien?.whatsapp || null,
+        items: descripcionItems
+      });
+    } else {
+      /* pending / in_process: el dinero ni entró ni se rechazó. Antes esto no
+         avisaba nada, y un SPEI o un pago en efectivo se quedaba invisible
+         hasta que el cliente escribía preguntando. */
+      avisos.avisar({
+        tipo: "pago_pendiente",
+        folio,
+        total_centavos: cobrado || esperado || 0,
+        detalle: pago.status_detail || estado,
+        comprador: contactoEnUnaLinea(quien),
+        whatsapp: quien?.whatsapp || null,
+        items: descripcionItems,
+        metodo: `${pago.payment_type_id || "—"}/${pago.payment_method_id || "—"}`
       });
     }
   } catch (e) {
