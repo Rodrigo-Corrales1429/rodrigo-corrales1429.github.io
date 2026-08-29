@@ -512,27 +512,51 @@ test("no se puede vender más de lo que hay: el segundo comprador se rechaza", (
   /* Este es el agujero que cerró el módulo: antes los dos recibían link de
      pago y el segundo se enteraba cuando no le llegaba nada.
 
-     Ya no basta con una reserva para agotar un SKU —ese era otro agujero, y
-     lo cierra el tope por compra—, así que el stock se consume con varias
-     reservas dentro del tope hasta dejarlo en cero. */
+     Se agota con VENTAS confirmadas, no con reservas: apartar sin pagar tiene
+     ahora su propio techo —ninguna cantidad de reservas puede dejar un
+     producto en cero, y eso se prueba aparte— así que la única forma de
+     quedarse sin existencias es que la gente pague. */
   inventario._reiniciar();
   const hay = inventario.disponible("Endotnissin");
-  const paso = inventario.MAX_POR_SKU;
-  let puestas = 0;
+  let vendidas = 0;
   for (let quedan = hay, i = 0; quedan > 0; i++) {
-    const n = Math.min(paso, quedan);
+    const n = Math.min(inventario.MAX_POR_SKU, quedan);
+    const folio = "V" + i;
     assert.strictEqual(
-      inventario.reservar("A" + i, [{ sku: "Endotnissin", cantidad: n }],
+      inventario.reservar(folio, [{ sku: "Endotnissin", cantidad: n }],
         { identidad: "ip-" + i }).ok,
-      true
+      true, `no se pudo reservar el lote ${i}`
     );
-    quedan -= n; puestas += n;
+    assert.strictEqual(inventario.confirmar(folio).ok, true);
+    quedan -= n; vendidas += n;
   }
-  assert.strictEqual(puestas, hay);
+  assert.strictEqual(vendidas, hay);
+  assert.strictEqual(inventario.disponible("Endotnissin"), 0);
+
   const segundo = inventario.reservar("B", [{ sku: "Endotnissin", cantidad: 1 }],
     { identidad: "otra-ip" });
   assert.strictEqual(segundo.ok, false);
+  assert.strictEqual(segundo.motivo, "stock");
   assert.strictEqual(segundo.faltantes[0].disponible, 0);
+  inventario._reiniciar();
+});
+
+test("las reservas sin pagar nunca agotan un producto", () => {
+  /* El tope por identidad es fricción: un visitante son cinco pestañas o
+     cinco IPs. Lo que de verdad protege el mostrador es que lo apartado SIN
+     PAGAR no pase de una fracción de lo que queda por vender. */
+  inventario._reiniciar();
+  const hay = inventario.disponible("ValEnd");
+  for (let i = 0; i < 40; i++) {
+    inventario.reservar("X" + i, [{ sku: "ValEnd", cantidad: inventario.MAX_POR_SKU }],
+      { identidad: "ip-" + i });
+  }
+  assert.ok(inventario.disponible("ValEnd") > 0,
+    "cuarenta identidades dejaron el producto en cero");
+  assert.ok(inventario.apartadoSinPagar("ValEnd") <= inventario.techoReservable("ValEnd"),
+    "se apartó más de lo que permite el techo");
+  assert.ok(inventario.disponible("ValEnd") >= Math.floor(hay * (1 - inventario.FRACCION_RESERVABLE)));
+  inventario._reiniciar();
 });
 
 test("la reserva es atómica: si una línea no cabe, no se aparta ninguna", () => {

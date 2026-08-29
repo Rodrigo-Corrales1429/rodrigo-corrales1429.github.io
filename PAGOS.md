@@ -199,8 +199,11 @@ Ahora:
    —titular, entradilla y recuadro, todo a la vez— y no toca nada.
 4. **El carrito se vacía únicamente con un `approved` del servidor.** Ni con la
    URL, ni con un «probablemente», ni con el silencio del backend.
-5. La única pista de la URL que se lee es la mala (`rejected`), porque no puede
-   hacer daño: conserva el carrito y ahorra la espera.
+5. **Ningún** estado de la URL tiene autoridad, tampoco el malo. Creerse un
+   `rejected` forjado hace que la página anuncie un fallo y ofrezca **pagar
+   otra vez** algo ya cobrado; cobrar dos veces es peor que hacer esperar. Un
+   rechazo de verdad tampoco cuesta la espera: el webhook también avisa de los
+   rechazos, así que el servidor lo sabe al primer o segundo sondeo.
 
 Las reglas viven en `assets/js/veredicto-pago.js`, sin DOM y sin red, para que
 `npm test` pueda ejecutarlas contra el ataque de verdad
@@ -223,7 +226,18 @@ producto lo dejaba agotado 24 horas sin pagar un peso. Tres topes lo cierran:
 | `INVENTARIO_MINUTOS_RESERVA` | 15 | Que una reserva sin pagar bloquee stock más de lo que dura una compra con tarjeta. |
 | `INVENTARIO_MAX_POR_SKU` | 6 | Que una sola compra se lleve todo un producto. |
 | `INVENTARIO_MAX_UNIDADES` | 12 | Lo mismo, repartido entre varios productos. |
-| `INVENTARIO_MAX_RESERVAS_POR_IDENTIDAD` | 3 | Que los topes se esquiven abriendo pedidos seguidos. |
+| `INVENTARIO_MAX_RESERVAS_POR_IDENTIDAD` | 1 | Que un visitante acumule mercancía apartada. Abrir un pedido nuevo **reemplaza** el anterior, así que no bloquea a quien reintenta. |
+| `INVENTARIO_FRACCION_RESERVABLE` | 0.5 | **El techo que no depende de quién pida.** Las reservas sin pagar nunca retienen más de esa fracción de lo que queda por vender, vengan de las IPs que vengan. |
+
+Los tres primeros son fricción por visitante, y un visitante son cinco
+pestañas o cinco IPs: con reserva de 15 min, 6 por SKU y 3 por identidad, dos
+identidades bastaban para dejar un producto de 27 piezas en cero (6+6+6 desde
+una, 6+3 desde otra). El cuarto es la defensa de verdad, y no se puede
+esquivar multiplicando identidades.
+
+`INVENTARIO_MINUTOS_RESERVA` está además **topado a 60 minutos en el código**:
+un despliegue no limpia el panel de Render, y una variable vieja con 1440
+devolvería el agujero sin que nadie tocara una línea.
 
 El rechazo es un **400 que ofrece el canal de mayoreo**, no un portazo: quien
 pide 27 piezas casi siempre es un cliente de volumen, y ese cliente se atiende

@@ -54,6 +54,8 @@ function afirmar(condicion, mensaje) {
   if (!condicion) throw new Error(mensaje);
 }
 
+const leerFuente = f => require("fs").readFileSync(path.join(__dirname, f), "utf8");
+
 // ---------------------------------------------------------------------------
 //  El Mercado Pago falso
 // ---------------------------------------------------------------------------
@@ -293,18 +295,90 @@ async function correrPruebas() {
     afirmar(r.cuerpo.motivo === "tope-unidades", `motivo inesperado: ${r.cuerpo.motivo}`);
   });
 
-  await prueba("y no se esquiva abriendo un pedido tras otro", async () => {
-    /* El primero ya se creó en B-04, así que con dos más se llega al tope. */
+  await prueba("abrir pedidos seguidos no acumula mercancía apartada", async () => {
+    /* Una reserva viva por visitante, y se consigue reemplazando: el cliente
+       que deja un pago a medias y vuelve a intentarlo no se queda bloqueado,
+       y lo de antes se libera en el acto. Lo que NO puede pasar es que se
+       sumen. */
+    const inv = require("./inventario.js");
     const abrir = () => pedir("/api/pago", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ items: [{ sku: "ValPulpo", cantidad: 1 }], comprador: COMPRADOR })
+      body: JSON.stringify({ items: [{ sku: "ValPulpo", cantidad: 5 }], comprador: COMPRADOR })
     });
-    await abrir();
-    await abrir();
+    const a = await abrir();
+    const b = await abrir();
+    const c = await abrir();
+    [a, b, c].forEach((r, i) =>
+      afirmar(r.status === 200, `el intento ${i + 1} se bloqueó (${r.status})`));
+
+    const salud = await pedir("/health");
+    const ficha = salud.cuerpo.inventario.apartado_por_sku
+      ? salud.cuerpo.inventario.apartado_por_sku.ValPulpo
+      : null;
+    /* No se puede leer el estado interno del hijo, así que se comprueba lo
+       observable: tres pedidos de 5 no dejaron 15 piezas apartadas — si las
+       hubieran dejado, el stock de ValPulpo (23) no daría para el siguiente. */
     const cuarto = await abrir();
-    afirmar(cuarto.status === 400, `el cuarto pedido pasó (${cuarto.status})`);
-    afirmar(cuarto.cuerpo.motivo === "tope-reservas", `motivo inesperado: ${cuarto.cuerpo.motivo}`);
+    afirmar(cuarto.status === 200,
+      `las reservas se acumularon: el cuarto pedido ya no cabe (${cuarto.status}: ` +
+      `${JSON.stringify(cuarto.cuerpo).slice(0, 120)})`);
+    afirmar(ficha === undefined || ficha <= inv.MAX_POR_SKU, "quedó más de una reserva viva");
+  });
+
+  await prueba("ni muchas identidades pueden dejar un producto en cero", () => {
+    /* El ataque que quedaba: 6+6+6 desde una IP y 6+3 desde otra dejaban
+       ValEnd en cero. El tope por identidad es fricción, no defensa —un
+       visitante son cinco pestañas o cinco IPs—; la defensa es que las
+       reservas SIN PAGAR nunca retengan más de una fracción de lo que queda
+       por vender.
+
+       Se prueba contra el módulo y no por HTTP porque desde una sola máquina
+       todas las peticiones comparten IP: lo que hay que demostrar es que el
+       techo aguanta aunque las identidades sean infinitas. */
+    const inv = require("./inventario.js");
+    inv._reiniciar();
+
+    const stock = inv.disponible("ValEnd");
+    afirmar(stock > 0, "no hay stock con el que probar");
+
+    /* Cincuenta identidades distintas, cada una pidiendo el máximo. */
+    let aceptadas = 0;
+    for (let i = 0; i < 50; i++) {
+      const r = inv.reservar("ATAQUE-" + i, [{ sku: "ValEnd", cantidad: inv.MAX_POR_SKU }],
+        { identidad: "ip-" + i });
+      if (r.ok) aceptadas++;
+    }
+
+    const apartado = inv.apartadoSinPagar("ValEnd");
+    const queda = inv.disponible("ValEnd");
+    afirmar(queda > 0,
+      `${aceptadas} reservas desde 50 identidades dejaron el producto en cero`);
+    afirmar(apartado <= inv.techoReservable("ValEnd"),
+      `se apartaron ${apartado} piezas y el techo era ${inv.techoReservable("ValEnd")}`);
+    afirmar(queda >= Math.floor(stock * (1 - inv.FRACCION_RESERVABLE)),
+      `quedaron ${queda} de ${stock}: por debajo de la fracción reservada`);
+
+    /* Y el ataque exacto que reportó la auditoría, tal cual. */
+    inv._reiniciar();
+    inv.reservar("A1", [{ sku: "ValEnd", cantidad: 6 }], { identidad: "ipA" });
+    inv.reservar("A2", [{ sku: "ValEnd", cantidad: 6 }], { identidad: "ipA" });
+    inv.reservar("A3", [{ sku: "ValEnd", cantidad: 6 }], { identidad: "ipA" });
+    inv.reservar("B1", [{ sku: "ValEnd", cantidad: 6 }], { identidad: "ipB" });
+    inv.reservar("B2", [{ sku: "ValEnd", cantidad: 3 }], { identidad: "ipB" });
+    afirmar(inv.disponible("ValEnd") > 0,
+      "el ataque de la auditoría (6+6+6 / 6+3) sigue dejando ValEnd en cero");
+    inv._reiniciar();
+  });
+
+  await prueba("una reserva larga heredada del panel no revive el agujero", () => {
+    const inv = require("./inventario.js");
+    afirmar(inv.MINUTOS_RESERVA <= inv.TECHO_MINUTOS_RESERVA,
+      "la reserva superó su propio techo");
+    afirmar(inv.TECHO_MINUTOS_RESERVA <= 60,
+      "el techo de la reserva subió: una reserva larga vuelve a agotar el catálogo");
+    afirmar(inv.MAX_RESERVAS_POR_IDENTIDAD === 1,
+      `hay ${inv.MAX_RESERVAS_POR_IDENTIDAD} reservas vivas por identidad`);
   });
 
   // -------------------------------------------------------------------------
@@ -412,7 +486,7 @@ async function correrPruebas() {
   console.log("\n[B-01] La URL de retorno no es una prueba de pago");
   // -------------------------------------------------------------------------
 
-  const { decidirVeredicto, pistaDeLaUrl, folioDeLaUrl } =
+  const { decidirVeredicto, autoridadDeLaUrl, folioDeLaUrl } =
     await import("./assets/js/veredicto-pago.js");
 
   /* Las esperas del sondeo se acortan: se prueba la lógica, no la paciencia. */
@@ -502,15 +576,87 @@ async function correrPruebas() {
     afirmar(v.vaciarCarrito === false, "vació el carrito de un visitante cualquiera");
   });
 
-  await prueba("de la URL solo se lee la pista mala, nunca la buena", () => {
-    afirmar(pistaDeLaUrl(new URLSearchParams("collection_status=approved")) === null,
-      "un approved de la URL se está leyendo");
-    afirmar(pistaDeLaUrl(new URLSearchParams("estado=aprobado")) === null,
-      "un estado=aprobado de la URL se está leyendo");
-    afirmar(pistaDeLaUrl(new URLSearchParams("collection_status=rejected")) === "fallo",
-      "un rechazo de la URL debería ahorrarse el sondeo");
-    afirmar(pistaDeLaUrl(new URLSearchParams("estado=fallo")) === "fallo",
-      "la back_url de fallo debería reconocerse");
+  await prueba("NINGÚN estado de la URL produce veredicto, tampoco el malo", () => {
+    ["collection_status=approved", "estado=aprobado", "collection_status=rejected",
+     "estado=fallo", "status=cancelled", "payment_status=failure"].forEach(q => {
+      afirmar(autoridadDeLaUrl(new URLSearchParams(q)) === null,
+        `«${q}» de la URL se está leyendo como veredicto`);
+    });
+  });
+
+  await prueba("un rejected forjado NO puede anunciar un pago que sí entró", async () => {
+    /* El agujero que quedaba. Se aceptaba el `rejected` de la URL «porque no
+       puede hacer daño»: y el daño era este —la página anunciaba que el pago
+       había fallado y ofrecía pagar OTRA VEZ algo ya cobrado—. */
+    let consultas = 0;
+    const v = await decidirVeredicto({
+      params: new URLSearchParams(
+        "collection_status=rejected&estado=fallo&external_reference=VQ-REAL01-ABCDEF"
+      ),
+      enCurso: null,
+      consultar: async () => {
+        consultas++;
+        return { status: 200, body: { ok: true, estado: "approved" } };
+      },
+      ...sinEsperas
+    });
+    afirmar(consultas > 0, "ni siquiera se le preguntó al servidor");
+    afirmar(v.estado === "aprobado",
+      `la URL impuso «${v.estado}» sobre el approved del servidor`);
+    afirmar(v.vaciarCarrito === true, "un pago confirmado no vació el carrito");
+  });
+
+  await prueba("un rechazo de verdad sigue reconociéndose, pero lo dice el servidor", async () => {
+    const v = await decidirVeredicto({
+      params: new URLSearchParams("collection_status=rejected&external_reference=VQ-REAL01-ABCDEF"),
+      enCurso: null,
+      consultar: async () => ({ status: 200, body: { ok: true, estado: "rejected" } }),
+      ...sinEsperas
+    });
+    afirmar(v.estado === "fallo", `estado inesperado: ${v.estado}`);
+    afirmar(v.vaciarCarrito === false, "un pago rechazado vació el carrito");
+  });
+
+  await prueba("con la URL en rejected y el backend mudo, no se ofrece pagar de nuevo", async () => {
+    /* `sin-verificar` es el único desenlace honesto cuando nadie confirma. La
+       página, en ese estado, ofrece WhatsApp y carrito — nunca un segundo
+       cobro. */
+    const v = await decidirVeredicto({
+      params: new URLSearchParams("collection_status=rejected&external_reference=VQ-REAL01-ABCDEF"),
+      enCurso: null,
+      consultar: async () => { throw new Error("red caída"); },
+      ...sinEsperas
+    });
+    afirmar(v.estado === "sin-verificar",
+      `con el backend caído dijo «${v.estado}» en vez de sin-verificar`);
+    afirmar(v.vaciarCarrito === false, "vació el carrito");
+    const front = leerFuente("assets/js/app.js");
+    afirmar(/estado === 'fallo' && Carrito\.piezas\(\) > 0/.test(front),
+      "el botón de pagar dejó de estar reservado al fallo confirmado");
+  });
+
+  await prueba("el sondeo tiene tope de reloj: nunca gira para siempre", async () => {
+    /* Cada consulta puede tardar: en el plan gratuito de Render el backend
+       duerme. Sin tope de reloj, seis consultas lentas dejan a alguien que
+       acaba de pagar mirando «un momento…» durante más de un minuto. */
+    let consultas = 0;
+    let reloj = 0;
+    const v = await decidirVeredicto({
+      params: new URLSearchParams("external_reference=VQ-REAL01-ABCDEF"),
+      enCurso: null,
+      consultar: async () => {
+        consultas++;
+        reloj += 9000;                      // cada consulta tarda nueve segundos
+        return { status: 200, body: { ok: true, estado: "pendiente" } };
+      },
+      dormir: async () => {},
+      ahora: () => reloj,
+      esperas: [0, 1200, 2000, 3500, 5000, 6000]
+    });
+    afirmar(consultas <= 3,
+      `se hicieron ${consultas} consultas: el tope de reloj no frenó el sondeo`);
+    afirmar(v.estado === "pendiente", `estado inesperado: ${v.estado}`);
+    afirmar(v.vaciarCarrito === false, "vació el carrito");
   });
 
   await prueba("un folio con forma rara no llega ni a preguntarse", () => {

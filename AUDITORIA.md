@@ -164,6 +164,47 @@ porque alguien abrió un link y se fue.
 | **M-06** | Telegram usa `parse_mode: HTML` e interpolaba datos del comprador sin escapar. Una etiqueta sin cerrar hace que Telegram rechace el mensaje: el aviso de la venta no llega. | Todo lo que no escribe el servidor se escapa. |
 | **M-08** | El log volcaba el pedido completo, con correo, teléfono y domicilio. | El log lleva folio, estado, importe y SKUs; el contacto viaja por el webhook, que es quien lo necesita. |
 
+## Segunda vuelta: B-01 y B-03 estaban a medias
+
+La reauditoría los devolvió, y con razón las dos veces.
+
+**B-01 · el `rejected` forjado también mentía.** El `approved` ya no se creía,
+pero el `rejected` sí, con el argumento de que «no puede hacer daño: conserva
+el carrito y ofrece reintentar». El argumento era falso y el contraejemplo es
+el caso más caro que hay:
+
+    la URL dice rejected · el servidor diría approved
+    → la página anuncia que el pago falló y ofrece PAGAR OTRA VEZ
+    → el cliente paga dos veces lo mismo.
+
+Ahora no hay atajo: se pregunta siempre. Un rechazo de verdad no cuesta la
+espera, porque el webhook de Mercado Pago también avisa de los rechazos.
+
+**B-03 · el tope por identidad era fricción, no defensa.** Con 6 por SKU y 3
+reservas por identidad, dos identidades dejaban ValEnd en cero: 6+6+6 desde una
+y 6+3 desde otra. Un visitante son cinco pestañas o cinco IPs, así que contar
+por identidad nunca iba a bastar. Lo que se añadió:
+
+1. **Un techo por producto que no depende de quién pida**
+   (`INVENTARIO_FRACCION_RESERVABLE`, 0.5): las reservas SIN PAGAR nunca
+   retienen más de la mitad de lo que queda por vender. Con 50 identidades
+   distintas pidiendo el máximo, ValEnd conserva 15 de 27 piezas comprables.
+   Las ventas confirmadas no cuentan en ese techo: esas son reales.
+2. **Una reserva viva por identidad**, y se consigue **reemplazando** la
+   anterior en vez de negando la nueva — negar castiga al caso común, que es
+   el cliente que deja un pago a medias y vuelve a intentarlo.
+3. **`INVENTARIO_MINUTOS_RESERVA` topado a 60 en el código.** Un despliegue no
+   limpia el panel de Render: una variable vieja con 1440 devolvía el agujero
+   entero sin tocar una línea. Corrígela igualmente en Render — el techo es la
+   red de seguridad, no la configuración.
+
+Lo que **no** se hizo: un desafío anti-bot verificado en servidor. Requiere una
+cuenta de un tercero (Turnstile, hCaptcha) y meterlo por mi cuenta sería añadir
+una dependencia externa al camino del pago sin que nadie lo decidiera. El techo
+por producto acota el daño sin depender de eso; el desafío sigue siendo la
+palanca siguiente si algún día el apretón de inventario se vuelve rutina — y
+ahora hay un aviso, `inventario_apretado`, que dice cuándo pasa.
+
 ## Sigue pendiente, y es tuyo
 
 - **M-05 — tope global de gasto en Gemini.** El limitador es por IP y en

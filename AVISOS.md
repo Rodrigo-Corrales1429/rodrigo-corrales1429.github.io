@@ -28,7 +28,11 @@ y a la semana de silenciarlo se te pasa un pago real. Así que hay dos carriles:
 
 ### Se acumula para el resumen de la noche
 
-Visitas, preguntas al Asesor, cotizaciones chicas, intereses sin contacto.
+Visitas, preguntas al Asesor, cotizaciones chicas, intereses sin contacto y
+📦 **tope de apartado alcanzado** — cuando las reservas sin pagar llegan al
+techo de un producto. Significa una de dos cosas: una racha de ventas de verdad
+(toca reponer) o alguien abriendo links que no completa. Las dos se quieren
+saber, ninguna merece despertar a nadie.
 Sale un solo mensaje al día a las 20:00 (hora del centro).
 
 ### Todo aviso de pago trae a quién escribirle
