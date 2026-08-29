@@ -260,27 +260,52 @@ async function repartir(evento, texto) {
  * entiende de un vistazo en la pantalla de bloqueo del teléfono no sirve:
  * primero QUÉ pasó y CUÁNTO, después el detalle.
  */
+/**
+ * Escapa lo que NO escribió este servidor.
+ *
+ * Los avisos van a Telegram con `parse_mode: HTML`, y dentro de ellos se
+ * interpolan cosas que teclea un desconocido: el nombre del comprador, su
+ * dirección, la pregunta que le hizo al Asesor. Un `<b>` en un nombre
+ * reescribe el mensaje; una etiqueta sin cerrar hace que Telegram RECHACE el
+ * envío entero con un 400, y entonces el aviso del pago no llega y la venta
+ * se queda sin avisar. Escapar aquí es lo que separa «un dato feo» de «me
+ * perdí una venta».
+ *
+ * Solo sobrevive el marcado que pone la plantilla, que es de casa.
+ */
+function esc(v) {
+  return String(v == null ? "" : v)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
 const REDACCION = {
   /* El bloque de contacto es lo que convierte un aviso en una acción. Sin él,
      «PAGO APROBADO — $1,200» obliga a ir al panel de Mercado Pago a averiguar
      de quién era y adónde va. Con él, se empaca y se manda. */
   pago_aprobado: e =>
     `💰 <b>PAGO APROBADO — ${pesos(e.total_centavos)}</b>\n` +
-    `Folio ${e.folio}\n` +
-    (e.comprador ? `Cliente: ${e.comprador}\n` : "⚠️ SIN datos de contacto\n") +
-    (e.whatsapp ? `WhatsApp: https://wa.me/${e.whatsapp}\n` : "") +
-    (e.direccion ? `Envío a: ${e.direccion}${e.cp ? ` (CP ${e.cp})` : ""}\n` : "") +
-    (e.items ? `Pedido: ${e.items}\n` : "") +
-    (e.envio ? `Paquetería: ${e.envio}\n` : "") +
-    `Método: ${e.metodo || "Mercado Pago"}\n` +
+    `Folio ${esc(e.folio)}\n` +
+    (e.comprador ? `Cliente: ${esc(e.comprador)}\n` : "⚠️ SIN datos de contacto\n") +
+    (e.whatsapp ? `WhatsApp: https://wa.me/${esc(e.whatsapp)}\n` : "") +
+    (e.direccion ? `Envío a: ${esc(e.direccion)}${e.cp ? ` (CP ${esc(e.cp)})` : ""}\n` : "") +
+    (e.items ? `Pedido: ${esc(e.items)}\n` : "") +
+    (e.envio ? `Paquetería: ${esc(e.envio)}\n` : "") +
+    `Método: ${esc(e.metodo || "Mercado Pago")}\n` +
+    (e.reserva_caducada
+      ? `⚠️ La reserva de stock ya había caducado cuando entró el pago. ` +
+        `COMPRUEBA que quede mercancía antes de prometer fecha.\n`
+      : "") +
     `👉 Prepara y manda la guía.`,
 
   pago_iniciado: e =>
     `🟡 <b>Alguien está pagando — ${pesos(e.total_centavos)}</b>\n` +
-    `Folio ${e.folio}\n` +
-    (e.comprador ? `Cliente: ${e.comprador}\n` : "") +
-    (e.whatsapp ? `WhatsApp: https://wa.me/${e.whatsapp}\n` : "") +
-    (e.items ? `Pedido: ${e.items}\n` : "") +
+    `Folio ${esc(e.folio)}\n` +
+    (e.comprador ? `Cliente: ${esc(e.comprador)}\n` : "") +
+    (e.whatsapp ? `WhatsApp: https://wa.me/${esc(e.whatsapp)}\n` : "") +
+    (e.items ? `Pedido: ${esc(e.items)}\n` : "") +
     `Todavía no cobra. Si en un rato no llega el "APROBADO", abandonó el pago ` +
     `— y ahora sí sabes a quién escribirle.`,
 
@@ -289,46 +314,49 @@ const REDACCION = {
      por qué no le llegaba nada. */
   pago_pendiente: e =>
     `🟠 <b>Pago pendiente — ${pesos(e.total_centavos)}</b>\n` +
-    `Folio ${e.folio}. Estado: ${e.detalle || "en proceso"}\n` +
-    (e.comprador ? `Cliente: ${e.comprador}\n` : "") +
-    (e.whatsapp ? `WhatsApp: https://wa.me/${e.whatsapp}\n` : "") +
-    (e.items ? `Pedido: ${e.items}\n` : "") +
-    (e.metodo ? `Método: ${e.metodo}\n` : "") +
+    `Folio ${esc(e.folio)}. Estado: ${esc(e.detalle || "en proceso")}\n` +
+    (e.comprador ? `Cliente: ${esc(e.comprador)}\n` : "") +
+    (e.whatsapp ? `WhatsApp: https://wa.me/${esc(e.whatsapp)}\n` : "") +
+    (e.items ? `Pedido: ${esc(e.items)}\n` : "") +
+    (e.metodo ? `Método: ${esc(e.metodo)}\n` : "") +
     `👉 NO lo mandes todavía: el dinero no ha entrado.`,
 
   pago_rechazado: e =>
     `🔴 <b>Pago rechazado — ${pesos(e.total_centavos)}</b>\n` +
-    `Folio ${e.folio}. Motivo: ${e.detalle || "no especificado"}\n` +
-    (e.comprador ? `Cliente: ${e.comprador}\n` : "") +
-    (e.whatsapp ? `WhatsApp: https://wa.me/${e.whatsapp}\n` : "") +
-    (e.items ? `Pedido: ${e.items}\n` : "") +
+    `Folio ${esc(e.folio)}. Motivo: ${esc(e.detalle || "no especificado")}\n` +
+    (e.comprador ? `Cliente: ${esc(e.comprador)}\n` : "") +
+    (e.whatsapp ? `WhatsApp: https://wa.me/${esc(e.whatsapp)}\n` : "") +
+    (e.items ? `Pedido: ${esc(e.items)}\n` : "") +
     `👉 Vale la pena escribirle: casi siempre es el banco, no el cliente.`,
 
   descuadre: e =>
-    `⚠️ <b>DESCUADRE EN UN PAGO</b>\n` +
-    `Folio ${e.folio}. Se esperaba ${pesos(e.esperado_centavos)} y llegó ` +
-    `${pesos(e.recibido_centavos)}.\n👉 Revisa en Mercado Pago antes de enviar.`,
+    `⚠️ <b>DESCUADRE EN UN PAGO — NO SURTAS</b>\n` +
+    `Folio ${esc(e.folio)}. Se esperaba ${pesos(e.esperado_centavos)} y llegó ` +
+    `${pesos(e.recibido_centavos)}.\n` +
+    (e.comprador ? `Cliente: ${esc(e.comprador)}\n` : "") +
+    `El pedido queda en REVISIÓN: no se descontó inventario y no se emitió ` +
+    `aviso de preparación.\n👉 Revísalo en Mercado Pago antes de mover nada.`,
 
   lead: e =>
-    `🔔 <b>Interés nuevo — ${e.division || "sin división"}</b>\n` +
-    `Folio ${e.folio || "s/f"}\n` +
-    (e.contacto ? `Contacto: ${e.contacto}\n` : "⚠️ SIN datos de contacto\n") +
-    (e.resumen ? `${e.resumen}\n` : "") +
+    `🔔 <b>Interés nuevo — ${esc(e.division || "sin división")}</b>\n` +
+    `Folio ${esc(e.folio || "s/f")}\n` +
+    (e.contacto ? `Contacto: ${esc(e.contacto)}\n` : "⚠️ SIN datos de contacto\n") +
+    (e.resumen ? `${esc(e.resumen)}\n` : "") +
     `👉 Respóndele hoy: un interés de más de 24 h ya se enfrió.`,
 
   cotizacion: e =>
     `🧾 Cotización armada — ${pesos(e.total_centavos)}\n` +
-    (e.items ? `${e.items}\n` : "") +
-    (e.division ? `División: ${e.division}` : ""),
+    (e.items ? `${esc(e.items)}\n` : "") +
+    (e.division ? `División: ${esc(e.division)}` : ""),
 
   pregunta: e =>
-    `💬 ${e.division ? `[${e.division}] ` : ""}"${(e.texto || "").slice(0, 160)}"`,
+    `💬 ${e.division ? `[${esc(e.division)}] ` : ""}"${esc((e.texto || "").slice(0, 160))}"`,
 
   visita: e =>
-    `👀 ${e.pagina || "/"}${e.referente ? ` (desde ${e.referente})` : ""}`,
+    `👀 ${esc(e.pagina || "/")}${e.referente ? ` (desde ${esc(e.referente)})` : ""}`,
 
   config: e =>
-    `🚨 <b>EL SITIO NO PUEDE VENDER</b>\n${e.detalle}\n` +
+    `🚨 <b>EL SITIO NO PUEDE VENDER</b>\n${esc(e.detalle)}\n` +
     `👉 Revisa las variables de entorno en Render.`
 };
 
@@ -388,7 +416,7 @@ function avisar(evento) {
   const redactar = REDACCION[tipo];
   const texto = redactar
     ? redactar(registro)
-    : `• ${tipo}: ${JSON.stringify(evento).slice(0, 300)}`;
+    : `• ${esc(tipo)}: ${esc(JSON.stringify(evento).slice(0, 300))}`;
 
   if (esUrgente(registro)) {
     if (!ritmoPermitido()) {
@@ -425,10 +453,10 @@ function componerResumen(eventos, etiquetaDia) {
     `📊 <b>Valquiria — resumen del ${etiquetaDia}</b>`,
     "",
     `👀 Visitas: <b>${visitas.length}</b>`,
-    ...top.map(([p, n]) => `   ${p} — ${n}`),
+    ...top.map(([p, n]) => `   ${esc(p)} — ${n}`),
     "",
     `💬 Preguntas al Asesor: <b>${preguntas.length}</b>`,
-    ...preguntas.slice(-5).map(p => `   "${(p.texto || "").slice(0, 90)}"`),
+    ...preguntas.slice(-5).map(p => `   "${esc((p.texto || "").slice(0, 90))}"`),
     "",
     `🧾 Cotizaciones: <b>${cotizaciones.length}</b>` +
       (valorCotizado ? ` · ${pesos(valorCotizado)} en juego` : ""),
