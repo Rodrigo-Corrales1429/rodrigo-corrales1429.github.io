@@ -19,8 +19,9 @@
        firmado de Mercado Pago.
      · Mientras el servidor no diga `approved`, no se afirma que hubo pago y
        NO se toca el carrito.
-     · La única pista de la URL que se lee es la MALA (rechazado), porque no
-       puede hacer daño: conserva el carrito y ahorra la espera del sondeo.
+     · NINGÚN estado de la URL tiene autoridad, tampoco el malo. Creerse un
+       `rejected` forjado hace que la página ofrezca pagar otra vez algo que ya
+       se pagó, y cobrar dos veces es peor que hacer esperar quince segundos.
    ═══════════════════════════════════════════════════════════════════════════ */
 
 /* Lo que responde /api/pedido/:folio, traducido a los cinco estados que la
@@ -46,6 +47,14 @@ export const ESTADO_SERVIDOR = {
    «estamos confirmando»: honesto y desconcertante. Suman ~17 s. */
 export const ESPERAS_SONDEO = [0, 1200, 2000, 3500, 5000, 6000];
 
+/* Y un tope de reloj por encima de todo. Las esperas suman ~17 s, pero cada
+   consulta puede tardar lo suyo: en el plan gratuito de Render el backend
+   duerme, y seis consultas lentas convierten «un momento…» en más de un
+   minuto delante de alguien que acaba de pagar. Pasado el límite se deja de
+   preguntar y se dice la verdad —«no pudimos confirmar»—, que es un desenlace
+   honesto y con salida, no una pantalla que gira para siempre. */
+export const LIMITE_SONDEO_MS = 20000;
+
 /* La forma exacta que genera el servidor: VQ- + base36 del reloj + 6 hex. No
    demuestra nada —por eso se pregunta—, pero evita mandar basura al endpoint
    y evita pintar como «folio» un texto que escribió un desconocido. */
@@ -57,21 +66,25 @@ export function folioDeLaUrl(valor) {
 }
 
 /**
- * Lee la ÚNICA pista de la URL que se puede usar: que el pago falló.
+ * NINGÚN estado de la URL tiene autoridad. Ni el bueno ni el malo.
  *
- * Un `rejected` en la barra de direcciones no puede causar daño —conserva el
- * carrito y ofrece reintentar—, así que se acepta y se ahorran quince segundos
- * de espera. Un `approved` no se lee nunca: esa es exactamente la mentira que
- * este módulo existe para impedir.
+ * La primera versión de esto sí leía el malo: un `rejected` en la barra de
+ * direcciones se aceptaba tal cual «porque no puede hacer daño — conserva el
+ * carrito y ofrece reintentar». Ese razonamiento era falso, y el contraejemplo
+ * es justo el caso que más caro sale:
+ *
+ *     la URL dice rejected · el servidor diría approved
+ *     → la página anuncia que el pago falló y ofrece PAGAR OTRA VEZ
+ *     → el cliente paga dos veces lo mismo.
+ *
+ * Cobrar de más es peor que hacer esperar quince segundos, y un rechazo de
+ * verdad tampoco cuesta esos quince: el webhook de Mercado Pago también avisa
+ * de los rechazos, así que el servidor lo sabe al primer o segundo sondeo.
+ *
+ * Existe como función, y se exporta, para poder AFIRMAR en las pruebas que
+ * ningún parámetro de la URL produce veredicto.
  */
-export function pistaDeLaUrl(params) {
-  const leer = k => String((params && params.get(k)) || '').toLowerCase();
-  const propio = leer('estado');
-  const mp = leer('collection_status') || leer('status') || leer('payment_status');
-
-  if (mp === 'rejected' || mp === 'cancelled' || mp === 'failure' || propio === 'fallo') {
-    return 'fallo';
-  }
+export function autoridadDeLaUrl() {
   return null;
 }
 
@@ -99,9 +112,14 @@ export async function verificarPago(folio, opciones = {}) {
     return { estado: 'sin-verificar', motivo: 'sin-consulta' };
   }
 
+  const ahora = opciones.ahora || (() => Date.now());
+  const limite = opciones.limiteMs == null ? LIMITE_SONDEO_MS : opciones.limiteMs;
+  const arranque = ahora();
+
   let ultimo = null;
   for (const espera of esperas) {
     if (espera) await dormir(espera);
+    if (ahora() - arranque > limite) break;
     try {
       const r = await consultar(folio);
       if (!r) continue;
@@ -132,6 +150,7 @@ export async function verificarPago(folio, opciones = {}) {
  * @param {function} o.consultar consulta al backend por folio
  * @param {function} [o.dormir]  espera entre sondeos (las pruebas la acortan)
  * @param {Array}   [o.esperas]
+ * @param {number}  [o.limiteMs] tope de reloj para todo el sondeo
  *
  * @returns {{hablar:boolean, estado:string, folio:string, vaciarCarrito:boolean}}
  *   `hablar:false` significa que nadie viene de pagar —alguien abrió /gracias
@@ -146,10 +165,9 @@ export async function decidirVeredicto(o = {}) {
     return { hablar: false, estado: 'sin-verificar', folio: '', vaciarCarrito: false };
   }
 
-  const pista = pistaDeLaUrl(o.params);
-  const veredicto = pista === 'fallo'
-    ? { estado: 'fallo' }
-    : await verificarPago(folio, o);
+  /* Sin atajos: se pregunta SIEMPRE, venga lo que venga en la URL.
+     Ver `autoridadDeLaUrl`. */
+  const veredicto = await verificarPago(folio, o);
 
   return {
     hablar: true,
