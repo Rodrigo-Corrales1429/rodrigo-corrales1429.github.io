@@ -1,0 +1,402 @@
+<!doctype html>
+<html lang="es-MX">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Panel · Valquiria Inc.</title>
+<!-- Esta página NO se indexa: es la trastienda del negocio. -->
+<meta name="robots" content="noindex,nofollow,noarchive">
+<meta name="theme-color" content="#060606">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<!-- El panel SÍ necesita hablar con el backend, y en local con el puerto de
+     desarrollo: es la única página del sitio que se prueba contra un servidor
+     propio. Todo lo demás queda cerrado. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://rodrigo-corrales1429-github-io.onrender.com http://localhost:3000 http://127.0.0.1:3000">
+<link rel="icon" href="/favicon.ico">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500&family=Montserrat:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#060606;--panel:#0d0d0d;--panel2:#111;--text:#f2efe7;--muted:#b5b0a5;--gold:#c9a84c;--line:#28251d;--ok:#5fbf7f;--warn:#e0a33c;--bad:#e06a5a;--max:1240px}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:Montserrat,system-ui,-apple-system,"Segoe UI",sans-serif;line-height:1.6;-webkit-text-size-adjust:100%}
+.wrap{width:min(calc(100% - 32px),var(--max));margin:auto}
+.mono{font-family:"IBM Plex Mono",monospace}
+a{color:var(--gold)}
+
+header{position:sticky;top:0;z-index:20;background:rgba(6,6,6,.94);backdrop-filter:blur(16px);border-bottom:1px solid var(--line)}
+header .wrap{display:flex;align-items:center;justify-content:space-between;gap:16px;min-height:68px;flex-wrap:wrap}
+.marca{display:flex;gap:10px;align-items:center;text-transform:uppercase;letter-spacing:.16em;font-size:12px;text-decoration:none;color:var(--text)}
+.marca b{color:var(--gold);font-weight:500}
+.cabecera-acciones{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.sello{font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--muted);letter-spacing:.06em}
+
+button{font:inherit;cursor:pointer;background:transparent;color:var(--gold);border:1px solid var(--gold);min-height:38px;padding:0 14px;text-transform:uppercase;letter-spacing:.08em;font-size:11px}
+button:hover:not(:disabled){background:var(--gold);color:#0b0b0b}
+button:disabled{opacity:.45;cursor:progress}
+button.sutil{border-color:var(--line);color:var(--muted)}
+button.sutil:hover{background:var(--line);color:var(--text)}
+:focus-visible{outline:2px solid var(--gold);outline-offset:3px}
+
+.puerta{max-width:460px;margin:16vh auto;padding:0 16px}
+.puerta h1{font-family:"Cormorant Garamond",serif;font-weight:400;font-size:42px;margin:0 0 8px}
+.puerta p{color:var(--muted);font-size:14px}
+input[type=password],input[type=text]{width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--text);font:inherit;padding:12px 14px;margin:14px 0}
+input:focus{border-color:var(--gold);outline:none}
+
+main{padding:28px 0 80px}
+h2{font-family:"Cormorant Garamond",serif;font-weight:500;font-size:30px;margin:44px 0 4px}
+h2:first-of-type{margin-top:12px}
+.sub{color:var(--muted);font-size:13px;margin:0 0 18px}
+
+.tarjetas{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:12px}
+.t{border:1px solid var(--line);background:var(--panel2);padding:18px}
+.t .et{font-family:"IBM Plex Mono",monospace;font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted)}
+.t .n{font-family:"Cormorant Garamond",serif;font-size:40px;line-height:1.05;color:var(--gold);margin-top:6px}
+.t .n.chico{font-size:26px}
+.t .pie{font-size:12px;color:var(--muted)}
+.t.destaca{border-color:var(--gold)}
+
+.tabla-caja{overflow-x:auto;border:1px solid var(--line);background:var(--panel2)}
+table{border-collapse:collapse;width:100%;min-width:640px;font-size:13px}
+th,td{text-align:left;padding:11px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-family:"IBM Plex Mono",monospace;font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:500;white-space:nowrap}
+tbody tr:last-child td{border-bottom:none}
+tbody tr:hover{background:rgba(201,168,76,.045)}
+td.num{text-align:right;font-family:"IBM Plex Mono",monospace;white-space:nowrap}
+
+.chip{display:inline-block;font-family:"IBM Plex Mono",monospace;font-size:10px;text-transform:uppercase;letter-spacing:.08em;padding:3px 8px;border:1px solid currentColor}
+.chip.ok{color:var(--ok)}.chip.esp{color:var(--warn)}.chip.mal{color:var(--bad)}.chip.gris{color:var(--muted)}
+
+.aviso{border-left:2px solid var(--warn);background:rgba(224,163,60,.07);padding:14px 16px;font-size:13px;color:#e4dcc9;margin:18px 0}
+.aviso.malo{border-color:var(--bad);background:rgba(224,106,90,.08)}
+.aviso b{color:var(--text)}
+
+.linea{display:flex;gap:12px;padding:9px 0;border-bottom:1px solid var(--line);font-size:13px;align-items:baseline}
+.linea:last-child{border-bottom:none}
+.linea time{font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--muted);white-space:nowrap;min-width:52px}
+.linea .q{color:#d7d2c8;word-break:break-word}
+.vacio{color:var(--muted);font-size:13px;padding:22px 0;font-style:italic}
+.oculto{display:none}
+@media(max-width:640px){h2{font-size:25px}.t .n{font-size:32px}}
+</style>
+</head>
+<body>
+
+<!-- ═══ PUERTA ═══ -->
+<section class="puerta" id="puerta">
+  <h1>Panel Valquiria</h1>
+  <p>Pega el <span class="mono">LEADS_TOKEN</span> que configuraste en Render.
+     Se guarda solo en este navegador.</p>
+  <form id="forma-entrar">
+    <input type="password" id="token" placeholder="LEADS_TOKEN" autocomplete="current-password" required>
+    <button type="submit" style="width:100%">Entrar</button>
+  </form>
+  <p id="error-entrar" class="oculto" style="color:var(--bad)"></p>
+</section>
+
+<!-- ═══ PANEL ═══ -->
+<div id="panel" class="oculto">
+<header>
+  <div class="wrap">
+    <a class="marca" href="/"><b>Valquiria</b> · Panel</a>
+    <div class="cabecera-acciones">
+      <span class="sello" id="sello">—</span>
+      <button id="btn-refrescar" class="sutil">Actualizar</button>
+      <button id="btn-resumen" class="sutil">Mandarme el resumen</button>
+      <button id="btn-probar" class="sutil">Probar avisos</button>
+      <button id="btn-salir" class="sutil">Salir</button>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <div id="alertas"></div>
+
+  <h2>Hoy</h2>
+  <p class="sub" id="sub-hoy">—</p>
+  <div class="tarjetas" id="tarjetas-hoy"></div>
+
+  <h2>Dinero</h2>
+  <p class="sub">Lo que se cobró de verdad y lo que quedó a medias.</p>
+  <div class="tarjetas" id="tarjetas-dinero"></div>
+
+  <h2>Pedidos</h2>
+  <p class="sub">Quién pagó, cuánto y qué se lleva. Lo que está en
+     <span class="chip esp">esperando</span> se fue al banco y no volvió.</p>
+  <div class="tabla-caja"><table id="tabla-pedidos">
+    <thead><tr><th>Folio</th><th>Estado</th><th>Qué pidió</th><th>Contacto</th><th>Método</th><th class="num">Total</th><th>Cuándo</th></tr></thead>
+    <tbody></tbody></table></div>
+  <p class="vacio oculto" id="sin-pedidos">Todavía nadie ha iniciado un pago en esta sesión del servidor.</p>
+
+  <h2>Intereses</h2>
+  <p class="sub">Gente que dejó un proyecto con el Asesor. Los que traen contacto se responden hoy.</p>
+  <div class="tabla-caja"><table id="tabla-leads">
+    <thead><tr><th>Folio</th><th>División</th><th>Contacto</th><th>Urgencia</th><th>Qué necesita</th><th>Cuándo</th></tr></thead>
+    <tbody></tbody></table></div>
+  <p class="vacio oculto" id="sin-leads">Ningún interés registrado en esta sesión del servidor.</p>
+
+  <h2>Lo que preguntan</h2>
+  <p class="sub">Las últimas preguntas al Asesor. Es la mejor lista de ideas de producto que vas a tener.</p>
+  <div id="preguntas"></div>
+
+  <h2>Por dónde entran</h2>
+  <p class="sub">Visitas del día por sección.</p>
+  <div id="paginas"></div>
+
+  <h2>Estado del sistema</h2>
+  <div class="tarjetas" id="tarjetas-sistema"></div>
+</main>
+</div>
+
+<script>
+(() => {
+  "use strict";
+
+  /* El backend vive en Render; esta página en GitHub Pages. En local se
+     apunta al puerto de desarrollo para poder probar el panel sin desplegar. */
+  const API = /^(localhost|127\.0\.0\.1)$/.test(location.hostname)
+    ? "http://localhost:3000"
+    : "https://rodrigo-corrales1429-github-io.onrender.com";
+
+  const LLAVE = "vq_admin_token";
+  const $ = s => document.querySelector(s);
+  const esc = s => String(s ?? "").replace(/[&<>"']/g, c =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const pesos = c => "$" + (Number(c || 0) / 100).toLocaleString("es-MX",
+    { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  function cuando(iso) {
+    if (!iso) return "—";
+    const d = new Date(iso);
+    if (isNaN(d)) return "—";
+    const hoy = new Date();
+    const mismoDia = d.toDateString() === hoy.toDateString();
+    const hora = d.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit", hour12: false });
+    return mismoDia ? hora : d.toLocaleDateString("es-MX", { day: "numeric", month: "short" }) + " " + hora;
+  }
+
+  const ESTADOS = {
+    approved:  ["ok",  "Pagado"],
+    pendiente: ["esp", "Esperando"],
+    rejected:  ["mal", "Rechazado"],
+    cancelled: ["gris", "Cancelado"],
+    refunded:  ["gris", "Devuelto"],
+    in_process:["esp", "En proceso"]
+  };
+
+  let token = null;
+
+  async function api(ruta, metodo = "GET") {
+    const r = await fetch(API + ruta, {
+      method: metodo,
+      headers: { "X-Leads-Token": token }
+    });
+    if (r.status === 404) throw new Error("Token incorrecto, o LEADS_TOKEN no está configurado en Render.");
+    if (!r.ok) throw new Error("El servidor respondió " + r.status + ".");
+    return r.json();
+  }
+
+  // ── Puerta ────────────────────────────────────────────────────────────
+  $("#forma-entrar").addEventListener("submit", async e => {
+    e.preventDefault();
+    token = $("#token").value.trim();
+    const err = $("#error-entrar");
+    err.classList.add("oculto");
+    try {
+      await cargar();
+      /* Se guarda SOLO después de que el servidor lo aceptó: así no queda un
+         token malo pegado en el navegador para siempre. */
+      try { localStorage.setItem(LLAVE, token); } catch {}
+      $("#puerta").classList.add("oculto");
+      $("#panel").classList.remove("oculto");
+    } catch (ex) {
+      err.textContent = ex.message;
+      err.classList.remove("oculto");
+    }
+  });
+
+  $("#btn-salir").addEventListener("click", () => {
+    try { localStorage.removeItem(LLAVE); } catch {}
+    location.reload();
+  });
+
+  // ── Botones de acción ─────────────────────────────────────────────────
+  async function conBoton(sel, fn, textoOk) {
+    const b = $(sel);
+    const original = b.textContent;
+    b.disabled = true; b.textContent = "…";
+    try {
+      const r = await fn();
+      b.textContent = r === false ? "sin canal" : textoOk;
+    } catch { b.textContent = "falló"; }
+    setTimeout(() => { b.textContent = original; b.disabled = false; }, 2600);
+  }
+
+  $("#btn-refrescar").addEventListener("click", () => conBoton("#btn-refrescar", cargar, "listo"));
+  $("#btn-resumen").addEventListener("click", () =>
+    conBoton("#btn-resumen", async () => (await api("/api/admin/resumen-ahora", "POST")).ok, "enviado"));
+  $("#btn-probar").addEventListener("click", () =>
+    conBoton("#btn-probar", async () => (await api("/api/admin/probar-avisos", "POST")).ok, "enviado"));
+
+  // ── Pintado ───────────────────────────────────────────────────────────
+  function tarjeta(etiqueta, valor, pie, opciones = {}) {
+    return `<div class="t${opciones.destaca ? " destaca" : ""}">
+      <div class="et">${esc(etiqueta)}</div>
+      <div class="n${opciones.chico ? " chico" : ""}">${esc(valor)}</div>
+      ${pie ? `<div class="pie">${esc(pie)}</div>` : ""}
+    </div>`;
+  }
+
+  function pintarAlertas(d) {
+    const av = [];
+    if (!d.canales?.hay_canal) {
+      av.push(['malo',
+        '<b>No tienes canal de avisos encendido.</b> Nadie te va a avisar de un pago: ' +
+        'ahora mismo solo lo verías entrando aquí. Enciende Telegram en Render ' +
+        '(TELEGRAM_BOT_TOKEN y TELEGRAM_CHAT_ID) — ver AVISOS.md.']);
+    }
+    if (!d.configuracion?.pagos) {
+      av.push(['malo', '<b>Los pagos en línea están apagados.</b> Falta MP_ACCESS_TOKEN en Render, ' +
+        'así que el botón de pagar manda a WhatsApp. Ver PAGOS.md.']);
+    } else if (!d.configuracion?.webhook_firmado) {
+      av.push(['', 'Falta <b>MP_WEBHOOK_SECRET</b>: el aviso de pago de Mercado Pago no se valida. Ver PAGOS.md.']);
+    }
+    if (!d.envios?.tarifas_en_vivo) {
+      av.push(['', 'Los envíos usan <b>tarifas de referencia</b>, no de una paquetería real. ' +
+        'El sitio ya da costo y fecha, pero no son cotizaciones en vivo. Ver ENVIOS.md.']);
+    }
+    if (!d.configuracion?.leads_webhook) {
+      av.push(['', 'Sin <b>LEADS_WEBHOOK_URL</b>: pedidos e intereses se borran cuando Render reinicia.']);
+    }
+    $("#alertas").innerHTML = av
+      .map(([c, t]) => `<div class="aviso ${c}">${t}</div>`).join("");
+  }
+
+  function pintarPedidos(pedidos) {
+    const tb = $("#tabla-pedidos").querySelector("tbody");
+    $("#sin-pedidos").classList.toggle("oculto", pedidos.length > 0);
+    $("#tabla-pedidos").parentElement.classList.toggle("oculto", pedidos.length === 0);
+    tb.innerHTML = pedidos.map(p => {
+      const [clase, rotulo] = ESTADOS[p.estado] || ["gris", p.estado || "—"];
+      const items = (p.items || [])
+        .map(i => `${i.cantidad}× ${i.titulo || i.sku}`).join(", ") || "—";
+      return `<tr>
+        <td class="mono">${esc(p.folio)}</td>
+        <td><span class="chip ${clase}">${esc(rotulo)}</span></td>
+        <td>${esc(items)}</td>
+        <td>${esc(p.email || "—")}</td>
+        <td>${esc(p.metodo || "—")}</td>
+        <td class="num">${esc(p.total || pesos(p.total_centavos))}</td>
+        <td class="mono">${esc(cuando(p.pagado || p.creado))}</td>
+      </tr>`;
+    }).join("");
+  }
+
+  function pintarLeads(leads) {
+    const tb = $("#tabla-leads").querySelector("tbody");
+    $("#sin-leads").classList.toggle("oculto", leads.length > 0);
+    $("#tabla-leads").parentElement.classList.toggle("oculto", leads.length === 0);
+    tb.innerHTML = leads.map(l => `<tr>
+      <td class="mono">${esc(l.id)}</td>
+      <td>${esc(l.division || "—")}</td>
+      <td>${l.contacto
+        ? esc(l.contacto)
+        : '<span class="chip mal">sin contacto</span>'}</td>
+      <td>${esc(l.urgencia || "—")}</td>
+      <td>${esc((l.resumen || "").slice(0, 180))}</td>
+      <td class="mono">${esc(cuando(l.fecha))}</td>
+    </tr>`).join("");
+  }
+
+  function pintarPreguntas(actividad) {
+    const qs = actividad.filter(e => e.tipo === "pregunta").slice(0, 25);
+    $("#preguntas").innerHTML = qs.length
+      ? qs.map(q => `<div class="linea">
+          <time>${esc((q.local || "").slice(11))}</time>
+          <span class="q">${esc(q.texto || "")}</span>
+        </div>`).join("")
+      : '<p class="vacio">Nadie le ha escrito al Asesor todavía.</p>';
+  }
+
+  function pintarPaginas(actividad) {
+    const cuenta = {};
+    for (const e of actividad) {
+      if (e.tipo !== "visita") continue;
+      cuenta[e.pagina || "/"] = (cuenta[e.pagina || "/"] || 0) + 1;
+    }
+    const filas = Object.entries(cuenta).sort((a, b) => b[1] - a[1]);
+    const tope = filas.length ? filas[0][1] : 1;
+    $("#paginas").innerHTML = filas.length
+      ? filas.map(([p, n]) => `<div class="linea">
+          <time>${n}</time>
+          <span class="q" style="flex:1">
+            ${esc(p)}
+            <span style="display:block;height:3px;margin-top:5px;background:var(--gold);opacity:.6;width:${Math.max(4, (n / tope) * 100)}%"></span>
+          </span>
+        </div>`).join("")
+      : '<p class="vacio">Sin visitas registradas en esta sesión del servidor.</p>';
+  }
+
+  async function cargar() {
+    const d = await api("/api/admin/resumen");
+
+    $("#sello").textContent = "actualizado " + cuando(d.generado);
+    $("#sub-hoy").textContent = "Actividad del " + (d.hoy?.dia || "día") + ".";
+
+    $("#tarjetas-hoy").innerHTML =
+      tarjeta("Visitas", d.hoy.visitas, "personas que abrieron el sitio") +
+      tarjeta("Preguntas", d.hoy.preguntas, "mensajes al Asesor") +
+      tarjeta("Cotizaciones", d.hoy.cotizaciones,
+        d.hoy.valor_cotizado_centavos ? pesos(d.hoy.valor_cotizado_centavos) + " en juego" : "") +
+      tarjeta("Intereses", d.hoy.leads, "proyectos dejados") +
+      tarjeta("Pagos", d.hoy.pagos_aprobados,
+        d.hoy.ingreso_centavos ? pesos(d.hoy.ingreso_centavos) + " hoy" : "ninguno todavía",
+        { destaca: d.hoy.pagos_aprobados > 0 });
+
+    $("#tarjetas-dinero").innerHTML =
+      tarjeta("Cobrado", d.dinero.cobrado, d.dinero.pagados + " pedidos pagados",
+        { chico: true, destaca: d.dinero.pagados > 0 }) +
+      tarjeta("A medias", pesos(d.dinero.en_el_aire_centavos),
+        d.dinero.pendientes + " se fueron al banco y no volvieron", { chico: true }) +
+      tarjeta("Pedidos", d.dinero.pedidos_totales, "en esta sesión del servidor");
+
+    pintarAlertas(d);
+    pintarPedidos(d.pedidos || []);
+    pintarLeads(d.leads || []);
+    pintarPreguntas(d.actividad || []);
+    pintarPaginas(d.actividad || []);
+
+    const c = d.canales || {}, e = d.envios || {};
+    $("#tarjetas-sistema").innerHTML =
+      tarjeta("Avisos", c.hay_canal ? c.canales.join(" + ") : "APAGADOS",
+        c.hay_canal ? "resumen diario a las " + c.hora_resumen + ":00" : "no te vas a enterar de nada",
+        { chico: true, destaca: !c.hay_canal }) +
+      tarjeta("Envíos", e.tarifas_en_vivo ? e.proveedor : "referencia",
+        "desde CP " + (e.cp_origen || "—") + " · " + (e.dias_preparacion ?? "?") + " día(s) de taller",
+        { chico: true }) +
+      tarjeta("Pagos", d.configuracion.pagos ? "activos" : "APAGADOS",
+        d.configuracion.webhook_firmado ? "webhook firmado" : "webhook sin firmar",
+        { chico: true }) +
+      tarjeta("Modelo", d.configuracion.modelo || "—", "el cerebro del Asesor", { chico: true });
+  }
+
+  // ── Arranque ──────────────────────────────────────────────────────────
+  let guardado = null;
+  try { guardado = localStorage.getItem(LLAVE); } catch {}
+  if (guardado) {
+    token = guardado;
+    cargar().then(() => {
+      $("#puerta").classList.add("oculto");
+      $("#panel").classList.remove("oculto");
+      /* Refresco periódico: el panel abierto en una pestaña se mantiene vivo
+         sin tener que acordarse de recargarlo. */
+      setInterval(() => cargar().catch(() => {}), 60_000);
+    }).catch(() => {
+      try { localStorage.removeItem(LLAVE); } catch {}
+    });
+  }
+})();
+</script>
+</body>
+</html>

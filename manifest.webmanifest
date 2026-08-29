@@ -1,0 +1,17 @@
+{
+  "name": "Valquiria Inc. — Manufactura aditiva",
+  "short_name": "Valquiria",
+  "description": "Manufactura aditiva y automatización con IA. Cinco divisiones, una plataforma.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#060606",
+  "theme_color": "#060606",
+  "lang": "es-MX",
+  "dir": "ltr",
+  "categories": ["business", "shopping"],
+  "icons": [
+    { "src": "/assets/apple-touch-icon.png", "sizes": "180x180", "type": "image/png" },
+    { "src": "/assets/isotipo_gold.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

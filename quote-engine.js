@@ -22,6 +22,25 @@
 const { getProductoPorSku, getCatalogoActivo } = require("./catalog.js");
 
 // ------- CONFIGURACIÓN (vía ENV vars con defaults seguros) -------
+/* ── IVA ──────────────────────────────────────────────────────────────────
+   AFIRMACIÓN FISCAL, NO DECORACIÓN. Enseñar "IVA incluido: $X" cuando no se
+   traslada IVA es declarar un impuesto que no se cobra, así que esto se
+   controla con una variable y no se adivina.
+
+   El valor por omisión (true) es el que corresponde a una venta al público en
+   México: el precio mostrado al consumidor debe ser el TOTAL a pagar, con
+   impuestos dentro. Si el régimen fiscal no traslada IVA, pon
+   PRECIOS_LLEVAN_IVA=false y el desglose desaparece — los precios no cambian,
+   solo se deja de afirmar algo que no es cierto. */
+const PRECIOS_LLEVAN_IVA = process.env.PRECIOS_LLEVAN_IVA !== "false";
+const IVA_TASA = parseFloat(process.env.IVA_TASA || "0.16");
+
+/** Parte de un importe CON IVA dentro que corresponde al impuesto. */
+function ivaContenido(centavosConIva) {
+  if (!PRECIOS_LLEVAN_IVA || !(IVA_TASA > 0)) return 0;
+  return Math.round(centavosConIva - centavosConIva / (1 + IVA_TASA));
+}
+
 const ENVIO_GRATIS_DESDE_CENTAVOS = parseInt(
   process.env.ENVIO_GRATIS_DESDE_CENTAVOS || "99900",  // $999.00 MXN
   10
@@ -301,11 +320,24 @@ function calcularCotizacion(items) {
       umbral_envio_gratis: centavosAPesos(ENVIO_GRATIS_DESDE_CENTAVOS)
     },
     total: centavosAPesos(total_centavos),
+    /* El total NO cambia: se desglosa lo que ya venía dentro. Un cliente que
+       ve el impuesto separado confía más en el número, y el que necesita
+       factura sabe de entrada que hay IVA que le pueden desglosar. */
+    impuestos: PRECIOS_LLEVAN_IVA
+      ? {
+          incluido: true,
+          tasa: `${Math.round(IVA_TASA * 100)}%`,
+          base: centavosAPesos(total_centavos - ivaContenido(total_centavos)),
+          iva: centavosAPesos(ivaContenido(total_centavos)),
+          nota: `Precios en MXN con IVA del ${Math.round(IVA_TASA * 100)}% incluido.`
+        }
+      : { incluido: false, nota: "Precios en MXN." },
     upsell,
     _raw: {
       subtotal_centavos,
       envio_centavos,
-      total_centavos
+      total_centavos,
+      iva_centavos: ivaContenido(total_centavos)
     }
   };
 }

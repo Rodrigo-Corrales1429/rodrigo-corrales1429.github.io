@@ -35,7 +35,14 @@ const crypto = require("crypto");
 require("dotenv").config();
 const { GoogleGenAI, FunctionCallingConfigMode } = require("@google/genai");
 
-const { TOOLS, ejecutarHerramienta, obtenerLeads } = require("./gemini-tools.js");
+const {
+  TOOLS,
+  ejecutarHerramienta,
+  obtenerLeads,
+  ultimoLeadRegistrado,
+  restaurarLeads,
+  leadsCrudos
+} = require("./gemini-tools.js");
 const { getProductoPorSku } = require("./catalog.js");
 const { centavosAPesos, calcularCotizacion } = require("./quote-engine.js");
 const { resumenDivisionesParaPrompt } = require("./conocimiento.js");
@@ -45,6 +52,10 @@ const {
   validarFirmaWebhook,
   consultarPago
 } = require("./pagos.js");
+const { estadoEnvios, cotizarEnvio } = require("./envios.js");
+const avisos = require("./notificaciones.js");
+const inventario = require("./inventario.js");
+const almacen = require("./almacen.js");
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -57,14 +68,31 @@ app.set("trust proxy", 1);
 // CONFIGURACIÓN
 // ----------------------------------------------------------------------------
 
-const ORIGENES_PERMITIDOS = [
+/* En producción NO se aceptan orígenes de localhost.
+   El riesgo es acotado —un navegador no deja falsificar el Origin— pero la
+   superficie no tiene por qué existir: en el servidor real nadie desarrolla.
+   Se activa poniendo NODE_ENV=production en Render. */
+const ES_PRODUCCION = process.env.NODE_ENV === "production";
+
+const ORIGENES_PRODUCCION = [
   "https://valquiriainc.com",
   "https://www.valquiriainc.com",
-  "https://rodrigo-corrales1429.github.io",
-  "http://127.0.0.1:5500",
-  "http://localhost:5500",
-  "http://localhost:3000"
+  "https://rodrigo-corrales1429.github.io"
 ];
+
+/* Servidores estáticos de desarrollo (.claude/launch.json). Sin ellos, el
+   panel /admin y el Asesor no se pueden probar en local: el navegador bloquea
+   la petición antes de que salga. */
+const ORIGENES_DESARROLLO = [
+  "http://127.0.0.1:5500", "http://localhost:5500",
+  "http://localhost:3000",
+  "http://127.0.0.1:5173", "http://localhost:5173",
+  "http://127.0.0.1:5174", "http://localhost:5174"
+];
+
+const ORIGENES_PERMITIDOS = ES_PRODUCCION
+  ? ORIGENES_PRODUCCION
+  : [...ORIGENES_PRODUCCION, ...ORIGENES_DESARROLLO];
 
 app.use(
   cors({
@@ -110,7 +138,20 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 const MODELO = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 const MAX_ITERACIONES_FUNCTION_CALL = 6;
-const TIMEOUT_GEMINI_MS = 45000;
+
+/* Timeout de UNA llamada a Gemini.
+   Nota para quien lo ajuste: el límite de Render NO es el techo aquí. Render
+   permite respuestas HTTP largas (del orden de minutos), así que lo que manda
+   es la paciencia de una persona mirando un cursor parpadear. 45 s es el
+   límite duro antes de rendirse; la p99 real de flash está muy por debajo.
+   Bajarlo por debajo de ~20 s empieza a cortar turnos legítimos con varias
+   llamadas a herramientas encadenadas. */
+const TIMEOUT_GEMINI_MS = parseInt(process.env.GEMINI_TIMEOUT_MS || "45000", 10);
+
+/* Caracteres sumados de todo el historial en una petición. Ver validarHistorial. */
+const MAX_CARACTERES_HISTORIAL = parseInt(
+  process.env.MAX_CARACTERES_HISTORIAL || "24000", 10
+);
 
 // "0" = sin razonamiento extendido (más rápido). "auto" = deja decidir al
 // modelo. Si algún día Render tira un error mencionando thinkingConfig,
@@ -191,7 +232,7 @@ function crearLimitador({ nombre, max, maxDiario, mensaje }) {
       return res.status(429).json({
         error:
           "Llegaste al límite de uso por hoy. Escríbenos por WhatsApp al " +
-          "+52 55 5467 5821 y te atendemos sin esperas.",
+          "+52 771 795 9131 y te atendemos sin esperas.",
         motivo: "rate-limit-diario"
       });
     }
@@ -210,7 +251,19 @@ const limitarTasa = crearLimitador({
   maxDiario: parseInt(process.env.RATE_LIMIT_POR_DIA || "400", 10),
   mensaje:
     "Estás enviando mensajes muy rápido. Espera un momento y vuelve a " +
-    "intentarlo, o escríbenos por WhatsApp al +52 55 5467 5821."
+    "intentarlo, o escríbenos por WhatsApp al +52 771 795 9131."
+});
+
+/* La telemetría necesita su PROPIO cupo. Con el del chat, alguien que abre
+   cinco secciones se gastaría cinco de sus quince mensajes sin haber escrito
+   nada, y en un día con tráfico el tope diario dejaría al Asesor mudo. Es
+   ancho porque contar visitas no cuesta ni una llamada a Gemini; solo hay que
+   frenar al bot que dispara en bucle. */
+const limitarPulso = crearLimitador({
+  nombre: "pulso",
+  max: parseInt(process.env.RATE_LIMIT_PULSO_POR_MINUTO || "40", 10),
+  maxDiario: parseInt(process.env.RATE_LIMIT_PULSO_POR_DIA || "600", 10),
+  mensaje: "Demasiados eventos."
 });
 
 /* El de pagos es MUCHO más estrecho porque cada llamada crea una preferencia
@@ -222,7 +275,7 @@ const limitarPagos = crearLimitador({
   maxDiario: parseInt(process.env.RATE_LIMIT_PAGO_POR_DIA || "40", 10),
   mensaje:
     "Demasiados intentos de pago seguidos. Espera un momento y reintenta, o " +
-    "cierra tu pedido por WhatsApp al +52 55 5467 5821."
+    "cierra tu pedido por WhatsApp al +52 771 795 9131."
 });
 
 // ----------------------------------------------------------------------------
@@ -260,19 +313,39 @@ apilan hasta que la idea pesa en la mano.
 ${resumenDivisionesParaPrompt()}
 
 REGLA DE ESTADO — la más importante de todo este documento:
-Solo Valquiria Dental vende en línea hoy. Es la única que puedes cotizar y
-cerrar tú mismo.
-EXCEPCIÓN ÚNICA — Valquiria 3D tiene ESTIMADOR OFICIAL: la herramienta
-estimar_impresion_3d. Esos números sí puedes darlos, siempre presentados como
-estimación preliminar que un especialista confirma con el archivo. Es la única
-división además de Dental cuyos precios puedes mencionar.
-Pack, Lux e IA NO tienen precios publicados. Con ellas tu trabajo es otro:
-entender el proyecto, orientar con criterio técnico real, y registrar el
-interés. Con Pack la política es deliberada y estricta: NUNCA des un precio de
-empaque, ni siquiera un rango o un "aproximadamente" — el precio se conversa
-con el especialista, y ese contacto es parte del producto.
-Confundir esto es el peor error posible. NUNCA inventes un precio, un tiempo de
-entrega ni una tolerancia que no haya salido de una herramienta.
+CUATRO de las cinco divisiones están ACTIVAS y toman proyectos desde hoy:
+Dental, 3D, Pack e IA. Solo Valquiria Lux sigue en construcción.
+Lo que cambia entre ellas no es si trabajan: es QUÉ TAN FIRME es el número que
+puedes dar. Hay tres grados, y confundirlos es el peor error posible:
+
+  PRECIO FIRME     → Valquiria Dental. Catálogo con precios reales y pago en
+                     línea. calcular_cotizacion cobra lo que dice.
+                     También Valquiria Dental OS con cotizar_dental_os: son
+                     precios de lanzamiento publicados.
+  ESTIMACIÓN       → Valquiria 3D (estimar_impresion_3d) y Valquiria Pack
+                     (estimar_termoformado). Son números OFICIALES que sí
+                     puedes dar, pero SIEMPRE presentados como estimación
+                     preliminar que un especialista confirma con el archivo o
+                     con el producto en la mano. Nunca los llames "precio".
+  SIN NÚMERO       → Valquiria Lux, y los proyectos de consultoría de IA a la
+                     medida. Ahí tu trabajo es entender el proyecto, orientar
+                     con criterio técnico real y registrar el interés.
+
+NUNCA inventes un precio, un tiempo de entrega ni una tolerancia que no haya
+salido de una herramienta. Si una herramienta no te dio el número, no existe.
+
+CAMBIÓ LA POLÍTICA DE PACK: antes tenías prohibido dar cualquier cifra de
+empaque. Ya no. Ahora SÍ das un rango con estimar_termoformado, con dos cosas
+dichas siempre: que es estimación, y que el molde se paga UNA SOLA VEZ. Eso
+último explica por qué 100 piezas salen caras por unidad y 1,000 baratas, y es
+el mejor argumento comercial que tiene la división.
+
+ENVÍOS — la pregunta que decide la compra:
+Nunca digas una fecha de entrega de memoria. Para cualquier cosa de envío,
+costo, paquetería o "¿cuándo me llega?", usa cotizar_envio con el código
+postal. Si no lo tienes, pídelo: es el único dato que hace falta. Y cuando el
+cliente ya tenga el carrito armado, ofrécele calcular el envío tú mismo —ver
+la fecha exacta es lo que convierte un carrito en una compra.
 
 SOBRE VALQUIRIA IA — tratamiento especial:
 Tú eres la muestra de esa división. Cuando alguien pregunte qué hace Valquiria
@@ -283,11 +356,25 @@ aritmética, no el modelo) y cierras la venta. Eso es exactamente lo que la
 división construye para otras empresas.
 Dilo con naturalidad, una sola vez, sin presumir y sin repetirlo cada turno.
 
+VALQUIRIA IA VENDE DOS COSAS DISTINTAS. No las mezcles:
+  1. VALQUIRIA DENTAL OS — producto de suscripción con precio publicado, para
+     consultorios y clínicas dentales. Si quien escribe es un dentista o
+     administra un consultorio, ESTE es el camino: pregunta cuántos dentistas
+     atienden y cotiza con cotizar_dental_os.
+  2. CONSULTORÍA A LA MEDIDA — para cualquier otra empresa. Sin precio por
+     chat: califica y registra el interés.
+
+TRAMPA FRECUENTE, léela dos veces: "dientes para practicar endodoncia" es
+Valquiria DENTAL (producto físico, calcular_cotizacion). "Un sistema para mi
+consultorio" es Valquiria Dental OS (software, cotizar_dental_os). Las dos
+conversaciones empiezan con un dentista escribiendo y son negocios distintos.
+
 ═══════════════════════════════════════════════════════════════════
  3 · TUS HERRAMIENTAS
 ═══════════════════════════════════════════════════════════════════
 consultar_division(tema)  → El conocimiento oficial de la empresa. Temas:
-                            empresa, dental, 3d, pack, lux, ia, procesos.
+                            empresa, dental, 3d, pack, lux, ia, dental_os,
+                            procesos.
                             Llámala ANTES de afirmar cualquier cosa sobre lo
                             que Valquiria hace o puede hacer, y antes de
                             explicar temas técnicos (FDM, resina, materiales).
@@ -299,11 +386,26 @@ calcular_cotizacion(items, accion)
                             No necesita SKUs: en "producto" va la palabra del
                             usuario. Con "accion" se agrega, quita, fija o
                             vacía sin rehacer la cuenta a mano.
+cotizar_envio(cp_destino) → La ÚNICA fuente de costos de envío y de FECHAS DE
+                            ENTREGA. Sin esta llamada no tienes derecho a
+                            decir cuándo llega algo. Usa el carrito real para
+                            calcular el peso. Revisa "es_estimacion": si es
+                            true, di que la tarifa es estimada.
 estimar_impresion_3d(...) → La ÚNICA fuente de números de impresión 3D.
                             Cobra por gramo o por hora, lo que más convenga
                             al cliente; devuelve estimación preliminar.
-registrar_interes(...)    → Captura de proyecto para divisiones sin venta en
-                            línea, o para mayoreo.
+estimar_termoformado(...) → La ÚNICA fuente de números de Valquiria Pack.
+                            Necesita largo, ancho y tiraje. Devuelve rango,
+                            desglose y escalera de tiraje. Explica siempre
+                            que el molde se paga una sola vez.
+cotizar_dental_os(dentistas)
+                          → Precios de Valquiria Dental OS, el software para
+                            consultorios dentales. Pregunta primero cuántos
+                            dentistas atienden. NO lo confundas con los
+                            modelos dentales de práctica.
+registrar_interes(...)    → Captura de proyecto para lo que no cierras tú:
+                            Lux, consultoría de IA, mayoreo, y el cierre de
+                            toda estimación de 3D o Pack.
 
 ═══════════════════════════════════════════════════════════════════
  4 · LAS DOS REGLAS INVIOLABLES
@@ -312,6 +414,9 @@ A · NUNCA HAGAS MATEMÁTICA.
     Tú no sumas, no multiplicas, no aplicas descuentos ni calculas envíos.
     Cualquier número que aparezca en tu respuesta viene de una herramienta.
     Si no llamaste la herramienta, no menciones el precio.
+    Esto incluye las FECHAS. "De 3 a 5 días" es un número inventado si no
+    salió de cotizar_envio. Una fecha de entrega mal dicha es la queja más
+    cara que existe, porque el cliente ya organizó algo alrededor de ella.
 
 B · NUNCA INVENTES CAPACIDAD.
     Todo lo que afirmes sobre lo que Valquiria hace, produce, garantiza o
@@ -458,7 +563,7 @@ rutas reales: ver el catálogo Dental, o contar un proyecto.
 ═══════════════════════════════════════════════════════════════════
  9 · CUÁNDO DERIVAR A UN HUMANO
 ═══════════════════════════════════════════════════════════════════
-WhatsApp +52 55 5467 5821 · ventas@valquiriadental.com
+WhatsApp +52 771 795 9131 · ventas@valquiriadental.com
 Deriva cuando: pidan factura o condiciones fiscales; necesiten fechas de
 entrega exactas; el proyecto requiera ingeniería a medida; o el usuario lo
 pida. En todo lo demás, resuélvelo tú.
@@ -554,7 +659,7 @@ async function generarConReintento(peticion, intentos = 3) {
 function traducirFalloProveedor(error) {
   const texto = String(error?.message || error || "");
   const codigo = Number(error?.status) || Number(texto.match(/"code"\s*:\s*(\d+)/)?.[1]) || 0;
-  const wa = "También puedes escribirnos por WhatsApp al +52 55 5467 5821.";
+  const wa = "También puedes escribirnos por WhatsApp al +52 771 795 9131.";
 
   if (/Timeout|tiempo/i.test(texto)) {
     return { http: 504, gravedad: "warn", etiqueta: "timeout",
@@ -565,7 +670,7 @@ function traducirFalloProveedor(error) {
     return { http: 429, gravedad: "error", etiqueta: "cuota-gemini",
       mensaje: "Hay muchas consultas en este momento y el asesor llegó a su " +
                "límite. Espera un minuto y vuelve a intentarlo — o, si no " +
-               "quieres esperar, escríbenos por WhatsApp al +52 55 5467 5821 " +
+               "quieres esperar, escríbenos por WhatsApp al +52 771 795 9131 " +
                "y te atendemos de inmediato." };
   }
   if (codigo === 401 || codigo === 403 || /API_KEY_INVALID|API key not valid|PERMISSION_DENIED/i.test(texto)) {
@@ -573,17 +678,17 @@ function traducirFalloProveedor(error) {
        Render. Se marca como configuración para que salte en los logs. */
     return { http: 503, gravedad: "config", etiqueta: "credencial-gemini",
       mensaje: "El asesor no está disponible en este momento. Escríbenos por " +
-               "WhatsApp al +52 55 5467 5821 y te atendemos enseguida." };
+               "WhatsApp al +52 771 795 9131 y te atendemos enseguida." };
   }
   if (codigo === 503 || codigo === 500 || /UNAVAILABLE|overloaded|internal/i.test(texto)) {
     return { http: 503, gravedad: "warn", etiqueta: "proveedor-caido",
       mensaje: "El asesor está saturado en este momento. Inténtalo en un " +
-               "minuto, o cierra tu pedido por WhatsApp al +52 55 5467 5821." };
+               "minuto, o cierra tu pedido por WhatsApp al +52 771 795 9131." };
   }
   if (codigo === 400 || /SAFETY|blocked/i.test(texto)) {
     return { http: 400, gravedad: "warn", etiqueta: "peticion-rechazada",
       mensaje: "No pude procesar ese mensaje. Reformúlalo, por favor, o " +
-               "escríbenos por WhatsApp al +52 55 5467 5821." };
+               "escríbenos por WhatsApp al +52 771 795 9131." };
   }
   return { http: 500, gravedad: "error", etiqueta: "desconocido",
     mensaje: "Ocurrió un inconveniente temporal. Inténtalo de nuevo en un " +
@@ -702,6 +807,22 @@ function validarHistorial(messages) {
       }
     }
   }
+
+  /* Tope AGREGADO, además del de cada mensaje.
+     Los topes por mensaje (4,000) y por número de mensajes (60) se multiplican:
+     60 × 8 partes × 4,000 = 1.9 MB de prompt en una sola petición, dentro de
+     los límites individuales y perfectamente legal. A precio de entrada eso es
+     una factura de Gemini construida a mano, y basta con repetirlo. El tope
+     agregado es el que cierra esa puerta. */
+  const totalCaracteres = messages.reduce(
+    (suma, m) => suma + m.parts.reduce((s, p) => s + p.text.length, 0), 0
+  );
+  if (totalCaracteres > MAX_CARACTERES_HISTORIAL) {
+    throw new Error(
+      "La conversación es demasiado larga. Empieza una nueva para continuar."
+    );
+  }
+
   return messages;
 }
 
@@ -826,7 +947,9 @@ async function correrConversacion(historialInicial, contextoSesion = "", carrito
 
       const partesRespuesta = [];
       for (const fc of functionCalls) {
-        const resultado = ejecutarHerramienta({
+        /* `await`: cotizar_envio puede salir a la API de la paquetería. Las
+           demás herramientas siguen siendo síncronas y resuelven de inmediato. */
+        const resultado = await ejecutarHerramienta({
           name: fc.name,
           args: fc.args || {}
         }, ctxHerramientas);
@@ -854,6 +977,9 @@ async function correrConversacion(historialInicial, contextoSesion = "", carrito
               ctxHerramientas.carrito = resultado.carrito_final;
             }
           } else if (fc.name === "registrar_interes" && resultado.folio) {
+            /* Solo folio y división: esto viaja de vuelta al navegador, y los
+               datos de contacto del prospecto no tienen nada que hacer ahí.
+               El centro de avisos los lee aparte con ultimoLeadRegistrado(). */
             ultimoLead = { folio: resultado.folio, division: resultado.division };
             // Una conversación consultiva no cierra con tarjetas de catálogo.
             skusParaTarjetas = [];
@@ -914,7 +1040,7 @@ async function correrConversacion(historialInicial, contextoSesion = "", carrito
     if (rescateFcs.length > 0) {
       const partesRescateResp = [];
       for (const fc of rescateFcs) {
-        const resultado = ejecutarHerramienta({ name: fc.name, args: fc.args || {} }, ctxHerramientas);
+        const resultado = await ejecutarHerramienta({ name: fc.name, args: fc.args || {} }, ctxHerramientas);
         herramientasUsadas.push(fc.name);
         if (resultado.ok && fc.name === "listar_catalogo" && Array.isArray(resultado.productos)) {
           skusParaTarjetas = resultado.productos.map(p => p.sku);
@@ -954,7 +1080,7 @@ async function correrConversacion(historialInicial, contextoSesion = "", carrito
   return empaquetar(
     "Estoy teniendo dificultad para procesar esta solicitud. ¿Podrías " +
     "escribirla de otra forma, o prefieres que un especialista te atienda " +
-    "directamente por WhatsApp (+52 55 5467 5821)?"
+    "directamente por WhatsApp (+52 771 795 9131)?"
   );
 }
 
@@ -972,7 +1098,14 @@ app.get("/health", (req, res) => {
     modelo: MODELO,
     divisiones: 5,
     thinking: THINKING_BUDGET,
-    herramientas: TOOLS[0].functionDeclarations.map(d => d.name)
+    herramientas: TOOLS[0].functionDeclarations.map(d => d.name),
+    envios: estadoEnvios(),
+    avisos: avisos.estadoAvisos(),
+    almacen: almacen.estadoAlmacen(),
+    inventario: {
+      minutos_reserva: inventario.MINUTOS_RESERVA,
+      agotados: inventario.estadoInventario().filter(p => p.agotado).map(p => p.sku)
+    }
   });
 });
 
@@ -1002,6 +1135,48 @@ app.post("/api/chat", limitarTasa, async (req, res) => {
       contextoCarrito(carrito),
       carrito
     );
+
+    /* ─── Avisos ───────────────────────────────────────────────────────────
+       Un solo punto de enganche, después de que la conversación ya salió
+       bien. Va DESPUÉS de armar la respuesta y sin await: que Telegram tarde
+       no puede hacer esperar al usuario que está escribiendo. */
+    try {
+      const ultimo = [...historial].reverse().find(m => m.role === "user");
+      const textoUsuario = ultimo?.parts?.map(p => p.text).join(" ") || "";
+      if (textoUsuario.trim()) {
+        avisos.avisar({
+          tipo: "pregunta",
+          texto: textoUsuario,
+          herramientas: resultado.meta?.herramientas || [],
+          turno: historial.filter(m => m.role === "user").length
+        });
+      }
+      const cot = resultado.cotizacion;
+      if (cot?.ok && cot._raw?.total_centavos) {
+        avisos.avisar({
+          tipo: "cotizacion",
+          division: "dental",
+          total_centavos: cot._raw.total_centavos,
+          items: (cot.lineas || []).map(l => `${l.cantidad}× ${l.titulo || l.sku}`).join(", ")
+        });
+      }
+      if (resultado.lead?.folio) {
+        const completo = ultimoLeadRegistrado();
+        avisos.avisar({
+          tipo: "lead",
+          folio: resultado.lead.folio,
+          division: resultado.lead.division,
+          contacto: completo?.contacto || null,
+          nombre: completo?.nombre || null,
+          urgencia: completo?.urgencia || null,
+          resumen: completo?.resumen || textoUsuario.slice(0, 180)
+        });
+      }
+    } catch (e) {
+      /* Un fallo avisando NUNCA puede tumbar una respuesta al cliente. */
+      console.error("[avisos] no se pudo registrar el turno:", e?.message);
+    }
+
     return res.json(resultado);
   } catch (error) {
     const f = traducirFalloProveedor(error);
@@ -1055,6 +1230,10 @@ function recordarPedido(folio, datos) {
   if (PEDIDOS.size > MAX_PEDIDOS) {
     PEDIDOS.delete(PEDIDOS.keys().next().value);
   }
+  /* Un pedido es lo más caro de perder: se fuerza el volcado en vez de
+     esperar al reloj. Los demás eventos sí esperan. */
+  almacen.marcarSucio();
+  almacen.guardarYa();
 }
 
 /** Reenvía un hecho de pago a donde el negocio lo pueda ver de verdad. */
@@ -1113,6 +1292,28 @@ app.post("/api/pago", limitarPagos, async (req, res) => {
     const folio = "VQ-" + Date.now().toString(36).toUpperCase() +
                   "-" + crypto.randomBytes(3).toString("hex").toUpperCase();
 
+    /* Se aparta la mercancía ANTES de crear el link de pago.
+       `calcularCotizacion` ya comprobó el stock del catálogo, pero esa
+       comprobación no reserva nada: dos personas podían pasarla con la misma
+       última pieza y las dos recibían link de pago. Aquí se aparta o no se
+       vende. */
+    const reserva = inventario.reservar(
+      folio,
+      cot.lineas.map(l => ({ sku: l.sku, cantidad: l.cantidad }))
+    );
+    if (!reserva.ok) {
+      const detalle = reserva.faltantes
+        .map(f => `${f.nombre}: pediste ${f.pedido} y quedan ${f.disponible}`)
+        .join("; ");
+      console.warn(`[pago] Reserva rechazada por inventario — ${detalle}`);
+      return res.status(409).json({
+        error:
+          "Alguien se adelantó con parte de tu pedido mientras lo armabas. " +
+          detalle + ". Ajusta las cantidades y vuelve a intentar.",
+        faltantes: reserva.faltantes
+      });
+    }
+
     const preferencia = construirPreferencia({
       cot,
       productoPorSku: getProductoPorSku,
@@ -1122,15 +1323,36 @@ app.post("/api/pago", limitarPagos, async (req, res) => {
       comprador: req.body?.comprador
     });
 
-    const data = await crearPreferencia(preferencia, mpToken, conTimeout);
+    let data;
+    try {
+      data = await crearPreferencia(preferencia, mpToken, conTimeout);
+    } catch (e) {
+      /* Si Mercado Pago no da el link, la mercancía apartada vuelve al
+         mostrador ya mismo. Dejarla reservada hasta que caduque bloquearía
+         stock vendible por un fallo que no es del cliente. */
+      inventario.liberar(folio);
+      throw e;
+    }
 
     recordarPedido(folio, {
       estado: "pendiente",
       creado: new Date().toISOString(),
       total: cot.total,
       total_centavos: cot._raw.total_centavos,
-      items: cot.lineas.map(l => ({ sku: l.sku, cantidad: l.cantidad })),
+      items: cot.lineas.map(l => ({
+        sku: l.sku, cantidad: l.cantidad, titulo: l.titulo || l.nombre || l.sku
+      })),
       preferencia_id: data.id
+    });
+
+    /* Aviso de intención: el cliente todavía no paga, pero ya se fue al banco.
+       Si media hora después no llega el "APROBADO", ese es un carrito
+       abandonado con nombre y apellido — y se puede rescatar. */
+    avisos.avisar({
+      tipo: "pago_iniciado",
+      folio,
+      total_centavos: cot._raw.total_centavos,
+      items: cot.lineas.map(l => `${l.cantidad}× ${l.titulo || l.sku}`).join(", ")
     });
 
     console.log(`[pago] Preferencia ${folio} → ${cot.total} (pref ${data.id})`);
@@ -1158,7 +1380,7 @@ app.post("/api/pago", limitarPagos, async (req, res) => {
     return res.status(502).json({
       error:
         "No pude generar el link de pago en este momento. Intenta de nuevo " +
-        "o cierra tu pedido por WhatsApp al +52 55 5467 5821."
+        "o cierra tu pedido por WhatsApp al +52 771 795 9131."
     });
   }
 });
@@ -1196,11 +1418,29 @@ app.post("/api/pago/webhook", async (req, res) => {
     console.warn(`[webhook] Rechazado por firma (${firma.estado}) id=${dataId}`);
     return res.status(401).json({ error: "Firma inválida." });
   }
+
+  /* ═══ FALLA CERRADA ═══
+     Sin MP_WEBHOOK_SECRET no hay forma de saber si quien avisa es Mercado
+     Pago. Antes esto solo emitía una advertencia y seguía adelante: cualquiera
+     que conociera la URL podía mandar un "pago aprobado" falso y lograr que se
+     preparara y enviara un pedido que nadie pagó.
+
+     Ahora se rechaza. Perder un aviso legítimo es recuperable —Mercado Pago
+     reintenta, y el pago sigue estando en su panel—; enviar mercancía por un
+     aviso falsificado, no. */
   if (firma.estado === "omitida") {
-    console.warn(
-      "[webhook] Sin MP_WEBHOOK_SECRET: no se valida la firma. Configúralo " +
-      "en Render — ver PAGOS.md."
+    console.error(
+      "[webhook] ⛔ RECHAZADO: falta MP_WEBHOOK_SECRET, así que no se puede " +
+      "verificar que el aviso venga de Mercado Pago. Configúralo en Render — " +
+      "ver PAGOS.md §4."
     );
+    avisos.avisar({
+      tipo: "config",
+      detalle:
+        "Llegó un aviso de pago y se RECHAZÓ porque falta MP_WEBHOOK_SECRET. " +
+        "Puede haber un pago real sin registrar: revísalo en Mercado Pago."
+    });
+    return res.status(503).json({ error: "Webhook sin configurar." });
   }
 
   /* Acuse inmediato: Mercado Pago espera un 200 rápido, y lo que sigue puede
@@ -1237,6 +1477,12 @@ app.post("/api/pago/webhook", async (req, res) => {
         `[webhook] ⚠️  DESCUADRE en ${folio}: se cobró ${cobrado} centavos y ` +
         `se esperaban ${esperado}. NO surtas este pedido sin revisarlo.`
       );
+      avisos.avisar({
+        tipo: "descuadre",
+        folio,
+        esperado_centavos: esperado,
+        recibido_centavos: cobrado
+      });
     }
 
     console.log(
@@ -1244,13 +1490,44 @@ app.post("/api/pago/webhook", async (req, res) => {
       `metodo=${pago.payment_type_id}/${pago.payment_method_id}`
     );
 
+    const guardado = PEDIDOS.get(folio) || {};
+    const descripcionItems = Array.isArray(guardado.items)
+      ? guardado.items.map(i => `${i.cantidad}× ${i.titulo || i.sku}`).join(", ")
+      : null;
+
+    /* El inventario sigue al pago: aprobado consuma la reserva, rechazado la
+       devuelve al mostrador sin esperar a que caduque. */
+    if (folio) {
+      if (estado === "approved") inventario.confirmar(folio);
+      else if (estado === "rejected" || estado === "cancelled") inventario.liberar(folio);
+    }
+
     if (estado === "approved") {
       avisarPedido({
         folio, pago_id: pago.id, estado,
         total: centavosAPesos(cobrado),
         metodo: pago.payment_type_id,
         email: pago.payer?.email || null,
-        items: PEDIDOS.get(folio)?.items || []
+        items: guardado.items || []
+      });
+      /* ESTE es el aviso que evita que "solo caiga dinero": suena el teléfono
+         con el folio, el importe y qué hay que empacar. */
+      avisos.avisar({
+        tipo: "pago_aprobado",
+        folio,
+        total_centavos: cobrado,
+        comprador: pago.payer?.email || null,
+        items: descripcionItems,
+        envio: guardado.envio || null,
+        metodo: `${pago.payment_type_id || "—"}/${pago.payment_method_id || "—"}`,
+        pago_id: pago.id
+      });
+    } else if (estado === "rejected" || estado === "cancelled") {
+      avisos.avisar({
+        tipo: "pago_rechazado",
+        folio,
+        total_centavos: cobrado || esperado || 0,
+        detalle: pago.status_detail || estado
       });
     }
   } catch (e) {
@@ -1287,8 +1564,14 @@ function tokenValido(recibido, esperado) {
   if (typeof recibido !== "string" || typeof esperado !== "string" || !esperado) {
     return false;
   }
-  const a = crypto.createHash("sha256").update(recibido).digest();
-  const b = crypto.createHash("sha256").update(esperado).digest();
+  /* Un token corto es adivinable por más vueltas de SHA-256 que le des: el
+     hash normaliza la longitud para poder comparar en tiempo constante, no
+     aporta secreto. La defensa real es que el token sea largo y aleatorio, y
+     eso se exige al arrancar (ver auditarConfiguracion). Se sigue comparando
+     con timingSafeEqual sobre el hash porque así la comparación no filtra la
+     LONGITUD del token esperado, cosa que comparar los bytes crudos sí haría. */
+  const a = crypto.createHash("sha256").update(recibido, "utf8").digest();
+  const b = crypto.createHash("sha256").update(esperado, "utf8").digest();
   return crypto.timingSafeEqual(a, b);
 }
 
@@ -1297,6 +1580,194 @@ app.get("/api/leads", (req, res) => {
     return res.status(404).json({ error: "No encontrado." });
   }
   res.json({ ok: true, leads: obtenerLeads() });
+});
+
+/**
+ * ═══ COTIZACIÓN DE ENVÍO PARA EL CARRITO ═══
+ *
+ * El mismo motor que usa el Asesor, expuesto para el carrito de la tienda.
+ * Que las dos rutas den el mismo número no es casualidad: es el mismo código.
+ * Si el Asesor dijera $170 y el checkout cobrara $210, el cliente tendría
+ * razón en desconfiar de los dos.
+ *
+ * El cliente manda SKUs y cantidades, nunca pesos ni precios: el peso se
+ * deduce del catálogo aquí. Un carrito manipulado desde la consola no puede
+ * abaratarse el envío declarándose ligero.
+ */
+app.post("/api/envio", limitarPulso, async (req, res) => {
+  try {
+    const items = Array.isArray(req.body?.items) ? req.body.items.slice(0, 40) : [];
+    const lineas = items
+      .map(it => ({
+        sku: typeof it?.sku === "string" ? it.sku.slice(0, 60) : "",
+        cantidad: Math.max(1, Math.min(parseInt(it?.cantidad, 10) || 1, 200))
+      }))
+      .filter(l => l.sku && getProductoPorSku(l.sku));
+
+    /* El subtotal se recalcula con el catálogo del servidor para decidir el
+       envío gratis; lo que venga del navegador no se toma en cuenta. */
+    const subtotal = lineas.reduce((s, l) => {
+      const p = getProductoPorSku(l.sku);
+      return s + (p.precio_centavos || 0) * l.cantidad;
+    }, 0);
+
+    const cot = await cotizarEnvio({
+      cp_destino: req.body?.cp_destino,
+      lineas,
+      subtotal_centavos: subtotal
+    });
+    return res.status(cot.ok ? 200 : 400).json(cot);
+  } catch (e) {
+    console.error("[/api/envio]", String(e?.message || e).slice(0, 200));
+    return res.status(500).json({
+      ok: false,
+      error: "No pude calcular el envío en este momento. Intenta de nuevo."
+    });
+  }
+});
+
+/**
+ * ═══ REGISTRO DE VISITAS ═══
+ *
+ * El sitio es estático en GitHub Pages: no hay logs de servidor donde ver
+ * quién entró. Sin esto, la pregunta "¿cuánta gente visita la página?" no
+ * tiene respuesta, y tampoco la tiene "¿qué división le interesa a la gente?".
+ *
+ * Lo que se guarda es deliberadamente POBRE en datos personales: ruta,
+ * referente y una huella de sesión que se borra al cerrar la pestaña. Sin
+ * cookies, sin IP en claro, sin perfilado. Es contar visitas, no seguir
+ * personas — y así no hay que pedir consentimiento de cookies.
+ */
+const RUTAS_CONOCIDAS = new Set([
+  "/", "/dental/", "/ia/", "/3d/", "/pack/", "/lux/", "/catalogo/", "/404"
+]);
+
+app.post("/api/evento", limitarPulso, (req, res) => {
+  /* Acuse inmediato y sin cuerpo: es telemetría, el navegador no espera
+     nada y no debe poder notar si falló. */
+  res.status(204).end();
+
+  try {
+    const tipo = String(req.body?.tipo || "visita").slice(0, 24);
+    if (tipo !== "visita") return;
+
+    let pagina = String(req.body?.pagina || "/").slice(0, 120);
+    if (!RUTAS_CONOCIDAS.has(pagina)) {
+      /* Una ruta desconocida es casi siempre un escáner probando URLs. Se
+         cuenta agrupada para no llenar la bitácora de basura. */
+      pagina = "(otra)";
+    }
+
+    let referente = String(req.body?.referente || "").slice(0, 120);
+    if (referente) {
+      try {
+        const host = new URL(referente).hostname.replace(/^www\./, "");
+        /* Solo el dominio de origen: "google.com" dice todo lo que hace falta
+           saber y no arrastra la consulta ni el identificador de campaña. */
+        referente = host.includes("valquiriainc.com") ? "" : host;
+      } catch { referente = ""; }
+    }
+
+    avisos.avisar({
+      tipo: "visita",
+      pagina,
+      referente: referente || null,
+      nuevo: Boolean(req.body?.nuevo)
+    });
+  } catch (e) {
+    console.error("[/api/evento]", e?.message);
+  }
+});
+
+/**
+ * ═══ PANEL DE ADMINISTRACIÓN ═══
+ *
+ * Responde a "¿dónde veo quién paga, por qué paga y todo eso?".
+ *
+ * Un solo endpoint que junta lo que hoy vive en cuatro sitios distintos:
+ * pedidos, intereses, actividad del día y estado de la configuración. Se
+ * protege con el MISMO token que /api/leads para no inventar otra credencial
+ * que administrar.
+ *
+ * LÍMITE HONESTO, dicho aquí para que nadie se confíe: los pedidos viven en
+ * la memoria del proceso. Render reinicia al desplegar y duerme el plan
+ * gratuito, y en ese momento esta lista queda en blanco. El registro que NO
+ * se pierde está en Mercado Pago —que es el que cuenta para cobrar— y en el
+ * webhook de avisos. Este panel es el mirador rápido, no la contabilidad.
+ */
+function exigirAdmin(req, res) {
+  const token = req.get("x-leads-token") || req.query?.t;
+  if (!tokenValido(String(token || ""), process.env.LEADS_TOKEN)) {
+    res.status(404).json({ error: "No encontrado." });
+    return false;
+  }
+  return true;
+}
+
+app.get("/api/admin/resumen", (req, res) => {
+  if (!exigirAdmin(req, res)) return;
+
+  const pedidos = [...PEDIDOS.values()]
+    .sort((a, b) => String(b.creado || "").localeCompare(String(a.creado || "")))
+    .map(p => ({
+      folio: p.folio,
+      estado: p.estado,
+      total: p.total,
+      total_centavos: p.total_centavos,
+      creado: p.creado,
+      pagado: p.pagado || null,
+      email: p.email || null,
+      metodo: p.metodo || null,
+      items: p.items || []
+    }));
+
+  const aprobados = pedidos.filter(p => p.estado === "approved");
+  const pendientes = pedidos.filter(p => p.estado === "pendiente");
+
+  res.json({
+    ok: true,
+    generado: new Date().toISOString(),
+    hoy: avisos.metricas(),
+    dinero: {
+      pedidos_totales: pedidos.length,
+      pagados: aprobados.length,
+      pendientes: pendientes.length,
+      cobrado_centavos: aprobados.reduce((s, p) => s + (p.total_centavos || 0), 0),
+      cobrado: centavosAPesos(
+        aprobados.reduce((s, p) => s + (p.total_centavos || 0), 0)
+      ),
+      en_el_aire_centavos: pendientes.reduce((s, p) => s + (p.total_centavos || 0), 0)
+    },
+    pedidos,
+    leads: obtenerLeads().slice(0, 50),
+    actividad: avisos.bitacora({ limite: 120 }),
+    canales: avisos.estadoAvisos(),
+    envios: estadoEnvios(),
+    almacen: almacen.estadoAlmacen(),
+    inventario: inventario.estadoInventario(),
+    configuracion: {
+      pagos: Boolean(process.env.MP_ACCESS_TOKEN),
+      webhook_firmado: Boolean(process.env.MP_WEBHOOK_SECRET),
+      modelo: MODELO,
+      leads_webhook: Boolean(process.env.LEADS_WEBHOOK_URL)
+    },
+    advertencia_persistencia:
+      "Los pedidos e intereses de esta pantalla viven en la memoria del " +
+      "proceso: al reiniciarse Render se vacían. El registro definitivo de " +
+      "cobros está en Mercado Pago."
+  });
+});
+
+/** Manda el resumen del día por los canales de aviso, sin esperar la hora. */
+app.post("/api/admin/resumen-ahora", async (req, res) => {
+  if (!exigirAdmin(req, res)) return;
+  res.json(await avisos.resumenAhora());
+});
+
+/** Mensaje de prueba, para comprobar la plomería sin esperar una venta. */
+app.post("/api/admin/probar-avisos", async (req, res) => {
+  if (!exigirAdmin(req, res)) return;
+  res.json(await avisos.probar());
 });
 
 /* Manejador de errores JSON: sin él, un body malformado o un origen
@@ -1344,7 +1815,48 @@ function auditarConfiguracion() {
     flojos.push("LEADS_WEBHOOK_URL — los prospectos se pierden al reiniciarse Render.");
   }
   if (!process.env.LEADS_TOKEN) {
-    flojos.push("LEADS_TOKEN — /api/leads queda cerrado (responde 404).");
+    flojos.push("LEADS_TOKEN — /api/leads y el panel /admin quedan cerrados (responden 404).");
+  } else if (process.env.LEADS_TOKEN.length < 24) {
+    /* La comparación en tiempo constante protege contra ataques de temporización,
+       no contra la fuerza bruta. Un token de 8 caracteres se adivina; lo único
+       que lo impide es la longitud. */
+    flojos.push(
+      `LEADS_TOKEN es corto (${process.env.LEADS_TOKEN.length} caracteres) y el ` +
+      `panel enseña pedidos y datos de contacto. Genera uno de verdad con:  ` +
+      `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`
+    );
+  }
+  if (!almacen.ACTIVO) {
+    flojos.push(
+      "ALMACEN_RUTA — pedidos, intereses y bitácora se BORRAN cuando Render " +
+      "reinicia. Se arregla con un Persistent Disk. Ver AVISOS.md §7."
+    );
+  }
+  if (!process.env.NODE_ENV) {
+    flojos.push(
+      "NODE_ENV — sin 'production' se siguen aceptando orígenes de localhost en CORS."
+    );
+  }
+  if (!avisos.estadoAvisos().hay_canal) {
+    flojos.push(
+      "Sin canal de avisos — no te vas a enterar de los pagos. Enciende " +
+      "TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID (gratis, 3 minutos) o WhatsApp. " +
+      "Ver AVISOS.md."
+    );
+  }
+  if (estadoEnvios().feriados_por_caducar) {
+    flojos.push(
+      `Los feriados mexicanos del motor de envíos solo llegan hasta ` +
+      `${estadoEnvios().feriados_hasta}. Después de esa fecha las entregas se ` +
+      `podrían prometer en día festivo. Añade el año siguiente en envios.js.`
+    );
+  }
+  if (!estadoEnvios().tarifas_en_vivo) {
+    flojos.push(
+      "Envíos con tarifas de REFERENCIA — el sitio ya da costo y fecha, pero " +
+      "no son de una paquetería real. Configura ENVIOS_PROVEEDOR + la API key. " +
+      "Ver ENVIOS.md."
+    );
   }
   if (/^APP_USR-/.test(process.env.MP_ACCESS_TOKEN || "") === false &&
       process.env.MP_ACCESS_TOKEN) {
@@ -1356,9 +1868,51 @@ function auditarConfiguracion() {
   if (!faltan.length && !flojos.length) {
     console.log("[config] ✓ Todas las variables recomendadas están puestas.");
   }
+
+  /* Lo que deja al sitio sin vender no se queda en un log: se avisa. */
+  if (faltan.length) {
+    avisos.avisar({ tipo: "config", detalle: faltan.join(" · ") });
+  }
 }
 
-app.listen(port, () => {
+/**
+ * Reloj del resumen diario.
+ *
+ * Se revisa cada diez minutos en vez de programar un temporizador de 24 h
+ * porque Render reinicia el proceso al desplegar y duerme el plan gratuito:
+ * un setTimeout de un día no llega nunca a dispararse. Comprobar el reloj es
+ * barato y sobrevive a los reinicios.
+ */
+almacen.configurar({
+  leer: {
+    pedidos: () => [...PEDIDOS.values()],
+    leads: () => leadsCrudos(),
+    bitacora: () => avisos.bitacoraCruda()
+  },
+  escribir: {
+    pedidos: filas => { for (const p of filas) if (p?.folio) PEDIDOS.set(p.folio, p); },
+    leads: filas => restaurarLeads(filas),
+    bitacora: filas => avisos.restaurarBitacora(filas)
+  }
+});
+
+/* Cualquier evento ensucia la bitácora; el reloj del almacén decide cuándo
+   vale la pena bajarla a disco. */
+const avisarOriginal = avisos.avisar;
+avisos.avisar = function (evento) {
+  const r = avisarOriginal.call(avisos, evento);
+  almacen.marcarSucio();
+  return r;
+};
+
+const RELOJ_RESUMEN_MS = 10 * 60_000;
+setInterval(() => {
+  avisos.quizaResumenDiario().catch(e =>
+    console.error("[avisos] resumen diario falló:", e?.message)
+  );
+}, RELOJ_RESUMEN_MS).unref();
+
+const servidor = app.listen(port, () => {
   console.log(`[Valquiria Backend v4] Activo en puerto ${port}`);
   console.log(`[Valquiria Backend v4] Modelo: ${MODELO} · thinking: ${THINKING_BUDGET}`);
   console.log(`[Valquiria Backend v4] Divisiones cargadas: 3D, Dental, Pack, Lux, IA`);
@@ -1370,5 +1924,56 @@ app.listen(port, () => {
     `[Valquiria Backend v4] Pagos: ${process.env.MP_ACCESS_TOKEN ? "activos" : "APAGADOS (cae a WhatsApp)"}` +
     ` · webhook firmado: ${process.env.MP_WEBHOOK_SECRET ? "sí" : "no"}`
   );
+  const rest = almacen.restaurar();
+  if (rest.restaurado) {
+    console.log(
+      `[almacen] Recuperado de ${rest.guardado_el}: ` +
+      `${rest.pedidos ?? 0} pedidos, ${rest.leads ?? 0} intereses, ` +
+      `${rest.bitacora ?? 0} eventos.`
+    );
+  } else if (almacen.ACTIVO) {
+    console.log(`[almacen] Sin datos previos (${rest.motivo}).`);
+  }
+  almacen.arrancar();
   auditarConfiguracion();
+});
+
+/**
+ * ═══ CIERRE LIMPIO ═══
+ *
+ * Render manda SIGTERM y espera antes de matar el proceso: al desplegar, al
+ * escalar y al dormir el plan gratuito. Sin este manejador, las peticiones en
+ * vuelo se cortan a media respuesta.
+ *
+ * Lo que de verdad importa aquí no es el chat —quien pierde una respuesta la
+ * vuelve a pedir— sino el WEBHOOK DE PAGOS: si Mercado Pago avisa de un pago
+ * justo cuando Render reinicia y la conexión se corta antes del 200, el aviso
+ * se pierde y el pedido queda sin registrar. Con este cierre, la petición en
+ * curso termina y responde.
+ */
+function cerrarLimpio(senal) {
+  console.log(`[shutdown] ${senal} recibido. Terminando lo que está en vuelo…`);
+  /* Último volcado: es el que salva el pedido que entró en el minuto anterior
+     al despliegue. */
+  if (almacen.detener()) console.log("[shutdown] Instantánea guardada.");
+  servidor.close(() => {
+    console.log("[shutdown] Servidor cerrado correctamente.");
+    process.exit(0);
+  });
+  /* Si algo se queda colgado, no se bloquea el despliegue para siempre.
+     Render mata el proceso a los ~30 s; 10 s deja margen para salir por las
+     buenas y que se vea en los logs. */
+  setTimeout(() => {
+    console.error("[shutdown] Algo seguía abierto tras 10 s. Salida forzada.");
+    process.exit(1);
+  }, 10_000).unref();
+}
+
+process.on("SIGTERM", () => cerrarLimpio("SIGTERM"));
+process.on("SIGINT", () => cerrarLimpio("SIGINT"));
+
+/* Una promesa rechazada sin catch mata el proceso en Node 18+ sin decir por
+   qué. Registrarla convierte una caída muda en una línea accionable. */
+process.on("unhandledRejection", (razon) => {
+  console.error("[fatal] Promesa rechazada sin manejar:", razon);
 });

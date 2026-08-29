@@ -1,0 +1,73 @@
+# ============================================================================
+#  GitHub Pages — qué NO se publica
+# ============================================================================
+#  GitHub Pages sirve TODO lo que hay en la rama. Sin este archivo,
+#  https://valquiriainc.com/AUDITORIA.md respondía 200 a cualquiera: la lista
+#  exacta de qué protecciones están puestas y cuáles faltan, que es justo el
+#  documento que no debe leer un desconocido. Lo mismo con PAGOS.md,
+#  SEGURIDAD.md y la estructura de costos de ENVIOS.md.
+#
+#  Ninguno contiene contraseñas —los secretos viven en las variables de
+#  entorno de Render— pero un inventario de defensas pendientes es un mapa
+#  para quien busque por dónde entrar.
+#
+#  IMPORTANTE: esto funciona porque Jekyll está ACTIVO. Si algún día se añade
+#  un archivo `.nojekyll` a la raíz, Jekyll se apaga, `exclude` deja de
+#  aplicarse y todos estos documentos vuelven a ser públicos sin que nadie se
+#  entere. Hay una prueba en `npm test` que lo vigila.
+#
+#  Para comprobarlo después de desplegar:
+#      curl -o /dev/null -w "%{http_code}\n" https://valquiriainc.com/PAGOS.md
+#  Debe responder 404.
+# ============================================================================
+
+exclude:
+  # Documentación interna de operación
+  - AUDITORIA.md
+  - AVISOS.md
+  - ENVIOS.md
+  - IA_PRO.md
+  - PAGOS.md
+  - SEGURIDAD.md
+  - MODELO.md
+  - SEO_PLAN.md
+  - SEO_AUDIT_PHASE1.md
+  - PHASE_1_5_ARCHITECTURE.md
+  - README.md
+
+  # Backend: se ejecuta en Render, no tiene por qué servirse como texto desde
+  # el dominio público. Publicar el código del servidor regala la lógica de
+  # precios, los nombres de las variables de entorno y la forma de los
+  # endpoints internos.
+  - server.js
+  - gemini-tools.js
+  - conocimiento.js
+  - quote-engine.js
+  - resolver-productos.js
+  - impresion3d.js
+  - envios.js
+  - termoformado.js
+  - notificaciones.js
+  - inventario.js
+  - almacen.js
+  - pagos.js
+  - catalog.js
+  - productos.json
+  - package.json
+  - package-lock.json
+  - scripts
+
+  # Pruebas
+  - test-quote-engine.js
+  - test-tools-dispatcher.js
+  - test-impresion3d.js
+  - test-carrito.js
+  - test-phase-1-5.js
+  - test-envios-avisos.js
+
+  # Plantilla de configuración: no lleva valores reales, pero enumera cada
+  # variable de entorno que existe. No hace falta publicarla.
+  - .env.example
+
+# El sitio es HTML escrito a mano; Jekyll solo tiene que copiarlo.
+plugins: []

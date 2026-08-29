@@ -74,6 +74,36 @@ Mantener `/lux/` como única URL indexable hasta contar con un catálogo, materi
 
 La jerarquía actual permite incorporar después `/en/`, `/en/dental/`, `/en/ai/`, `/en/3d-printing/` y `/en/thermoformed-packaging/`. La implementación futura debe usar traducción localizada, canonicals propios, hreflang recíproco, `x-default` y selector de idioma mediante enlaces; no se redirigirá automáticamente por IP o idioma del navegador.
 
+## Fotografías reales y prueba social
+
+No se publican placeholders ni testimonios inventados. Cuando el propietario
+seleccione y autorice los materiales reales, aportarán mayor valor en estos
+puntos:
+
+- **`/dental/` — “Cómo fabricamos”:** fotografías de impresoras, preparación
+  del nervio sintético y control del lote, después de la explicación de
+  producción propia. Deben incluir fecha o contexto interno para validar que
+  representan el proceso vigente.
+- **`/dental/` — “En el aula”:** proyectos o prácticas autorizadas por docentes
+  y universidades, antes del catálogo. Evitar rostros o información académica
+  identificable sin consentimiento.
+- **`/3d/` y `/pack/` — “Dentro del taller”:** máquinas, materiales, moldes y
+  piezas terminadas junto al proceso que realmente documentan; no reutilizar
+  la misma galería como prueba genérica en varias intenciones.
+- **`/lux/` — “Proyectos”:** luminarias instaladas con datos confirmados de
+  material, escala y aplicación, sin atribuir ubicaciones privadas.
+- **Home — “Clientes y experiencias”:** una selección transversal breve que
+  enlace a la división correspondiente, sólo cuando existan permisos y casos
+  verificables.
+
+Las conversaciones con clientes son fuente de investigación, no copy listo
+para publicar. Antes de convertirlas en testimonios se requiere autorización
+expresa, redacción aprobada, eliminación de teléfonos, nombres, fotografías y
+otros datos personales no autorizados, y una referencia interna que permita
+auditar el origen. Las imágenes finales deberán exportarse en tamaños
+responsivos, con `width`/`height`, texto alternativo contextual y formatos
+modernos para no degradar Core Web Vitals.
+
 ## Checklist posterior al despliegue
 
 - Abrir cada URL publicada y comprobar respuesta 200, canonical y contenido sin JavaScript.

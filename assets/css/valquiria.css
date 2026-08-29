@@ -1,3 +1,12 @@
+/* ── SALTO AL CONTENIDO ────────────────────────────────────────────────────
+   Primer elemento enfocable de la página. Invisible hasta que alguien navega
+   con teclado: entonces aparece y deja saltar los 9 enlaces de navegación. */
+.skip-link{position:fixed; left:16px; top:12px; z-index:9999;
+  transform:translateY(-200%); background:var(--gold); color:#0B0B0B;
+  padding:10px 16px; text-decoration:none; font-size:.8rem; font-weight:500}
+.skip-link:focus{transform:none}
+#app:focus{outline:none}
+
 /* ═══════════════════════════════════════════════════════════════════════════
    VALQUIRIA INC. — HOJA DE ESTILO
    ═══════════════════════════════════════════════════════════════════════════ */
@@ -124,7 +133,7 @@ a{color:inherit}
 #pre-txt{font-family:var(--f-mono); font-size:.6rem; letter-spacing:.24em; color:var(--ash-dim); text-transform:uppercase}
 
 /* ── CANVAS ──────────────────────────────────────────────────────────────── */
-#escena{position:fixed; inset:0; z-index:0; pointer-events:none}
+#escena{position:fixed; inset:0; width:100%; height:100%; z-index:0; pointer-events:none}
 
 /* ── NAV ─────────────────────────────────────────────────────────────────── */
 nav#nav{
@@ -667,9 +676,44 @@ h3{font-family:var(--f-display); font-weight:400; font-size:1.3rem; line-height:
 .tot-l.grande span:last-child{font-size:1.12rem; color:var(--gold-lit)}
 .tot-envio{font-family:var(--f-mono); font-size:.54rem; letter-spacing:.14em;
   text-transform:uppercase; color:var(--gold); padding-top:4px}
+.tot-iva{font-family:var(--f-mono); font-size:.56rem; letter-spacing:.1em;
+  text-transform:uppercase; color:var(--ash-dim); text-align:right; padding-top:3px}
 .drawer-pie .btn{width:100%; justify-content:center; margin-top:14px}
 .pie-nota{font-size:.68rem; color:var(--ash-dim); line-height:1.6; margin-top:12px; text-align:center}
 .pie-nota a{color:var(--ash); border-bottom:1px solid var(--ash-dim); text-decoration:none}
+
+/* ── CALCULADOR DE ENVÍO DEL CARRITO ──────────────────────────────────────
+   Responde "¿cuándo me llega?" sin sacar al cliente del panel. Va entre los
+   totales y el botón de pagar porque es la última duda antes de decidir. */
+.env-caja{margin-top:16px; padding-top:14px; border-top:1px solid var(--line-soft)}
+.env-lab{display:block; font-family:var(--f-mono); font-size:.58rem;
+  letter-spacing:.14em; text-transform:uppercase; color:var(--gold); margin-bottom:8px}
+.env-fila{display:flex; gap:8px}
+.env-fila input{flex:1; min-width:0; background:rgba(255,255,255,.03);
+  border:1px solid var(--line-soft); color:var(--ivory); font:inherit;
+  font-size:.85rem; padding:10px 12px; border-radius:0}
+.env-fila input:focus{outline:none; border-color:var(--gold)}
+.env-fila input::placeholder{color:var(--ash-dim)}
+.env-fila button{background:transparent; border:1px solid var(--gold);
+  color:var(--gold); font-family:var(--f-mono); font-size:.6rem;
+  letter-spacing:.12em; text-transform:uppercase; padding:0 14px;
+  cursor:pointer; min-height:42px; white-space:nowrap}
+.env-fila button:hover:not(:disabled){background:var(--gold); color:#0B0B0B}
+.env-fila button:disabled{opacity:.5; cursor:progress}
+.env-res{margin-top:10px; font-size:.78rem; color:var(--ash)}
+.env-dest{font-family:var(--f-mono); font-size:.58rem; letter-spacing:.12em;
+  text-transform:uppercase; color:var(--ash-dim); margin-bottom:8px}
+.env-op{display:flex; justify-content:space-between; align-items:baseline;
+  gap:10px; padding:8px 0; border-bottom:1px solid var(--line-soft)}
+.env-op:last-of-type{border-bottom:none}
+.env-op-l{display:flex; flex-direction:column; gap:2px; min-width:0}
+.env-op-l b{color:var(--ivory); font-weight:500; font-size:.8rem}
+.env-op-l span{font-size:.72rem; color:var(--ash)}
+.env-op-p{font-family:var(--f-mono); color:#CFC8B9; white-space:nowrap;
+  font-variant-numeric:tabular-nums}
+.env-op.rec .env-op-p{color:var(--gold-lit)}
+.env-nota{font-size:.66rem; color:var(--ash-dim); line-height:1.5; margin:8px 0 0}
+.env-mal{color:#E0857A; font-size:.76rem}
 
 /* ── ASESOR ──────────────────────────────────────────────────────────────── */
 #asesor-btn{

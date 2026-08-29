@@ -7,9 +7,20 @@ const { estimarImpresion3D, tarifasDeReferencia } = require("./impresion3d.js");
 const { ejecutarHerramienta } = require("./gemini-tools.js");
 
 let pasados = 0, fallados = 0;
+const pendientes = [];
+
 function test(nombre, fn) {
   try {
-    fn();
+    const r = fn();
+    if (r && typeof r.then === "function") {
+      /* Una prueba puede devolver promesa; se acumula y se espera al final
+         para no reordenar la salida ni convertir todo el archivo en async. */
+      pendientes.push(
+        r.then(() => { console.log(`  ✓ ${nombre}`); pasados++; },
+               e => { console.log(`  ✗ ${nombre}\n      ${e.message}`); fallados++; })
+      );
+      return;
+    }
     console.log(`  ✓ ${nombre}`);
     pasados++;
   } catch (e) {
@@ -116,15 +127,18 @@ test("Args undefined no lanzan excepción", () => {
 });
 
 console.log("\n[F] Integración con el dispatcher");
-test("estimar_impresion_3d vía ejecutarHerramienta", () => {
-  const r = ejecutarHerramienta({
+/* `ejecutarHerramienta` es asíncrona desde que cotizar_envio puede salir a la
+   API de la paquetería. Esta prueba resuelve la promesa antes de comprobar; el
+   resto del archivo prueba el motor directamente y sigue siendo síncrono. */
+test("estimar_impresion_3d vía ejecutarHerramienta", () =>
+  ejecutarHerramienta({
     name: "estimar_impresion_3d",
     args: { material: "petg", gramos: 150, postprocesado: "pintura" }
-  });
-  if (!r.ok) throw new Error(r.error);
-  // 150 g × $3.00 = $450 + 50% = $675
-  if (r.total_estimado !== "$675.00 MXN") throw new Error(`Total: ${r.total_estimado}`);
-});
+  }).then(r => {
+    if (!r.ok) throw new Error(r.error);
+    // 150 g × $3.00 = $450 + 50% = $675
+    if (r.total_estimado !== "$675.00 MXN") throw new Error(`Total: ${r.total_estimado}`);
+  }));
 
 test("tarifasDeReferencia trae la regla comercial", () => {
   const t = tarifasDeReferencia();
@@ -132,7 +146,9 @@ test("tarifasDeReferencia trae la regla comercial", () => {
   if (t.por_gramo.length < 5) throw new Error("Faltan materiales");
 });
 
-console.log(`\n========================================`);
-console.log(`  Impresión 3D: ${pasados} pasados, ${fallados} fallados`);
-console.log(`========================================\n`);
-if (fallados > 0) process.exit(1);
+Promise.all(pendientes).then(() => {
+  console.log(`\n========================================`);
+  console.log(`  Impresión 3D: ${pasados} pasados, ${fallados} fallados`);
+  console.log(`========================================\n`);
+  if (fallados > 0) process.exit(1);
+});

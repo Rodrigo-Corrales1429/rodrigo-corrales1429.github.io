@@ -1,3 +1,9 @@
 User-agent: *
 Allow: /
+
+# La trastienda no se indexa: no tiene contenido público y sí un formulario
+# de token. Que no aparezca en resultados es higiene, no seguridad — la
+# protección real es el token que valida el backend.
+Disallow: /admin/
+
 Sitemap: https://valquiriainc.com/sitemap.xml

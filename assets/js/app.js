@@ -9,7 +9,7 @@
    ═══════════════════════════════════════════════════════════════════════════ */
 /* La escena se importa por su efecto: al evaluarse deja lista `window.VQ`,
    que es la superficie que usa todo lo de abajo. */
-import './escena.js?v=71';
+import './escena.js?v=72';
 
 /* Aviso al vigilante del index: los módulos llegaron y se están evaluando.
    A partir de aquí lo que tarde es trabajo, no una carga rota, así que puede
@@ -24,12 +24,30 @@ const CFG = {
      local: busca en el catálogo, cotiza y cierra por WhatsApp. Un backend
      dormido no puede dejar la página muda. */
   backend: 'https://rodrigo-corrales1429-github-io.onrender.com',
-  whatsapp: '525554675821',
+  whatsapp: '527717959131',
   correo: 'ventas@valquiriadental.com',
+  /* ⚠️ ESPEJO DEL SERVIDOR. Estos tres valores existen también en
+     quote-engine.js y envios.js, que son los que MANDAN: el servidor
+     recalcula todo antes de cobrar. Aquí solo se usan para pintar el carrito
+     antes de que responda el backend.
+     Si cambias ENVIO_GRATIS_DESDE_CENTAVOS en Render, cambia también esta
+     línea — hay una prueba (`npm test`) que falla si se desincronizan. */
   envioGratisDesde: 99900,   // centavos
   costoEnvio: 15000,         // centavos
+  /* Debe coincidir con PRECIOS_LLEVAN_IVA / IVA_TASA del servidor. Es una
+     afirmación fiscal: si el régimen no traslada IVA, pon ivaIncluido:false. */
+  ivaIncluido: true,
+  ivaTasa: 16,
   timeoutMs: 42000
 };
+
+/* Parte de impuesto contenida en un importe que YA lo lleva dentro.
+   No suma nada al total: lo separa para que se pueda leer. */
+function ivaDe(centavosConIva){
+  if (!CFG.ivaIncluido || !CFG.ivaTasa) return 0;
+  const t = CFG.ivaTasa / 100;
+  return Math.round(centavosConIva - centavosConIva / (1 + t));
+}
 
 /* ── Catálogo ─────────────────────────────────────────────────────────────
    Espejo de productos.json. Los precios se guardan en CENTAVOS ENTEROS, igual
@@ -226,15 +244,115 @@ function pintarDrawer() {
 
   pie.innerHTML = `
     <div class="tot-l"><span>Subtotal</span><span>${mxn(t.subtotal)}</span></div>
-    <div class="tot-l"><span>Envío</span><span>${t.gratis ? 'Gratis' : mxn(t.envio)}</span></div>
+    <div class="tot-l"><span>Envío</span><span id="env-costo">${t.gratis ? 'Gratis' : mxn(t.envio)}</span></div>
     ${t.gratis ? '' : `<div class="tot-envio">Te faltan ${mxn(t.falta)} para envío gratis</div>`}
-    <div class="tot-l grande"><span>Total</span><span>${mxn(t.total)}</span></div>
+    <div class="tot-l grande"><span>Total</span><span id="env-total">${mxn(t.total)}</span></div>
+    ${CFG.ivaIncluido ? `<div class="tot-iva" id="tot-iva">IVA ${CFG.ivaTasa}% incluido: ${mxn(ivaDe(t.total))}</div>` : ''}
+
+    <!-- Calculador de envío. Va ANTES del botón de pagar a propósito: la
+         pregunta "¿cuándo me llega?" se resuelve mientras el cliente todavía
+         está decidiendo, no después de haberle pedido la tarjeta. -->
+    <div class="env-caja">
+      <label class="env-lab" for="env-cp">¿Cuándo me llega?</label>
+      <div class="env-fila">
+        <input id="env-cp" type="text" inputmode="numeric" autocomplete="postal-code"
+               maxlength="5" placeholder="Tu código postal" aria-label="Código postal">
+        <button type="button" id="env-calc">Calcular</button>
+      </div>
+      <div id="env-res" class="env-res" role="status" aria-live="polite"></div>
+    </div>
+
     <button class="btn" id="ir-pagar"><span>Pagar con Mercado Pago</span></button>
     <a class="btn ghost" id="ir-wa" href="#"><span>Cerrar por WhatsApp</span></a>
     <p class="pie-nota">
       Al continuar aceptas los <a href="#/terminos" data-cierra-drawer>términos de uso</a>.
       Pago procesado por Mercado Pago.
     </p>`;
+
+  montarCalculadorEnvio();
+}
+
+/* ── Calculador de envío ──────────────────────────────────────────────────
+   El costo y la fecha los calcula el SERVIDOR, igual que los precios: aquí
+   solo se pinta lo que respondió. El código postal se recuerda entre visitas
+   porque nadie quiere teclearlo dos veces, y no identifica a nadie. */
+const CP_GUARDADO = 'vq_cp';
+
+function montarCalculadorEnvio() {
+  const campo = $('#env-cp'), boton = $('#env-calc'), salida = $('#env-res');
+  if (!campo || !boton) return;
+
+  try {
+    const guardado = localStorage.getItem(CP_GUARDADO);
+    if (guardado) { campo.value = guardado; calcularEnvio(); }
+  } catch { /* modo privado */ }
+
+  campo.addEventListener('input', () => {
+    campo.value = campo.value.replace(/[^0-9]/g, '').slice(0, 5);
+  });
+  campo.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); calcularEnvio(); } });
+  boton.addEventListener('click', calcularEnvio);
+
+  async function calcularEnvio() {
+    const cp = campo.value.trim();
+    if (cp.length !== 5) {
+      salida.innerHTML = '<span class="env-mal">Escribe los 5 dígitos de tu código postal.</span>';
+      return;
+    }
+    salida.textContent = 'Calculando…';
+    boton.disabled = true;
+    try {
+      const r = await fetch(CFG.backend + '/api/envio', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          cp_destino: cp,
+          items: Carrito.totales().lineas.map(l => ({ sku: l.p.sku, cantidad: l.cantidad }))
+        })
+      });
+      const d = await r.json();
+      if (!d.ok) {
+        salida.innerHTML = `<span class="env-mal">${esc(d.error || 'No se pudo calcular el envío.')}</span>`;
+        return;
+      }
+      try { localStorage.setItem(CP_GUARDADO, cp); } catch {}
+
+      salida.innerHTML =
+        `<div class="env-dest">${esc(d.destino.estado)} · CP ${esc(d.destino.cp)}</div>` +
+        d.opciones.map(o => `
+          <div class="env-op${o.recomendada ? ' rec' : ''}">
+            <div class="env-op-l">
+              <b>${esc(o.servicio)}</b>
+              <span>${esc(o.texto)}</span>
+            </div>
+            <span class="env-op-p">${esc(o.costo)}</span>
+          </div>`).join('') +
+        /* Si el número es de la tabla interna y no de una paquetería, se dice.
+           Prometer una tarifa que luego cambia cuesta más que no darla. */
+        (d.es_estimacion
+          ? '<p class="env-nota">Tarifas estimadas. La guía definitiva se confirma al preparar tu envío.</p>'
+          : `<p class="env-nota">Cotización en vivo vía ${esc(d.fuente)}.</p>`);
+
+      /* El total del carrito se actualiza con la opción recomendada, que es
+         la más barata. Enseñar un total que ignora el envío ya calculado es
+         la forma más rápida de que alguien abandone en el checkout. */
+      const rec = d.opciones.find(o => o.recomendada);
+      if (rec) {
+        const costo = $('#env-costo'), total = $('#env-total');
+        if (costo) costo.textContent = rec.envio_gratis ? 'Gratis' : rec.costo;
+        const totalCentavos = Carrito.totales().subtotal + rec.costo_centavos;
+        if (total) total.textContent = mxn(totalCentavos);
+        /* El IVA se recalcula con el total nuevo: dejarlo con el importe
+           anterior es peor que no enseñarlo. */
+        const iva = $('#tot-iva');
+        if (iva) iva.textContent = `IVA ${CFG.ivaTasa}% incluido: ${mxn(ivaDe(totalCentavos))}`;
+      }
+    } catch {
+      salida.innerHTML = '<span class="env-mal">No se pudo consultar el envío. Intenta de nuevo.</span>';
+    } finally {
+      boton.disabled = false;
+    }
+  }
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -524,7 +642,13 @@ const RUTAS = {
 };
 
 const rutaActual = () => {
-  const h = (location.hash || '#/').replace(/^#/, '');
+  const fragmento = (location.hash || '').replace(/^#/, '');
+  const anclasHome = {
+    filosofia: '/filosofia', contacto: '/contacto',
+    privacidad: '/privacidad', terminos: '/terminos'
+  };
+  if (anclasHome[fragmento]) return anclasHome[fragmento];
+  const h = fragmento || '/';
   return RUTAS[h] ? h : '/';
 };
 
@@ -1199,7 +1323,7 @@ const Asesor = {
       return { reply:
         'Para **mayoreo, distribución o facturación a instituciones** te atiende directamente una persona ' +
         'del equipo: los precios por volumen dependen de la cantidad y del destino.\n\n' +
-        'Escríbenos por WhatsApp al **+52 55 5467 5821** o a **' + CFG.correo + '** y te pasan las condiciones.',
+        'Escríbenos por WhatsApp al **+52 771 795 9131** o a **' + CFG.correo + '** y te pasan las condiciones.',
         acciones:[{ tipo:'whatsapp' }] };
     }
 

@@ -1,3 +1,5 @@
+import { VALQUIRIA_MODEL, DENTAL_MODEL, IA_MODEL } from './division-config.js?v=72';
+
 /* ═══════════════════════════════════════════════════════════════════════════
    VALQUIRIA — FÁBRICA DE FIGURAS
    ───────────────────────────────────────────────────────────────────────────
@@ -870,7 +872,7 @@ const FIGURAS = {
     /* La malla esculpida. `encaje` y `alza` la ajustan al marco de la SDF:
        esta figura procedural reserva el tercio superior para la lanza, que la
        malla no trae, y sin corregirlo saldría enorme. Ver MODELO.md. */
-    glb: 'assets/valquiria.glb', encaje: 0.74, alza: 0.19,
+    glb: VALQUIRIA_MODEL, encaje: 0.74, alza: 0.19,
     /* Es la única pieza que se cura en resina al terminar: deja de ser nube y
        pasa a superficie sombreada. Por eso pide su propia rejilla —los puntos
        tienen que solaparse para que la piel se lea continua— y por eso es la
@@ -899,7 +901,7 @@ const FIGURAS = {
      material de portada. */
   cyborg: {
     fn: cyborg, modo: 4, dist: 5.0, mm: 240, nombre: 'Valquiria IA',
-    glb: 'assets/cyborg.glb',
+    glb: IA_MODEL,
     /* `encaje` y `alza` aquí corrigen lo contrario que en la valquiria: aquel
        marco sobraba y este falta. La SDF es un BUSTO sobre una peana, con dos
        anillos de órbita que ocupan el ancho de la caja pero no su alto; la
@@ -929,7 +931,7 @@ const FIGURAS = {
   },
   diente: {
     fn: diente, modo: 3, dist: 5.0, mm: 20.7, nombre: 'Molar',
-    glb: 'assets/diente.glb',
+    glb: DENTAL_MODEL,
     /* `encajar()` normaliza por ALTURA y centra en X/Z; el ancho sale de la
        proporción de la malla y no se comprueba contra nada. Este molar es más
        rechoncho que la SDF —0.69 de ancho por alto contra 0.62— así que

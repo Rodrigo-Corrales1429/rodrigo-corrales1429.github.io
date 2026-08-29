@@ -1,0 +1,140 @@
+# Auditoría del 2026-08-29 — qué se arregló y qué no
+
+Registro de la revisión externa y de lo que se hizo con cada hallazgo.
+Se documenta también lo **rechazado**, porque un hallazgo descartado sin
+explicación vuelve a aparecer en la siguiente auditoría.
+
+---
+
+## Arreglado
+
+### Seguridad
+
+| # | Hallazgo | Qué se hizo |
+|---|---|---|
+| C1 | Webhook de pagos aceptaba avisos sin firma | **Falla cerrada**: sin `MP_WEBHOOK_SECRET` responde 503 y manda un aviso urgente. Antes solo advertía y seguía, así que un POST falso podía hacer que se enviara mercancía no pagada. |
+| A6 | CORS aceptaba localhost en producción | Con `NODE_ENV=production` solo quedan los orígenes reales. |
+| A7 | Token de admin débil | La comparación sigue en tiempo constante (el hash evita filtrar la longitud), y el servidor **avisa al arrancar** si el token tiene menos de 24 caracteres. La defensa real contra fuerza bruta es la longitud, no el hash. |
+| A8 | Sin tope agregado del historial | 60 mensajes × 8 partes × 4,000 caracteres = 1.9 MB de prompt legales. Ahora hay tope sumado (`MAX_CARACTERES_HISTORIAL`, 24,000). |
+| C4 | CSP con `'unsafe-inline'` | Sustituido por **hashes sha256** por script. Ver más abajo por qué no se hizo como proponía la auditoría. |
+
+### Operación
+
+| # | Hallazgo | Qué se hizo |
+|---|---|---|
+| C8 | Sin cierre limpio | `SIGTERM`/`SIGINT` terminan lo que está en vuelo antes de salir. Importa sobre todo por el webhook de pagos: un aviso cortado a media respuesta es un pedido sin registrar. |
+| C5 | Todo en memoria | `almacen.js`: instantánea en disco con escritura atómica. Los pedidos fuerzan volcado inmediato; lo demás cada 30 s y al cerrar. Un archivo corrupto **no impide arrancar**. ⚠️ Necesita un Persistent Disk en Render o no persiste nada. |
+| A3 | Sin control de stock: sobreventa | `inventario.js`: reserva al generar el link de pago, confirma al aprobarse, libera al rechazarse y caduca sola. Antes dos personas compraban la misma última pieza. |
+| M9 | Las pruebas usaban canales reales | `AVISOS_SILENCIO=1`. Sin esto, `npm test` con Telegram configurado te mandaba pagos falsos al teléfono. |
+
+### SEO y frontend
+
+| # | Hallazgo | Qué se hizo |
+|---|---|---|
+| C2 | Search Console sin verificar | Hueco preparado en `index.html` con instrucciones. **Lo tienes que completar tú**: es tu cuenta. |
+| A10 | Sin `LocalBusiness` | Añadido con dirección a nivel ciudad, horario, moneda y formas de pago. Sin calle a propósito: publicar un domicilio sin atención al público invita visitas y Google penaliza lo que no puede verificar. |
+| A11 | CTA principal era "Ver el catálogo" | Ahora es **"Cotizar ahora"** (el Asesor cotiza cuatro divisiones; el catálogo sirve a una). El catálogo queda de secundario. |
+| A5 | Sin desglose de IVA | El carrito y el motor lo muestran. Configurable con `PRECIOS_LLEVAN_IVA`, porque es una afirmación fiscal. |
+| M2 | Sin salto al contenido en la home | Añadido, apuntando a `#app`, enfocable y con estilo. |
+| M11 | Imagen social de 1 MB | Recomprimida a JPEG: **1,086 KB → 212 KB**. Por encima de 1 MB, WhatsApp y X la degradan o la ignoran. |
+| M12 | Sin `hreflang` | `es-mx` + `x-default` en las siete páginas. |
+| B1 | Icono de iOS en SVG | iOS ignora el SVG. Generado `apple-touch-icon.png` de 180×180. |
+| M1 | Sin PWA | `manifest.webmanifest` enlazado. **Sin service worker a propósito**: uno mal hecho sirve precios cacheados y viejos, que en una tienda es peor que no tener PWA. |
+| M7 | Feriados solo hasta 2028 | Ampliados a **2030**, incluido el 1 de diciembre de 2030 (transmisión del Ejecutivo). El servidor avisa 6 meses antes de que caduquen. |
+| A1 | Umbral de envío gratis en 5 sitios | No se centralizó (obligaría a una petición extra en el arranque de la página). En su lugar, una prueba compara los cinco y falla si se desincronizan. |
+
+---
+
+## Rechazado, y por qué
+
+### ❌ C3 — "sitemap.xml no existe"
+
+**Sí existe.** Se generó el 2026-08-28 con las 7 rutas, `lastmod`, `changefreq`
+y `priority`. La auditoría se hizo sobre una copia anterior del repositorio.
+
+### ❌ C7 — "El timeout de Gemini (45 s) excede el límite de 30 s de Render"
+
+**La premisa es falsa.** Render permite respuestas HTTP largas —del orden de
+minutos, no de 30 segundos—. Bajar el timeout a 25 s no arreglaba nada y sí
+podía cortar turnos legítimos con varias llamadas a herramientas encadenadas.
+
+Lo que se hizo: dejarlo configurable (`GEMINI_TIMEOUT_MS`) y documentar cuál
+es el criterio real, que es la paciencia de una persona, no un límite de la
+plataforma.
+
+### ❌ C4 (la solución propuesta) — "mueve el importmap a un `.json` externo"
+
+**Eso rompe la escena 3D.** Los navegadores **no** soportan
+`<script type="importmap" src="...">`; los import maps externos se ignoran.
+Aplicar ese cambio dejaba el sitio sin Three.js.
+
+Lo que se hizo: hashes sha256 por script, con `scripts/csp-hashes.js` para
+regenerarlos y una prueba en `npm test` que falla si se desincronizan. Hace
+falta esa prueba porque, en cuanto hay hashes, el navegador ignora
+`'unsafe-inline'`: un script editado sin regenerar el hash deja de ejecutarse
+**en producción y en silencio**.
+
+```bash
+npm run csp:fix
+```
+
+### ❌ A9 — "35 console.log en producción"
+
+Son **12**, no 35. Y no son ruido: `[LEAD]`, `[PEDIDO]`, `[webhook]` y
+`[config]` son la última red de seguridad documentada en `SEGURIDAD.md` — si
+falla el webhook y se reinicia el proceso, ese log es lo único que queda de un
+prospecto. Silenciarlos sería quitar el respaldo justo donde más falta hace.
+
+### ❌ A10 (parte) — "no hay BreadcrumbList"
+
+**Sí lo hay**, en las seis páginas de división desde la fase SEO 1. Lo que
+faltaba de verdad era `LocalBusiness`, y eso sí se añadió.
+
+### ❌ M13 — "los titles de división son genéricos"
+
+Los siete son únicos y descriptivos. Por ejemplo:
+`Empaques termoformados a medida | Valquiria Pack`.
+
+### ❌ M2 (parte) — "no hay skip link"
+
+Ya existía en las seis páginas de división. Faltaba solo en la home, y ahí se
+añadió.
+
+### ⚠️ A2 — Pesos de envío
+
+Confirmado como pendiente. **Hay que pesar una caja real de cada SKU** y poner
+los valores en `ENVIOS_PESOS_JSON`. Ver `ENVIOS.md §3`.
+
+### ⚠️ La observación sobre XSS que la auditoría no hizo
+
+Se marcó `'unsafe-inline'` de forma genérica, pero no se revisó **la superficie
+real de XSS**: cómo se pinta la respuesta del modelo. Está bien resuelta —
+`md()` en `assets/js/app.js` escapa primero con `esc()` y solo después aplica
+negritas y párrafos, que es el orden correcto—. Se deja anotado para que no se
+"arregle" al revés en el futuro.
+
+---
+
+## Lo que sigue pendiente, y depende de ti
+
+1. **Google Search Console** — descomentar la etiqueta en `index.html` con tu
+   código, enviar el sitemap y pedir indexación de `/ia/`, `/3d/`, `/pack/`.
+2. **UptimeRobot** (gratis) — monitores sobre `/health` y `valquiriainc.com`.
+   Sin esto, si el sitio cae un domingo nadie se entera.
+3. **Persistent Disk en Render** + `ALMACEN_RUTA` — sin disco, la instantánea
+   no persiste.
+4. **Pesar los productos** y corregir `ENVIOS_PESOS_JSON`.
+5. **Variables en Render**: `NODE_ENV=production`, `LEADS_TOKEN` largo,
+   `MP_WEBHOOK_SECRET` (obligatorio ya: sin él el webhook rechaza).
+
+## No se hizo, y es una decisión
+
+- **CI/CD, staging, ESLint/Prettier, pruebas e2e.** Son buenas prácticas, pero
+  para un repositorio de un solo desarrollador con 159 pruebas que corren en
+  dos segundos, añaden más ceremonia que seguridad. Vale la pena cuando entre
+  una segunda persona a tocar el código.
+- **Testimonios y prueba social.** Requiere clientes reales dando permiso.
+  Inventarlos sería fabricar reseñas.
+- **Base de datos.** La instantánea cubre el caso de un solo proceso. Cuando
+  haya más de una instancia sirviendo, dos procesos escribiendo el mismo
+  archivo se pisan y ahí sí toca Postgres.

@@ -8,6 +8,23 @@
 <meta name="robots" content="index,follow,max-image-preview:large">
 <meta name="theme-color" content="#060606">
 <link rel="canonical" href="https://valquiriainc.com/">
+<link rel="alternate" hreflang="es-mx" href="https://valquiriainc.com/">
+<link rel="alternate" hreflang="x-default" href="https://valquiriainc.com/">
+<script>
+/* Compatibilidad de entrada: las vistas históricas por hash ya no son URLs
+   públicas. `replace` evita dejar el duplicado en el historial y los destinos
+   no ejecutan este router, por lo que no puede formarse un bucle. */
+(function () {
+  if (location.pathname !== '/') return;
+  var limpias = {
+    '#/dental': '/dental/', '#/ia': '/ia/', '#/3d': '/3d/',
+    '#/pack': '/pack/', '#/lux': '/lux/', '#/catalogo': '/catalogo/',
+    '#/filosofia': '/#filosofia', '#/contacto': '/#contacto',
+    '#/privacidad': '/#privacidad', '#/terminos': '/#terminos'
+  };
+  if (limpias[location.hash]) location.replace(limpias[location.hash]);
+})();
+</script>
 
 <!-- ══ SEGURIDAD ══
      GitHub Pages sirve archivos estáticos y no deja poner cabeceras propias,
@@ -49,7 +66,7 @@
   base-uri 'self';
   object-src 'none';
   form-action 'self' https://wa.me;
-  script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://unpkg.com blob:;
+  script-src 'self' 'wasm-unsafe-eval' https://unpkg.com blob: 'sha256-mYMyfSVAAaoYPNGdAjyFSBHbLiwA60yeK51WkTWKqaQ=' 'sha256-BZkocn+ywLdsBE9hJt20df3bHXZ6Rm5wv/OfIHU0XLA=' 'sha256-vp5PHwY6synHXznB2BhNezQVzWfPNjLR9Y0dkgpW/rE=' 'sha256-7hcWFuRH46ZK5Prd9T3EEazYTGP1tud+w0zm5l3XAX0=';
   worker-src 'self' blob:;
   style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
   font-src 'self' https://fonts.gstatic.com;
@@ -57,9 +74,18 @@
   connect-src 'self' blob: https://unpkg.com https://rodrigo-corrales1429-github-io.onrender.com;
   upgrade-insecure-requests">
 <meta name="referrer" content="strict-origin-when-cross-origin">
+
+<!-- ═══ GOOGLE SEARCH CONSOLE ═══
+     Descomenta la línea de abajo y pega TU código de verificación.
+     Se saca en search.google.com/search-console → Añadir propiedad →
+     "Prefijo de URL" → https://valquiriainc.com/ → método "Etiqueta HTML".
+     Sin esto no se puede pedir indexación ni ver por qué te busca la gente.
+<meta name="google-site-verification" content="PEGA_AQUI_TU_CODIGO">
+     ═══ -->
 <link rel="icon" type="image/svg+xml" href="assets/isotipo_gold.svg">
 <link rel="alternate icon" href="favicon.ico" sizes="16x16 32x32 48x48">
-<link rel="apple-touch-icon" href="assets/isotipo_gold.svg">
+<link rel="apple-touch-icon" sizes="180x180" href="/assets/apple-touch-icon.png">
+<link rel="manifest" href="/manifest.webmanifest">
 
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Valquiria Inc.">
@@ -67,12 +93,13 @@
 <meta property="og:description" content="Manufactura aditiva y automatización con IA. Cinco divisiones, una plataforma.">
 <meta property="og:url" content="https://valquiriainc.com/">
 <meta property="og:locale" content="es_MX">
-<meta property="og:image" content="https://valquiriainc.com/assets/og-valquiria.png">
+<meta property="og:image" content="https://valquiriainc.com/assets/og-valquiria.jpg">
+<meta property="og:image:type" content="image/jpeg">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="Valquiria Inc.: lo que se diseña bien, se sostiene.">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:image" content="https://valquiriainc.com/assets/og-valquiria.png">
+<meta name="twitter:image" content="https://valquiriainc.com/assets/og-valquiria.jpg">
 <meta name="twitter:image:alt" content="Valquiria Inc.: lo que se diseña bien, se sostiene.">
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -83,7 +110,7 @@
      el saludo completo —DNS, TCP, TLS— del camino crítico. -->
 <link rel="preconnect" href="https://unpkg.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300&amp;family=Montserrat:wght@200;300;400;500&amp;family=IBM+Plex+Mono:wght@300;400;500&amp;display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/css/valquiria.css?v=71">
+<link rel="stylesheet" href="assets/css/valquiria.css?v=73">
 
 <!-- ══ MAPA DE IMPORTACIÓN ══
      three.js moderno como módulo. La versión importa: a partir de r152 la
@@ -139,42 +166,14 @@
      … is not used because the request credentials mode does not match». Si
      algún día tocas esta línea, comprueba ahí que el aviso no vuelve. -->
 <link rel="preload" href="assets/valquiria.glb" as="fetch" crossorigin>
-<link rel="modulepreload" href="assets/js/escena.js?v=71">
-<link rel="modulepreload" href="assets/js/figuras.js?v=71">
-<link rel="modulepreload" href="assets/js/modelo.js?v=71">
+<link rel="modulepreload" href="assets/js/escena.js?v=73">
+<link rel="modulepreload" href="assets/js/figuras.js?v=73">
+<link rel="modulepreload" href="assets/js/modelo.js?v=73">
 
-<script type="application/ld+json">
-{
-  "@context":"https://schema.org",
-  "@graph":[
-    {
-      "@type":"Organization",
-      "@id":"https://valquiriainc.com/#organization",
-      "name":"Valquiria Inc.",
-      "url":"https://valquiriainc.com/",
-      "logo":"https://valquiriainc.com/assets/isotipo_gold.svg",
-      "description":"Holding mexicano de manufactura aditiva con cinco divisiones: Dental, 3D, Pack, Lux e IA.",
-      "areaServed":"MX",
-      "contactPoint":{
-        "@type":"ContactPoint",
-        "telephone":"+52-55-5467-5821",
-        "contactType":"sales",
-        "availableLanguage":["es"]
-      }
-    },
-    {
-      "@type":"WebSite",
-      "@id":"https://valquiriainc.com/#website",
-      "url":"https://valquiriainc.com/",
-      "name":"Valquiria Inc.",
-      "inLanguage":"es-MX",
-      "publisher":{"@id":"https://valquiriainc.com/#organization"}
-    }
-  ]
-}
-</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Organization","@id":"https://valquiriainc.com/#organization","name":"Valquiria Inc.","url":"https://valquiriainc.com/","logo":"https://valquiriainc.com/assets/isotipo_gold.svg","description":"Holding mexicano de manufactura aditiva con cinco divisiones: Dental, 3D, Pack, Lux e IA.","areaServed":"MX","contactPoint":{"@type":"ContactPoint","telephone":"+52-771-795-9131","contactType":"sales","availableLanguage":["es"]},"sameAs":["https://valquiriainc.com/"],"email":"ventas@valquiriadental.com"},{"@type":"WebSite","@id":"https://valquiriainc.com/#website","url":"https://valquiriainc.com/","name":"Valquiria Inc.","inLanguage":"es-MX","publisher":{"@id":"https://valquiriainc.com/#organization"}},{"@type":"LocalBusiness","@id":"https://valquiriainc.com/#localbusiness","name":"Valquiria Inc.","parentOrganization":{"@id":"https://valquiriainc.com/#organization"},"url":"https://valquiriainc.com/","image":"https://valquiriainc.com/assets/og-valquiria.jpg","telephone":"+52-771-795-9131","email":"ventas@valquiriadental.com","priceRange":"$$","currenciesAccepted":"MXN","paymentAccepted":"Tarjeta de crédito, tarjeta de débito, transferencia","address":{"@type":"PostalAddress","addressLocality":"Pachuca de Soto","addressRegion":"Hidalgo","postalCode":"42000","addressCountry":"MX"},"areaServed":{"@type":"Country","name":"México"},"openingHoursSpecification":[{"@type":"OpeningHoursSpecification","dayOfWeek":["Monday","Tuesday","Wednesday","Thursday","Friday"],"opens":"09:00","closes":"18:00"}]},{"@type":"ItemList","@id":"https://valquiriainc.com/#divisiones","name":"Divisiones de Valquiria Inc.","itemListElement":[{"@type":"ListItem","position":1,"name":"Valquiria 3D","url":"https://valquiriainc.com/3d/"},{"@type":"ListItem","position":2,"name":"Valquiria Dental","url":"https://valquiriainc.com/dental/"},{"@type":"ListItem","position":3,"name":"Valquiria Pack","url":"https://valquiriainc.com/pack/"},{"@type":"ListItem","position":4,"name":"Valquiria Lux","url":"https://valquiriainc.com/lux/"},{"@type":"ListItem","position":5,"name":"Valquiria IA","url":"https://valquiriainc.com/ia/"}]}]}</script>
 </head>
 <body>
+<a class="skip-link" href="#app">Saltar al contenido</a>
 
 <!-- ══ PRELOADER ══ -->
 <div id="pre">
@@ -273,17 +272,21 @@
 
 <!-- ══ NAV ══ -->
 <nav id="nav">
-  <a href="#/" class="brand" aria-label="Valquiria Inc., inicio">
+  <a href="/" class="brand" aria-label="Valquiria Inc., inicio">
     <img class="brand-mark" src="assets/isotipo_gold.svg" alt="" width="26" height="26" aria-hidden="true">
     <span class="brand-txt">Valquiria</span>
   </a>
   <div class="nav-right">
     <ul class="nav-links">
-      <li><a href="#/" data-ruta="/">Inicio</a></li>
-      <li><a href="#/catalogo" data-ruta="/catalogo">Catálogo</a></li>
-      <li><a href="#/ia" data-ruta="/ia">Valquiria IA</a></li>
-      <li><a href="#/filosofia" data-ruta="/filosofia">Filosofía</a></li>
-      <li><a href="#/contacto" data-ruta="/contacto">Contacto</a></li>
+      <li><a href="/">Inicio</a></li>
+      <li><a href="/dental/">Dental</a></li>
+      <li><a href="/ia/">IA</a></li>
+      <li><a href="/3d/">3D</a></li>
+      <li><a href="/pack/">Pack</a></li>
+      <li><a href="/lux/">Lux</a></li>
+      <li><a href="/catalogo/">Catálogo</a></li>
+      <li><a href="/#filosofia" data-ruta="/filosofia">Filosofía</a></li>
+      <li><a href="/#contacto" data-ruta="/contacto">Contacto</a></li>
     </ul>
     <button class="nav-cart" id="cart-btn" aria-label="Abrir carrito">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 7h12l-1.2 11.2a2 2 0 0 1-2 1.8H9.2a2 2 0 0 1-2-1.8L6 7Z"/><path d="M9 7V5.5a3 3 0 0 1 6 0V7"/></svg>
@@ -296,19 +299,19 @@
 <!-- ══ MENÚ MÓVIL ══ -->
 <div id="menu" data-scrollable>
   <ul>
-    <li><a href="#/" data-ruta="/">Inicio</a></li>
-    <li><a href="#/catalogo" data-ruta="/catalogo">Catálogo</a></li>
-    <li><a href="#/dental" data-ruta="/dental">Valquiria Dental</a></li>
-    <li><a href="#/ia" data-ruta="/ia">Valquiria IA</a></li>
-    <li><a href="#/3d" data-ruta="/3d">Valquiria 3D</a></li>
-    <li><a href="#/pack" data-ruta="/pack">Valquiria Pack</a></li>
-    <li><a href="#/lux" data-ruta="/lux">Valquiria Lux</a></li>
-    <li><a href="#/filosofia" data-ruta="/filosofia">Filosofía</a></li>
-    <li><a href="#/contacto" data-ruta="/contacto">Contacto</a></li>
+    <li><a href="/">Inicio</a></li>
+    <li><a href="/dental/">Valquiria Dental</a></li>
+    <li><a href="/ia/">Valquiria IA</a></li>
+    <li><a href="/3d/">Valquiria 3D</a></li>
+    <li><a href="/pack/">Valquiria Pack</a></li>
+    <li><a href="/lux/">Valquiria Lux</a></li>
+    <li><a href="/catalogo/">Catálogo</a></li>
+    <li><a href="/#filosofia" data-ruta="/filosofia">Filosofía</a></li>
+    <li><a href="/#contacto" data-ruta="/contacto">Contacto</a></li>
   </ul>
   <div class="menu-legal">
-    <a href="#/privacidad" data-ruta="/privacidad">Aviso de privacidad</a>
-    <a href="#/terminos" data-ruta="/terminos">Términos de uso</a>
+    <a href="/#privacidad" data-ruta="/privacidad">Aviso de privacidad</a>
+    <a href="/#terminos" data-ruta="/terminos">Términos de uso</a>
   </div>
 </div>
 
@@ -324,7 +327,7 @@
   </div>
 </div>
 
-<main id="app">
+<main id="app" tabindex="-1">
 
   <!-- ═══ HUB ═══ -->
   <section class="vista" id="v-hub">
@@ -342,39 +345,39 @@
           que la idea pesa en la mano.
         </p>
         <div class="acts" data-at="0.94">
-          <a class="btn" href="#/catalogo"><span>Ver el catálogo</span></a>
-          <button class="btn ia abrir-asesor"><span>Hablar con el Asesor</span></button>
+          <button class="btn ia abrir-asesor"><span>Cotizar ahora</span></button>
+          <a class="btn ghost" href="/catalogo/"><span>Ver el catálogo</span></a>
         </div>
       </div>
       <div class="hub-stage"></div>
 
       <!-- Portales: la rejilla de divisiones -->
       <nav class="portales" aria-label="Divisiones de Valquiria">
-        <a class="portal" href="#/dental" data-estado="activa" style="--av:1">
+        <a class="portal" href="/dental/" data-estado="activa" style="--av:1">
           <span class="portal-n">División 02</span>
           <h2>Dental</h2>
           <p>Modelos anatómicos con nervio sintético.</p>
           <span class="portal-est">Activa</span>
         </a>
-        <a class="portal es-ia" href="#/ia" data-estado="beta" style="--av:.94">
+        <a class="portal es-ia" href="/ia/" data-estado="activa" style="--av:1">
           <span class="portal-n">División 05</span>
           <h2>Valquiria IA</h2>
           <p>Consultoría y automatización con inteligencia artificial.</p>
-          <span class="portal-est">En beta</span>
+          <span class="portal-est">Activa</span>
         </a>
-        <a class="portal" href="#/3d" data-estado="obra" style="--av:.62">
+        <a class="portal" href="/3d/" data-estado="activa" style="--av:1">
           <span class="portal-n">División 01</span>
           <h2>3D</h2>
           <p>Prototipado y producción en serie.</p>
-          <span class="portal-est">En impresión</span>
+          <span class="portal-est">Activa</span>
         </a>
-        <a class="portal" href="#/pack" data-estado="obra" style="--av:.55">
+        <a class="portal" href="/pack/" data-estado="activa" style="--av:1">
           <span class="portal-n">División 03</span>
           <h2>Pack</h2>
           <p>Empaque termoformado a la medida.</p>
-          <span class="portal-est">En impresión</span>
+          <span class="portal-est">Activa</span>
         </a>
-        <a class="portal" href="#/lux" data-estado="obra" style="--av:.68">
+        <a class="portal" href="/lux/" data-estado="obra" style="--av:.68">
           <span class="portal-n">División 04</span>
           <h2>Lux</h2>
           <p>Iluminación donde la capa es el material.</p>
@@ -439,8 +442,8 @@
           <a class="btn ghost" href="#/contacto"><span>Hablemos de tu proceso</span></a>
         </div>
         <div class="estado">
-          <div class="estado-bar"><i></i></div>
-          <p><b>En beta</b> · <span data-capas></span></p>
+          <div class="estado-bar full"><i></i></div>
+          <p><b>División activa</b> · <span data-capas></span></p>
         </div>
       </div>
       <div class="div-stage"></div>
@@ -501,8 +504,8 @@
           <button class="btn ia abrir-asesor"><span>Estimar mi pieza con el Asesor</span></button>
         </div>
         <div class="estado">
-          <div class="estado-bar"><i></i></div>
-          <p><b>En impresión</b> · <span data-capas></span></p>
+          <div class="estado-bar full"><i></i></div>
+          <p><b>División activa</b> · <span data-capas></span></p>
         </div>
       </div>
       <div class="div-stage"></div>
@@ -535,8 +538,8 @@
           <button class="btn ia abrir-asesor"><span>Cotizar mi empaque</span></button>
         </div>
         <div class="estado">
-          <div class="estado-bar"><i></i></div>
-          <p><b>En impresión</b> · <span data-capas></span></p>
+          <div class="estado-bar full"><i></i></div>
+          <p><b>División activa</b> · <span data-capas></span></p>
         </div>
       </div>
       <div class="div-stage"></div>
@@ -664,7 +667,7 @@
       <div class="contacto-grid">
         <div class="contacto-card">
           <b>WhatsApp</b>
-          <a href="https://wa.me/525554675821" target="_blank" rel="noopener">+52 55 5467 5821</a>
+          <a href="https://wa.me/527717959131" target="_blank" rel="noopener">+52 771 795 9131</a>
           <small>Pedidos, mayoreo y seguimiento. Lunes a viernes, 9:00 a 18:00 h (CDMX).</small>
         </div>
         <div class="contacto-card">
@@ -712,7 +715,7 @@
         </ul>
         <p style="margin-top:22px">
           ¿Necesitas factura o quieres cambiar algo del pedido? Escríbenos por
-          <a href="https://wa.me/525554675821" target="_blank" rel="noopener">WhatsApp</a>
+          <a href="https://wa.me/527717959131" target="_blank" rel="noopener">WhatsApp</a>
           o a <a href="mailto:ventas@valquiriadental.com">ventas@valquiriadental.com</a>
           con tu folio a la mano.
         </p>
@@ -998,7 +1001,7 @@
         <p>
           Dudas sobre estos términos:
           <a href="mailto:ventas@valquiriadental.com">ventas@valquiriadental.com</a>
-          o WhatsApp <a href="https://wa.me/525554675821" target="_blank" rel="noopener">+52 55 5467 5821</a>.
+          o WhatsApp <a href="https://wa.me/527717959131" target="_blank" rel="noopener">+52 771 795 9131</a>.
         </p>
       </div>
     </div>
@@ -1022,13 +1025,13 @@
   </div>
   <div class="foot-grid foot-secondary">
     <div class="foot-links">
-      <a href="#/catalogo">Catálogo</a>
-      <a href="#/ia">Valquiria IA</a>
-      <a href="#/filosofia">Filosofía</a>
-      <a href="#/contacto">Contacto</a>
-      <a href="#/privacidad">Aviso de privacidad</a>
-      <a href="#/terminos">Términos de uso</a>
-      <a href="https://wa.me/525554675821" target="_blank" rel="noopener">WhatsApp</a>
+      <a href="/catalogo/">Catálogo</a>
+      <a href="/ia/">Valquiria IA</a>
+      <a href="/#filosofia">Filosofía</a>
+      <a href="/#contacto">Contacto</a>
+      <a href="/#privacidad">Aviso de privacidad</a>
+      <a href="/#terminos">Términos de uso</a>
+      <a href="https://wa.me/527717959131" target="_blank" rel="noopener">WhatsApp</a>
     </div>
   </div>
   <div class="foot-fin">
@@ -1078,7 +1081,7 @@
     <p class="asesor-legal">
       Respuestas generadas por IA; pueden contener errores.
       No escribas datos de tarjeta ni información de pacientes.
-      <a href="#/privacidad">Aviso de privacidad</a>
+      <a href="/#privacidad">Aviso de privacidad</a>
     </p>
   </div>
 </section>
@@ -1087,7 +1090,8 @@
   <div class="who">Asesor Valquiria</div><p id="toast-msg"></p>
 </div>
 
-<script type="module" src="assets/js/app.js?v=71"></script>
+<script type="module" src="assets/js/app.js?v=73"></script>
 
+<script src="/assets/js/pulso.js?v=73" defer></script>
 </body>
 </html>

@@ -14,8 +14,8 @@
      precargar(ids)              muestrea en segundo plano, sin robar cuadros
    ═══════════════════════════════════════════════════════════════════════════ */
 import * as THREE from 'three';
-import { FIGURAS } from './figuras.js?v=71';
-import { cargarModelo, animarMallas, GLSL_IDLE } from './modelo.js?v=71';
+import { FIGURAS } from './figuras.js?v=72';
+import { cargarModelo, animarMallas, GLSL_IDLE } from './modelo.js?v=72';
 
 /* ── Las piezas esculpidas ─────────────────────────────────────────────────
    Cualquier figura puede declarar un `glb` en figuras.js y dejar de ser una
@@ -27,12 +27,11 @@ import { cargarModelo, animarMallas, GLSL_IDLE } from './modelo.js?v=71';
 
    Hay dos ritmos de carga, y la diferencia importa:
 
-   · La figura del HUB (valquiria) se descarga al evaluar el módulo, antes
-     incluso de que exista el canvas: es lo que el visitante está esperando y
-     lo único que no depende de nada más. Su descarga es la que llena la barra
-     del preloader.
+   · La primera figura se descarga al pedir `primeraFigura`: en la home será la
+     valquiria y en una página limpia Dental será el molar. Su descarga llena
+     el preloader de esa experiencia.
    · Las demás se piden la PRIMERA VEZ que se navega a su sección. Nadie paga
-     el peso de la pieza de Lux por entrar al catálogo.
+     el peso de una pieza que esa página no va a mostrar.
 
    Si declaras un `glb` que todavía no existe, el costo es un 404 la primera
    vez que se visita esa sección y nada más: la figura sale procedural y el
@@ -319,10 +318,6 @@ function adjuntarMalla(id) {
 /* La malla de la figura que se está viendo, si la hay. */
 const mallaViva = () => mallas.get(figActual) || null;
 
-/* La descarga del hub arranca YA, antes incluso de que exista el canvas: es lo
-   más lento del arranque y lo único que no depende de nada más. */
-const modeloListo = pedirMalla(FIGURA_HUB);
-
 /* Muestrea una figura repartida en cuadros y avisa del avance: es lo que llena
    la barra del preloader cuando la pieza es procedural.
 
@@ -608,6 +603,7 @@ void main(){
 
 /* ── Estado de la escena ─────────────────────────────────────────────────── */
 let renderer, scene, camera, grupo, nube, halo, solido, frente, plato, motas, uni, uniG, uniS;
+let viewportCanvas = null, resizeObserver = null;
 let solidoGoal = 0;
 let awake = 0;          /* 0→1 al terminar de imprimir: el momento "cobra vida" */
 let figActual = null;
@@ -742,9 +738,20 @@ function montarPlato() {
   grupo.add(sombraSuelo);
 }
 
+function dimensionesViewport() {
+  if (!viewportCanvas) return { ancho: innerWidth, alto: innerHeight };
+  const caja = viewportCanvas.getBoundingClientRect();
+  return {
+    ancho: Math.max(1, Math.round(caja.width || viewportCanvas.clientWidth || innerWidth)),
+    alto: Math.max(1, Math.round(caja.height || viewportCanvas.clientHeight || innerHeight))
+  };
+}
+
 function init() {
+  if (renderer) return true;
   const canvas = document.getElementById('escena');
   if (!canvas) return false;
+  viewportCanvas = canvas;
 
   try {
     renderer = new THREE.WebGLRenderer({
@@ -769,7 +776,12 @@ function init() {
     ? Math.min(devicePixelRatio || 1, 1.6)
     : Math.min(Math.max(devicePixelRatio || 1, 1.5), 2);
   renderer.setPixelRatio(dpr);
-  renderer.setSize(innerWidth, innerHeight);
+  const viewport = dimensionesViewport();
+  /* `false` conserva las dimensiones CSS reservadas por el layout. En la
+     aplicación histórica el canvas sigue midiendo toda la ventana; en una
+     página limpia puede vivir dentro de una celda sin estirarse por debajo
+     del contenido. */
+  renderer.setSize(viewport.ancho, viewport.alto, false);
 
   /* Cadena de color de plató. Es la diferencia entre marfil y plástico:
      · el trabajo interno va en lineal y la salida se codifica a sRGB, así que
@@ -792,7 +804,7 @@ function init() {
   renderer.localClippingEnabled = true;
 
   scene = new THREE.Scene();
-  camera = new THREE.PerspectiveCamera(30, innerWidth / innerHeight, 0.1, 60);
+  camera = new THREE.PerspectiveCamera(30, viewport.ancho / viewport.alto, 0.1, 60);
   grupo = new THREE.Group(); scene.add(grupo);
 
   uni = {
@@ -899,10 +911,19 @@ function init() {
 
   addEventListener('resize', alRedimensionar, { passive: true });
   addEventListener('pointermove', e => {
-    mx = e.clientX / innerWidth - .5;
-    my = e.clientY / innerHeight - .5;
+    const caja = viewportCanvas.getBoundingClientRect();
+    if (!caja.width || !caja.height) return;
+    mx = Math.max(-.5, Math.min(.5, (e.clientX - caja.left) / caja.width - .5));
+    my = Math.max(-.5, Math.min(.5, (e.clientY - caja.top) / caja.height - .5));
     atento = 1;
   }, { passive: true });
+  /* El canvas contenido puede cambiar aunque no cambie la ventana (por
+     fuentes, grid o orientación). Observarlo evita deformación y no añade
+     listeners por frame. */
+  if ('ResizeObserver' in window) {
+    resizeObserver = new ResizeObserver(alRedimensionar);
+    resizeObserver.observe(canvas);
+  }
 
   medirEscala();
   vivo = true;
@@ -912,9 +933,10 @@ function init() {
 
 function alRedimensionar() {
   if (!renderer) return;
-  camera.aspect = innerWidth / innerHeight;
+  const viewport = dimensionesViewport();
+  camera.aspect = viewport.ancho / viewport.alto;
   camera.updateProjectionMatrix();
-  renderer.setSize(innerWidth, innerHeight);
+  renderer.setSize(viewport.ancho, viewport.alto, false);
   medirEscala();
   encuadrar();
 }
@@ -943,15 +965,18 @@ const CENTRO_MOVIL = 0.23;  // dónde queda su centro, 0 = borde superior
 function encuadrar() {
   if (!grupo || !camera) return;
   const m = esMovil();
+  const contenido = viewportCanvas && viewportCanvas.dataset.sceneViewport === 'contained';
   const F = FIGURAS[figActual] || FIGURAS.valquiria;
   const alto = F.bb.y1 - F.bb.y0;
   const centro = (F.bb.y0 + F.bb.y1) / 2;
 
   if (m) {
     const semi = F.dist * Math.tan(camera.fov * Math.PI / 360);
-    const escala = 2 * ALTO_MOVIL * semi / alto;
+    const altoMovil = contenido ? 0.72 : ALTO_MOVIL;
+    const centroMovil = contenido ? 0.50 : CENTRO_MOVIL;
+    const escala = 2 * altoMovil * semi / alto;
     grupo.scale.setScalar(escala);
-    grupo.position.y = 0.10 + (1 - 2 * CENTRO_MOVIL) * semi - centro * escala;
+    grupo.position.y = 0.10 + (1 - 2 * centroMovil) * semi - centro * escala;
     distGoal = F.dist;
     ladoGoal = 0;
   } else {
@@ -961,7 +986,7 @@ function encuadrar() {
     /* En anchos medios (900–1200) las dos columnas se estrechan y la pieza
        alcanza la última línea del texto. Se corre más hacia afuera conforme
        la ventana se angosta. */
-    const holgura = Math.min(1, Math.max(0, (innerWidth - ANCHO_APILADO) / 420));
+    const holgura = Math.min(1, Math.max(0, (dimensionesViewport().ancho - ANCHO_APILADO) / 420));
     ladoGoal = ladoDeseado * (1.34 - holgura * 0.26);
   }
 }
@@ -1248,7 +1273,7 @@ const escena = {
     if (id === FIGURA_HUB) {
       let vivo = true;
       const tic = setInterval(() => { if (vivo) alAvanzar(avanceModelo * 0.98); }, 80);
-      modeloListo.then(ok => {
+      pedirMalla(FIGURA_HUB).then(ok => {
         vivo = false; clearInterval(tic);
         if (ok) { alAvanzar(1); alTerminar(); }
         else muestrear(id, alAvanzar, alTerminar);

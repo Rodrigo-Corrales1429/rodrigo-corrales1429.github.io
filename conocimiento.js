@@ -26,6 +26,7 @@
  */
 
 const { tarifasDeReferencia } = require("./impresion3d.js");
+const { tarifasDeReferencia: tarifasPack } = require("./termoformado.js");
 
 // ----------------------------------------------------------------------------
 // CONTEXTO TRANSVERSAL DE LA EMPRESA
@@ -47,13 +48,20 @@ const EMPRESA = {
   comercial: {
     moneda: "MXN (pesos mexicanos)",
     envio_gratis_desde: "$999.00 MXN",
-    unica_division_con_venta_en_linea: "Valquiria Dental",
-    whatsapp: "+52 55 5467 5821",
+    envio:
+      "Se cotiza por código postal con la herramienta cotizar_envio: da costo, " +
+      "paquetería y fecha estimada de entrega. Envío gratis a partir de $999 " +
+      "en el servicio estándar.",
+    venta_en_linea: "Valquiria Dental (catálogo con pago en línea)",
+    con_cotizacion_automatica:
+      "Dental (precio firme), 3D (estimación por peso/hora), Pack (rango por " +
+      "molde y tiraje). Lux e IA se cierran con especialista.",
+    whatsapp: "+52 771 795 9131",
     correo: "ventas@valquiriadental.com"
   },
   lo_que_no_prometemos: [
-    "No damos fechas de entrega exactas por chat. Se confirman con un especialista una vez cerrado el pedido.",
-    "No cotizamos por chat divisiones distintas a Dental: se levanta el interés y un especialista responde.",
+    "Las fechas de entrega que damos son ESTIMADAS y salen de cotizar_envio; la fecha en firme la fija la guía cuando se genera el envío.",
+    "Fuera de Dental, los números son ESTIMACIONES preliminares: el especialista los confirma. Nunca se presentan como precio cerrado.",
     "No emitimos facturas ni condiciones fiscales especiales desde el asesor."
   ]
 };
@@ -70,8 +78,9 @@ const DIVISIONES = {
     titulo: "Valquiria 3D",
     subtitulo: "Manufactura aditiva",
     estado:
-      "EN CONSTRUCCIÓN — sin tienda en línea, pero el asesor SÍ da " +
-      "estimaciones oficiales de precio con la herramienta estimar_impresion_3d",
+      "ACTIVA — toma proyectos desde hoy. Sin tienda en línea (cada pieza es " +
+      "distinta), pero el asesor SÍ da estimaciones oficiales de precio con la " +
+      "herramienta estimar_impresion_3d",
     promesa: "Prototipos que existen mañana.",
     que_es:
       "Impresión 3D profesional: prototipado rápido, piezas funcionales y " +
@@ -118,7 +127,7 @@ const DIVISIONES = {
     numero: "División 02",
     titulo: "Valquiria Dental",
     subtitulo: "Material pedagógico de alta fidelidad",
-    estado: "ACTIVA — única división que vende en línea hoy",
+    estado: "ACTIVA — la única con catálogo y pago en línea",
     promesa: "La anatomía se aprende tocándola.",
     que_es:
       "Modelos anatómicos dentales con nervio sintético que responde como el de " +
@@ -156,7 +165,10 @@ const DIVISIONES = {
     numero: "División 03",
     titulo: "Valquiria Pack",
     subtitulo: "Empaque termoformado a la medida",
-    estado: "EN CONSTRUCCIÓN — no vende en línea todavía",
+    estado:
+      "ACTIVA — toma proyectos desde hoy. El asesor da un RANGO estimado con " +
+      "la herramienta estimar_termoformado; el precio en firme lo cierra el " +
+      "especialista",
     promesa: "El empaque es la primera pieza que toca el cliente.",
     que_es:
       "Empaques termoformados a la medida para productos que necesitan " +
@@ -177,12 +189,18 @@ const DIVISIONES = {
       "Descuento por mayoreo en tirajes grandes (el porcentaje lo confirma el especialista)."
     ],
     politica_de_precios:
-      "DELIBERADAMENTE sin precios publicados, ni siquiera aproximados. Cada " +
-      "molde y cada tiraje son distintos, y el precio se conversa con el " +
-      "especialista: el trabajo del asesor es entender el proyecto (producto, " +
-      "dimensiones, tiraje, material) y registrar el interés — nunca dar una " +
-      "cifra. Esto no es una carencia: es la manera de que el prospecto se " +
-      "involucre y hable con una persona.",
+      "CAMBIÓ el 28 de agosto de 2026: antes no se daba ninguna cifra. Ahora el " +
+      "asesor SÍ da un RANGO estimado con la herramienta estimar_termoformado, " +
+      "siempre desglosado (molde, lámina, formado) y siempre presentado como " +
+      "estimación. El molde es un pago ÚNICO del proyecto y el resto escala con " +
+      "el tiraje: explicar eso es la mitad de la venta. El especialista sigue " +
+      "cerrando el precio en firme viendo el producto o su archivo.",
+    tarifas_de_referencia: tarifasPack(),
+    como_cotiza:
+      "Con estimar_termoformado, a partir de largo y ancho del producto en cm y " +
+      "el tiraje. Acepta el material en texto libre ('transparente', 'base " +
+      "blanca', 'PET') y si lleva tapa. Devuelve rango, desglose y la escalera " +
+      "de tiraje — que es el mejor argumento comercial de la división.",
     preguntas_de_calificacion: [
       "¿Qué producto va dentro y qué dimensiones tiene?",
       "¿Cuál es el tiraje estimado?",
@@ -191,13 +209,16 @@ const DIVISIONES = {
       "¿Hay requisitos de marca (sello, logotipo en relieve) o de material (reciclable)?"
     ],
     lo_que_no_prometemos: [
-      "NUNCA se da un precio de empaque por chat, ni siquiera un rango o aproximado.",
-      "No cotizamos molde sin conocer geometría y tiraje.",
-      "No hay catálogo de empaques estándar: todo es a la medida."
+      "El rango del chat es una ESTIMACIÓN con tarifas de referencia del taller, no una cotización firme.",
+      "No se estima nada sin largo, ancho y tiraje: sin esos tres datos no hay número, hay adivinanza.",
+      "No incluye impresión, etiquetado, sellado, maquila de empaquetado, IVA ni envío del tiraje.",
+      "No hay catálogo de empaques estándar: todo es a la medida.",
+      "Una pieza que no cabe en lámina de 60×40 cm necesita lámina especial y la ve el especialista."
     ],
     siguiente_paso:
-      "Calificar con 2-3 preguntas y levantar el interés con registrar_interes " +
-      "para que el especialista dé el precio."
+      "Pedir largo, ancho y tiraje; dar el rango con estimar_termoformado " +
+      "explicando que el molde se paga una sola vez; y levantar el interés con " +
+      "registrar_interes para que el especialista confirme."
   },
 
   // ══════════════════════════════════════════════════════════════════════
@@ -237,7 +258,9 @@ const DIVISIONES = {
     numero: "División 05",
     titulo: "Valquiria IA",
     subtitulo: "Consultoría y automatización con inteligencia artificial",
-    estado: "EN BETA — consultoría activa, se agenda con especialista",
+    estado:
+      "ACTIVA — consultoría y proyectos a la medida, más Valquiria Dental OS " +
+      "como producto de suscripción con precios publicados",
     promesa: "Inteligencia artificial que entra a operación.",
     que_es:
       "Diseñamos y ponemos a trabajar sistemas de IA dentro de procesos que ya " +
@@ -263,6 +286,94 @@ const DIVISIONES = {
       "y cierra con link de pago o por WhatsApp. Es exactamente lo que " +
       "construimos para otros. Si el usuario pregunta qué hace Valquiria IA, la " +
       "respuesta más honesta es: esto que está usando ahora mismo.",
+    /* ══════════════════════════════════════════════════════════════════
+       EL PRODUCTO EMPAQUETADO DE LA DIVISIÓN.
+
+       Todo lo demás en Valquiria IA es consultoría: se cotiza por proyecto y
+       tarda semanas en cerrarse. Dental OS es lo contrario — precio público,
+       alta inmediata, mensualidad. Es lo único de esta división que el asesor
+       puede cotizar solo, y por eso vive aquí con sus números exactos.
+
+       Los importes son PRECIOS DE LANZAMIENTO tomados del blueprint de
+       negocio. La promesa contractual de Founder/Early Adopter es el DESCUENTO
+       RELATIVO sobre la lista vigente, nunca un importe "de por vida": si la
+       lista sube, ellos suben conservando su ventaja. Decirlo de otra forma
+       crea una obligación que la empresa no puede sostener.
+       ══════════════════════════════════════════════════════════════════ */
+    producto_estrella: {
+      clave: "dental_os",
+      nombre: "Valquiria Dental OS",
+      una_linea:
+        "El sistema operativo inteligente del consultorio dental: agenda, " +
+        "pacientes, WhatsApp y un asistente de IA que recupera el dinero que " +
+        "hoy se pierde en citas caídas.",
+      para_quien:
+        "Consultorios dentales independientes y clínicas de 1 a 10 dentistas " +
+        "en México.",
+      que_resuelve: [
+        "Inasistencias: confirma, recuerda y reagenda por WhatsApp sin que nadie lo haga a mano.",
+        "Huecos de agenda: cuando alguien cancela, ofrece el espacio a la lista de espera antes de que se pierda la hora.",
+        "Seguimiento: detecta al paciente que no volvió y le escribe con el protocolo que corresponde a su tratamiento.",
+        "Recepción: contesta dudas y agenda por WhatsApp fuera de horario, dentro de las reglas de la clínica.",
+        "Visibilidad: el dueño ve qué se cobró, qué se perdió y por qué."
+      ],
+      la_metrica_que_lo_vende:
+        "Revenue Recovered: el sistema lleva la cuenta, evento por evento y " +
+        "auditable, del dinero que recuperó (citas rescatadas, huecos " +
+        "revendidos, pacientes reactivados). El argumento nunca es 'tenemos " +
+        "IA': es que lo recuperado supere la mensualidad.",
+      componentes: [
+        "Web para recepción y dirección (escritorio).",
+        "App móvil para el dentista.",
+        "Valquiria AI: el asistente que opera dentro de las reglas de la clínica.",
+        "WhatsApp como canal nativo con el paciente.",
+        "Agenda inteligente con lista de espera y reserva de emergencia."
+      ],
+      planes: [
+        {
+          nombre: "Lista",
+          base_mensual: "$2,499 MXN",
+          dentista_adicional: "+$1,800 MXN/mes",
+          incluye: "1,500 mensajes/mes; +1,000 por dentista adicional"
+        },
+        {
+          nombre: "Early Adopter",
+          base_mensual: "$2,199 MXN",
+          dentista_adicional: "+$1,599 MXN/mes",
+          incluye: "Mismos límites que Lista",
+          ventaja: "~12% bajo la tarifa de lista vigente, mientras conserve el estatus"
+        },
+        {
+          nombre: "Founder",
+          base_mensual: "$1,999 MXN",
+          dentista_adicional: "+$1,399 MXN/mes",
+          incluye: "Mismos límites que Lista",
+          ventaja: "~20% bajo la tarifa de lista vigente, mientras conserve el estatus",
+          nota: "Cupo limitado: es el programa de los primeros clientes."
+        }
+      ],
+      implementacion:
+        "Cuota única de implementación de $3,000 a $5,000 MXN según el tamaño " +
+        "de la clínica y la migración de datos. Cubre configuración, carga de " +
+        "pacientes, alta de WhatsApp y capacitación del equipo.",
+      estado_real:
+        "En desarrollo activo con programa Founder abierto. Se agenda una demo " +
+        "y un diagnóstico de la clínica antes de dar fecha de alta. NO está " +
+        "disponible para autoservicio todavía.",
+      lo_que_no_prometemos: [
+        "No se promete una fecha de alta por chat: se agenda demo y el especialista la fija.",
+        "El precio Founder es una VENTAJA RELATIVA sobre la lista vigente, no un importe congelado para siempre.",
+        "No se prometen porcentajes de reducción de inasistencias antes de medir la clínica.",
+        "No es un expediente clínico certificado ni sustituye obligaciones legales del consultorio.",
+        "El costo de los mensajes de WhatsApp por encima del límite se factura aparte."
+      ],
+      como_lo_cotiza_el_asesor:
+        "Con la herramienta cotizar_dental_os: pregunta cuántos dentistas " +
+        "atienden y devuelve el precio de los tres planes con su total mensual " +
+        "y anual. Es la ÚNICA cotización de Valquiria IA que el asesor cierra " +
+        "solo; cualquier otro proyecto de IA se levanta como interés."
+    },
+
     preguntas_de_calificacion: [
       "¿Qué proceso concreto le está costando tiempo o dinero hoy?",
       "¿Quién lo hace hoy y cuántas horas a la semana se van en eso?",
@@ -276,9 +387,14 @@ const DIVISIONES = {
       "No trabajamos con datos sensibles de pacientes ni con información personal delicada dentro del chat público."
     ],
     siguiente_paso:
-      "Hacer 2-3 preguntas de calificación, dar una lectura honesta de si el caso " +
-      "es buen candidato, y levantar el interés con registrar_interes para que un " +
-      "especialista agende."
+      "Primero decidir de qué se trata la conversación, porque son dos caminos " +
+      "distintos:\n" +
+      "· Si es un CONSULTORIO DENTAL → el producto es Valquiria Dental OS. " +
+      "Preguntar cuántos dentistas atienden, cotizar con cotizar_dental_os y " +
+      "registrar el interés para agendar demo.\n" +
+      "· Si es cualquier otra empresa → consultoría a la medida. Hacer 2-3 " +
+      "preguntas de calificación, dar una lectura honesta de si el caso es buen " +
+      "candidato, y levantar el interés con registrar_interes."
   }
 };
 
@@ -385,6 +501,18 @@ const SINONIMOS = {
   ia: "ia", "valquiria ia": "ia", ai: "ia",
   "inteligencia artificial": "ia", automatizacion: "ia",
   "automatización": "ia", agentes: "ia", chatbot: "ia",
+  /* dental os — va ANTES que los tokens sueltos a propósito: normalizarClave
+     prueba primero la frase completa, así que "dental os" cae aquí y no en
+     "dental". Sin estas entradas, preguntar por el software del consultorio
+     devuelve el catálogo de dientes de práctica. */
+  "dental os": "dental_os", dentalos: "dental_os",
+  "valquiria dental os": "dental_os", "os dental": "dental_os",
+  "software dental": "dental_os", "sistema dental": "dental_os",
+  "software para consultorio": "dental_os", "sistema para consultorio": "dental_os",
+  "software para consultorios": "dental_os", consultorio: "dental_os",
+  consultorios: "dental_os", clinica: "dental_os", "clínica": "dental_os",
+  "software de clinica": "dental_os", "gestion de consultorio": "dental_os",
+  "agenda dental": "dental_os", crm: "dental_os",
   // procesos
   procesos: "procesos", proceso: "procesos", tecnologia: "procesos",
   "tecnología": "procesos", fdm: "procesos", resina: "procesos",
@@ -431,6 +559,17 @@ function consultarConocimiento(tema) {
   if (clave && DIVISIONES[clave]) {
     return { ok: true, tipo: "division", contenido: DIVISIONES[clave] };
   }
+  /* Dental OS es un producto, no una división, pero se pregunta por él tanto
+     como por una — y el usuario rara vez sabe que vive dentro de Valquiria IA.
+     Se atiende como tema propio para no obligarlo a adivinar la jerarquía. */
+  if (["dental_os", "dentalos", "os"].includes(clave)) {
+    return {
+      ok: true,
+      tipo: "producto",
+      contenido: DIVISIONES.ia.producto_estrella,
+      division_que_lo_vende: "Valquiria IA (División 05)"
+    };
+  }
 
   return {
     ok: true,
@@ -448,7 +587,7 @@ function consultarConocimiento(tema) {
         estado: d.estado,
         promesa: d.promesa
       })),
-      temas_disponibles: ["empresa", "dental", "3d", "pack", "lux", "ia", "procesos"]
+      temas_disponibles: ["empresa", "dental", "3d", "pack", "lux", "ia", "dental_os", "procesos"]
     }
   };
 }

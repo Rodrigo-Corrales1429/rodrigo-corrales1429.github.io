@@ -135,6 +135,31 @@ diente: {
 },
 ```
 
+### Reemplazo futuro de Pack y Lux
+
+Fase 1.5 reserva dos constantes en `assets/js/division-config.js`:
+
+```js
+export const PACK_MODEL = null;
+export const LUX_MODEL = null;
+```
+
+Los valores `null` son deliberados: Pack conserva la charola procedural y Lux
+la lámpara procedural actuales. Cuando los modelos definitivos salgan del flujo
+externo de Tripo3D y cumplan los requisitos de este documento:
+
+1. colocar los archivos optimizados en `assets/`, por ejemplo
+   `assets/pack.glb` y `assets/lux.glb`;
+2. cambiar únicamente la constante correspondiente por la ruta absoluta
+   (`'/assets/pack.glb'` o `'/assets/lux.glb'`);
+3. importar esa constante en `assets/js/figuras.js` y asignarla al campo `glb`
+   de `empaque` o `lampara`;
+4. ajustar `encaje`, `alza` o `holgura` sólo si el encuadre del modelo aprobado
+   lo exige, y ejecutar las pruebas 3D y visuales.
+
+El adaptador de página, el riel y el layout no deben cambiar. La SDF actual
+permanece como fallback incluso después de conectar el GLB.
+
 - `glb` — la ruta. Con esto basta.
 - `encaje` y `alza` — opcionales. Ajustan la malla al marco de la SDF cuando las
   dos no representan lo mismo. La valquiria los usa (`0.74` y `0.19`) porque su

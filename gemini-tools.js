@@ -27,10 +27,12 @@ const {
   listarCatalogo
 } = require("./quote-engine.js");
 
-const { consultarConocimiento, normalizarClave } = require("./conocimiento.js");
+const { consultarConocimiento, normalizarClave, DIVISIONES } = require("./conocimiento.js");
 const { estimarImpresion3D } = require("./impresion3d.js");
 const { resolverSku } = require("./resolver-productos.js");
 const { getProductoPorSku } = require("./catalog.js");
+const { cotizarEnvio } = require("./envios.js");
+const { estimarTermoformado } = require("./termoformado.js");
 
 // ----------------------------------------------------------------------------
 // 1. Declaraciones (lo que Gemini ve)
@@ -285,6 +287,131 @@ const estimarImpresion3dDeclaration = {
   }
 };
 
+const cotizarEnvioDeclaration = {
+  name: "cotizar_envio",
+  description:
+    "Calcula cuánto cuesta el envío a un código postal mexicano y CUÁNDO " +
+    "LLEGA. Es la única fuente de costos de envío y de fechas de entrega: " +
+    "NUNCA inventes una fecha ni digas 'de 3 a 5 días' de memoria. " +
+    "Úsala en cuanto el usuario pregunte por envío, costo de envío, " +
+    "paquetería, cuándo llega, si mandan a su ciudad, o cuando ya tenga " +
+    "carrito armado y esté por decidir — ver la fecha de entrega es lo que " +
+    "convierte un carrito en una compra. Si no sabes el código postal, " +
+    "pídeselo: es el único dato que hace falta. Devuelve varias opciones " +
+    "(estándar y express) ya ordenadas de más barata a más cara, con la " +
+    "fecha de cada una. IMPORTANTE: revisa el campo 'es_estimacion'. Si es " +
+    "true, la tarifa salió de la tabla interna y tienes que decir que es un " +
+    "estimado y que la guía definitiva se confirma al generar el envío.",
+  parametersJsonSchema: {
+    type: "object",
+    properties: {
+      cp_destino: {
+        type: "string",
+        description:
+          "Código postal mexicano de 5 dígitos a donde va el paquete. " +
+          "Ejemplo: '42000'. Es obligatorio."
+      },
+      usar_carrito: {
+        type: "boolean",
+        description:
+          "true (recomendado) para calcular el peso con lo que el cliente " +
+          "ya tiene en el carrito. Ponlo en false solo si quieres cotizar " +
+          "algo distinto de lo que hay en el carrito."
+      },
+      peso_kg: {
+        type: "number",
+        description:
+          "Peso en kilos, solo si NO se usa el carrito y el usuario lo sabe."
+      }
+    },
+    required: ["cp_destino"]
+  }
+};
+
+const estimarTermoformadoDeclaration = {
+  name: "estimar_termoformado",
+  description:
+    "Calcula el RANGO estimado de un empaque termoformado de Valquiria Pack. " +
+    "Es la única fuente de números de Pack: NUNCA calcules tú un precio de " +
+    "empaque. Necesita tres datos — largo y ancho del producto en cm, y el " +
+    "tiraje. Si te faltan, pídelos: son la diferencia entre una estimación y " +
+    "una adivinanza. Devuelve el desglose (molde, lámina, formado) y la " +
+    "escalera de tiraje. Al presentarlo, explica SIEMPRE dos cosas: que es " +
+    "una estimación que el especialista confirma, y que el molde se paga UNA " +
+    "SOLA VEZ — eso último es el argumento comercial más fuerte de la " +
+    "división, porque explica por qué 100 piezas salen caras por unidad y " +
+    "1,000 salen baratas. Después de darla, registra el interés.",
+  parametersJsonSchema: {
+    type: "object",
+    properties: {
+      largo_cm: { type: "number", description: "Largo del producto que va dentro, en cm." },
+      ancho_cm: { type: "number", description: "Ancho del producto que va dentro, en cm." },
+      alto_cm: {
+        type: "number",
+        description: "Alto o profundidad de la cavidad en cm. Si no lo sabes, omítelo (asume 3)."
+      },
+      tiraje: {
+        type: "integer",
+        description: "Piezas de la corrida. Si el usuario no lo sabe, usa 500 y dilo."
+      },
+      material: {
+        type: "string",
+        description:
+          "Texto libre: 'transparente', 'PET', 'base blanca', 'poliestireno', " +
+          "'vinil', 'grueso'. Por defecto poliestireno blanco."
+      },
+      complejidad: {
+        type: "string",
+        description:
+          "'simple' (caja o charola plana), 'media' (varias cavidades) o " +
+          "'alta' (contornos orgánicos, socavados). Por defecto 'media'."
+      },
+      con_tapa: {
+        type: "boolean",
+        description:
+          "true si es juego de base + tapa (dos moldes y dos formados). " +
+          "Pregúntalo: cambia el precio casi al doble."
+      },
+      molde_del_cliente: {
+        type: "boolean",
+        description:
+          "true solo para servicio de bajada, cuando el cliente ya tiene su " +
+          "propio molde. Entonces no se cobra molde."
+      }
+    },
+    required: ["largo_cm", "ancho_cm"]
+  }
+};
+
+const cotizarDentalOsDeclaration = {
+  name: "cotizar_dental_os",
+  description:
+    "Cotiza Valquiria Dental OS, el software de suscripción para " +
+    "consultorios dentales que vende la división Valquiria IA. Úsala cuando " +
+    "hable un dentista, un consultorio o una clínica interesados en el " +
+    "SISTEMA (agenda, pacientes, WhatsApp, recordatorios, IA), NO cuando " +
+    "pregunten por los modelos dentales de práctica —esos son productos " +
+    "físicos de Valquiria Dental y van con calcular_cotizacion—. Distinguir " +
+    "esos dos es el error más fácil de cometer: 'dientes para practicar' es " +
+    "Dental; 'sistema para mi consultorio' es Dental OS. Pregunta cuántos " +
+    "dentistas atienden en la clínica: el precio escala por dentista. " +
+    "Devuelve los tres planes con su total mensual y anual. Después de " +
+    "darlo, registra el interés para agendar la demo: no hay alta " +
+    "automática, siempre pasa por un especialista.",
+  parametersJsonSchema: {
+    type: "object",
+    properties: {
+      dentistas: {
+        type: "integer",
+        description:
+          "Cuántos dentistas atienden en la clínica. Por defecto 1. El " +
+          "primero va en la base y cada adicional suma."
+      }
+    },
+    required: []
+  }
+};
+
 // El bloque que se le pasa a Gemini en el config.tools:
 const TOOLS = [
   {
@@ -294,6 +421,9 @@ const TOOLS = [
       listarCatalogoDeclaration,
       calcularCotizacionDeclaration,
       estimarImpresion3dDeclaration,
+      cotizarEnvioDeclaration,
+      estimarTermoformadoDeclaration,
+      cotizarDentalOsDeclaration,
       registrarInteresDeclaration
     ]
   }
@@ -377,6 +507,26 @@ function resolverItems(items) {
  * @param {object} args              lo que mandó el modelo
  * @param {Array}  carritoActual     [{sku,cantidad}] ya saneado por server.js
  */
+/**
+ * Subtotal en centavos del carrito real, para saber si ya alcanzó el envío
+ * gratis. Se recalcula desde el catálogo —nunca desde un precio que venga del
+ * cliente— por la misma razón que /api/pago: un carrito manipulado desde la
+ * consola no puede regalarse el envío.
+ */
+function subtotalDelCarrito(carrito) {
+  let centavos = 0;
+  for (const l of Array.isArray(carrito) ? carrito : []) {
+    const p = getProductoPorSku(l?.sku);
+    if (!p) continue;
+    /* catalog.js ya entrega los precios en CENTAVOS ENTEROS
+       (`precio_centavos`), no en pesos. Multiplicar por 100 aquí daría un
+       subtotal cien veces mayor y regalaría el envío siempre. */
+    const cant = Math.max(1, parseInt(l?.cantidad, 10) || 1);
+    centavos += (p.precio_centavos || p.precio_regular_centavos || 0) * cant;
+  }
+  return centavos;
+}
+
 function cotizarConCarrito(args, carritoActual) {
   const accion = ACCIONES.includes(String(args?.accion || "").toLowerCase())
     ? String(args.accion).toLowerCase()
@@ -625,6 +775,108 @@ function obtenerLeads() {
   return LEADS_EN_MEMORIA.slice().reverse();
 }
 
+/**
+ * El lead completo más reciente, con contacto y resumen.
+ *
+ * `respuestaLead` deliberadamente NO devuelve esos campos: lo que sale de una
+ * herramienta vuelve al contexto del modelo, y ahí solo debe ir lo que el
+ * modelo necesita para hablar. El centro de avisos sí los necesita —un aviso
+ * sin el teléfono del prospecto no sirve de nada— así que los toma por aquí,
+ * del lado del servidor.
+ */
+/** Vuelve a meter en memoria los leads de una instantánea. Ver almacen.js. */
+function restaurarLeads(filas) {
+  if (!Array.isArray(filas)) return 0;
+  LEADS_EN_MEMORIA.length = 0;
+  /* Se respeta el tope de memoria: una instantánea vieja y enorme no puede
+     dejar al proceso sin RAM al arrancar. */
+  for (const l of filas.slice(-MAX_LEADS_MEMORIA)) LEADS_EN_MEMORIA.push(l);
+  return LEADS_EN_MEMORIA.length;
+}
+
+/** Los leads en orden natural (antiguo → nuevo), para guardarlos. */
+function leadsCrudos() {
+  return LEADS_EN_MEMORIA.slice();
+}
+
+function ultimoLeadRegistrado() {
+  return LEADS_EN_MEMORIA.length
+    ? LEADS_EN_MEMORIA[LEADS_EN_MEMORIA.length - 1]
+    : null;
+}
+
+// ----------------------------------------------------------------------------
+// 2.bis  Valquiria Dental OS — la aritmética del plan
+// ----------------------------------------------------------------------------
+/**
+ * El precio es base + (dentistas − 1) × asiento. La cuenta la hace el
+ * servidor, igual que con el carrito: el modelo declara cuántos dentistas
+ * son, no multiplica. Un modelo que multiplica delante de un cliente acaba
+ * cobrando de menos algún día.
+ *
+ * Los importes viven en conocimiento.js para que exista UNA sola fuente de
+ * verdad entre lo que dice el asesor y lo que dice la página.
+ */
+function cotizarDentalOs(args = {}) {
+  const producto = DIVISIONES.ia?.producto_estrella;
+  if (!producto) {
+    return { ok: false, error: "No hay ficha de producto de Dental OS cargada." };
+  }
+
+  const dentistas = Math.max(1, Math.min(parseInt(args?.dentistas, 10) || 1, 50));
+  const aNumero = txt => parseFloat(String(txt).replace(/[^0-9.]/g, "")) || 0;
+  const mx = n =>
+    `$${n.toLocaleString("es-MX", { minimumFractionDigits: 0, maximumFractionDigits: 0 })} MXN`;
+
+  const planes = producto.planes.map(p => {
+    const base = aNumero(p.base_mensual);
+    const asiento = aNumero(p.dentista_adicional);
+    const mensual = base + asiento * (dentistas - 1);
+    return {
+      plan: p.nombre,
+      base_mensual: p.base_mensual,
+      dentista_adicional: p.dentista_adicional,
+      total_mensual: mx(mensual),
+      total_anual: mx(mensual * 12),
+      por_dentista: mx(Math.round(mensual / dentistas)),
+      incluye: p.incluye,
+      ventaja: p.ventaja || null,
+      nota: p.nota || null
+    };
+  });
+
+  const lista = planes.find(p => p.plan === "Lista");
+  const founder = planes.find(p => p.plan === "Founder");
+  const ahorro =
+    lista && founder ? aNumero(lista.total_mensual) - aNumero(founder.total_mensual) : 0;
+
+  return {
+    ok: true,
+    producto: producto.nombre,
+    una_linea: producto.una_linea,
+    dentistas,
+    mensajes_incluidos: `${1500 + 1000 * (dentistas - 1)} mensajes de WhatsApp al mes`,
+    planes,
+    implementacion: producto.implementacion,
+    ahorro_founder_mensual: ahorro > 0 ? mx(ahorro) : null,
+    estado: producto.estado_real,
+    condiciones: producto.lo_que_no_prometemos,
+    /* El asesor tiene prohibido decir "precio de por vida". La promesa real
+       es una ventaja porcentual sobre la lista vigente. */
+    aviso_para_el_asesor:
+      "Preséntalo como PRECIOS DE LANZAMIENTO. Founder y Early Adopter " +
+      "conservan un descuento RELATIVO sobre la tarifa de lista vigente " +
+      "mientras mantengan su estatus — nunca digas 'precio de por vida' ni " +
+      "'congelado para siempre'. No prometas fecha de alta: se agenda demo. " +
+      "Cierra siempre con registrar_interes.",
+    siguiente_paso:
+      "Dar los tres planes, señalar el cupo Founder, y llamar a " +
+      "registrar_interes con division='ia', nombre y contacto para agendar la " +
+      "demo. Sin ese registro la conversación se pierde: no hay alta " +
+      "automática de Dental OS."
+  };
+}
+
 // ----------------------------------------------------------------------------
 // 3. Dispatcher: ejecuta el function call que Gemini pidió
 // ----------------------------------------------------------------------------
@@ -637,7 +889,7 @@ function obtenerLeads() {
  * `{ ok: false, error: "..." }` para que Gemini pueda explicárselo al
  * usuario en su siguiente turno.
  */
-function ejecutarHerramienta({ name, args }, ctx = {}) {
+async function ejecutarHerramienta({ name, args }, ctx = {}) {
   try {
     switch (name) {
       case "consultar_division":
@@ -658,6 +910,26 @@ function ejecutarHerramienta({ name, args }, ctx = {}) {
       case "estimar_impresion_3d":
         return estimarImpresion3D(args);
 
+      case "estimar_termoformado":
+        return estimarTermoformado(args);
+
+      case "cotizar_dental_os":
+        return cotizarDentalOs(args);
+
+      case "cotizar_envio": {
+        /* El peso sale del carrito REAL, por la misma razón que la cotización:
+           si el modelo pierde el hilo de lo que el cliente lleva, el envío
+           se cobraría sobre un pedido imaginario. */
+        const usarCarrito = args?.usar_carrito !== false;
+        const lineas = usarCarrito ? (ctx.carrito || []) : [];
+        return await cotizarEnvio({
+          cp_destino: args?.cp_destino,
+          lineas,
+          peso_kg: args?.peso_kg,
+          subtotal_centavos: usarCarrito ? subtotalDelCarrito(ctx.carrito) : 0
+        });
+      }
+
       case "registrar_interes":
         return registrarInteres(args);
 
@@ -667,7 +939,8 @@ function ejecutarHerramienta({ name, args }, ctx = {}) {
           error:
             `La herramienta "${name}" no existe. Herramientas válidas: ` +
             `consultar_division, buscar_productos, listar_catalogo, ` +
-            `calcular_cotizacion, estimar_impresion_3d, registrar_interes.`
+            `calcular_cotizacion, estimar_impresion_3d, estimar_termoformado, ` +
+            `cotizar_dental_os, cotizar_envio, registrar_interes.`
         };
     }
   } catch (e) {
@@ -685,6 +958,10 @@ module.exports = {
   TOOLS,
   ejecutarHerramienta,
   obtenerLeads,
+  ultimoLeadRegistrado,
+  restaurarLeads,
+  leadsCrudos,
+  cotizarDentalOs,
   // Exportados para tests:
   cotizarConCarrito,
   resolverItems
