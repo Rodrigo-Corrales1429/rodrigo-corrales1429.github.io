@@ -28,7 +28,12 @@
 
 const crypto = require("crypto");
 
-const MP_API = "https://api.mercadopago.com";
+/* La API real, salvo que se apunte a otra.
+   `MP_API_URL` existe para las PRUEBAS: sin ella no hay forma de ejercitar el
+   webhook completo —firma, consulta del pago, cuadre del importe, inventario y
+   aviso— sin cobrarle a alguien de verdad, y esa es exactamente la ruta cuyos
+   fallos son más caros. En producción no se define y manda la de siempre. */
+const MP_API = (process.env.MP_API_URL || "https://api.mercadopago.com").replace(/\/+$/, "");
 
 /* Cuántas cuotas ofrecer. Los meses sin intereses son un acuerdo entre tu
    cuenta y el banco: aquí solo se declara el tope. */
@@ -41,8 +46,17 @@ const EXCLUIR_TIPOS = (process.env.MP_EXCLUIR_TIPOS || "")
   .split(",").map(s => s.trim()).filter(Boolean);
 
 /* Minutos que vive el link antes de caducar. Un link eterno es un precio
-   eterno: si mañana sube el catálogo, el de ayer sigue cobrando el de ayer. */
-const VIGENCIA_MIN = parseInt(process.env.MP_VIGENCIA_MINUTOS || "1440", 10);
+   eterno: si mañana sube el catálogo, el de ayer sigue cobrando el de ayer.
+
+   Bajó de 1 440 a 60. Antes la reserva de inventario se ataba a este número
+   —`Math.max(reserva, vigencia)`—, así que un link de 24 h apartaba
+   mercancía 24 h y bastaba una petición para dejar un SKU en cero. Ahora la
+   reserva vive sus 15 minutos por su cuenta (ver inventario.js) y esto solo
+   decide cuánto tiempo se puede pagar. Si activas pagos en efectivo o SPEI
+   —que se liquidan en días— súbelo, sabiendo que un pago que llega con la
+   reserva caducada se registra igual pero avisa de que hay que comprobar el
+   stock antes de prometer fecha. */
+const VIGENCIA_MIN = parseInt(process.env.MP_VIGENCIA_MINUTOS || "60", 10);
 
 /**
  * Arma el cuerpo de la preferencia a partir de una cotización YA calculada
@@ -54,9 +68,15 @@ const VIGENCIA_MIN = parseInt(process.env.MP_VIGENCIA_MINUTOS || "1440", 10);
  * @param {string}   o.folio
  * @param {string}   o.sitioUrl
  * @param {string}   [o.notificacionUrl]
- * @param {object}   [o.comprador] { nombre, email, telefono }
+ * @param {object}   [o.comprador] { nombre, email, whatsapp, cp, direccion }
+ * @param {object}   [o.envio]     { centavos, servicio } — el envío REAL,
+ *   cotizado por código postal con el mismo motor que ve el cliente. Sin él
+ *   se usa la tarifa plana de la cotización, que es una estimación y no lo
+ *   que se debe cobrar.
  */
-function construirPreferencia({ cot, productoPorSku, folio, sitioUrl, notificacionUrl, comprador }) {
+function construirPreferencia({
+  cot, productoPorSku, folio, sitioUrl, notificacionUrl, comprador, envio
+}) {
   const items = cot.lineas.map(l => {
     const p = productoPorSku(l.sku);
     return {
@@ -72,15 +92,25 @@ function construirPreferencia({ cot, productoPorSku, folio, sitioUrl, notificaci
     };
   });
 
-  if (cot._raw.envio_centavos > 0) {
+  /* EL ENVÍO QUE SE COBRA ES EL QUE SE ENSEÑÓ.
+     La cotización trae una tarifa plana de referencia; el cliente vio otra,
+     calculada por su código postal. Cobrar la plana cuando la pantalla decía
+     la otra es la diferencia de $15 que encontró la auditoría — pequeña en
+     pesos y enorme en confianza: el importe del banco no coincidía con el
+     del sitio. Si llega `envio`, manda `envio`. */
+  const envioCentavos = envio && Number.isInteger(envio.centavos)
+    ? envio.centavos
+    : cot._raw.envio_centavos;
+
+  if (envioCentavos > 0) {
     items.push({
       id: "ENVIO",
-      title: "Envío a domicilio",
+      title: envio?.servicio ? `Envío — ${envio.servicio}` : "Envío a domicilio",
       description: "Envío estándar a domicilio en México",
       category_id: "services",
       quantity: 1,
       currency_id: "MXN",
-      unit_price: cot._raw.envio_centavos / 100
+      unit_price: envioCentavos / 100
     });
   }
 
@@ -117,7 +147,8 @@ function construirPreferencia({ cot, productoPorSku, folio, sitioUrl, notificaci
       folio,
       origen: "asesor-valquiria",
       /* Sirve para cuadrar contra el webhook sin volver a calcular nada. */
-      total_centavos: cot._raw.total_centavos
+      total_centavos: cot._raw.subtotal_centavos + envioCentavos,
+      envio_centavos: envioCentavos
     }
   };
 

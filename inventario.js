@@ -36,14 +36,50 @@
 
 const { getProductoPorSku } = require("./catalog.js");
 
-/* Debe ser >= MP_VIGENCIA_MINUTOS: si el link de pago vive más que la reserva,
-   alguien puede pagar mercancía que ya se le dio a otro. */
+/* QUINCE MINUTOS, no veinticuatro horas.
+   ─────────────────────────────────────────────────────────────────────────
+   La reserva antes duraba lo que el link de pago —1 440 minutos por
+   omisión—, y eso convertía el checkout público en una palanca: una sola
+   petición pidiendo las 27 unidades de un SKU dejaba el catálogo en cero
+   durante un día entero, sin pagar un peso y sin pasar por ningún límite,
+   porque el tope de seis peticiones por minuto no frena a quien solo
+   necesita UNA.
+
+   Quince minutos es lo que tarda una compra con tarjeta de principio a fin.
+   Lo que dura más que eso —SPEI, efectivo en tienda— se resuelve en
+   `confirmar`: si el pago entra con la reserva ya caducada, la venta se
+   registra igual y el aviso lo dice, para comprobar el stock antes de
+   prometer fecha. Es preferible avisar de una colisión rara que bloquear el
+   inventario de todos los días. */
 const MINUTOS_RESERVA = Math.max(
-  parseInt(process.env.INVENTARIO_MINUTOS_RESERVA || "0", 10) || 0,
-  parseInt(process.env.MP_VIGENCIA_MINUTOS || "1440", 10)
+  1,
+  parseInt(process.env.INVENTARIO_MINUTOS_RESERVA || "15", 10) || 15
 );
 
-/* folio → { lineas:[{sku,cantidad}], creada:ms, estado:'reservada'|'vendida' } */
+/* Topes de una SOLA reserva. El mostrador de autoservicio no es el canal de
+   mayoreo —el sitio manda a WhatsApp a quien compra por volumen—, así que
+   limitarlo aquí no cierra ninguna venta real y sí cierra el desabasto por
+   diversión. `CANTIDAD_MAXIMA_POR_LINEA` sigue mandando como techo absoluto:
+   lo que no puede cotizarse tampoco puede apartarse. */
+const TECHO_LINEA = parseInt(process.env.CANTIDAD_MAXIMA_POR_LINEA || "200", 10) || 200;
+const MAX_POR_SKU = Math.min(
+  TECHO_LINEA,
+  parseInt(process.env.INVENTARIO_MAX_POR_SKU || "6", 10) || 6
+);
+const MAX_UNIDADES = Math.max(
+  MAX_POR_SKU,
+  parseInt(process.env.INVENTARIO_MAX_UNIDADES || "12", 10) || 12
+);
+
+/* Reservas vivas que puede tener a la vez un mismo visitante. Sin esto, el
+   tope por reserva se esquiva abriendo cinco. */
+const MAX_RESERVAS_POR_IDENTIDAD = Math.max(
+  1,
+  parseInt(process.env.INVENTARIO_MAX_RESERVAS_POR_IDENTIDAD || "3", 10) || 3
+);
+
+/* folio → { lineas:[{sku,cantidad}], creada:ms, estado:'reservada'|'vendida',
+             identidad:string|null } */
 const RESERVAS = new Map();
 const MAX_RESERVAS = 500;
 
@@ -75,6 +111,17 @@ function disponible(sku) {
   return Math.max(0, (p.stock || 0) - comprometido(sku));
 }
 
+/** Reservas vivas —ni vendidas ni caducadas— de un mismo visitante. */
+function reservasVivasDe(identidad) {
+  if (!identidad) return 0;
+  purgarCaducadas();
+  let n = 0;
+  for (const r of RESERVAS.values()) {
+    if (r.estado === "reservada" && r.identidad === identidad) n++;
+  }
+  return n;
+}
+
 /**
  * Aparta mercancía para un folio.
  *
@@ -82,11 +129,57 @@ function disponible(sku) {
  * medias dejaría al cliente con un pedido que no se puede surtir y con parte
  * del inventario bloqueado sin motivo.
  *
- * @returns {{ok:true}|{ok:false,faltantes:Array}}
+ * Tres puertas, en este orden: cuánto pide de un SKU, cuánto pide en total, y
+ * cuántas reservas tiene abiertas ya. Las tres se comprueban ANTES de mirar
+ * el stock, porque son sobre la petición y no sobre el almacén: da igual que
+ * haya 27 unidades, nadie se lleva 27 por el mostrador de autoservicio.
+ *
+ * @param {string} folio
+ * @param {Array<{sku:string,cantidad:number}>} lineas
+ * @param {{identidad?:string}} [opciones]
+ * @returns {{ok:true}|{ok:false,motivo:string,error:string,faltantes?:Array}}
  */
-function reservar(folio, lineas) {
+function reservar(folio, lineas, opciones = {}) {
   purgarCaducadas();
   if (RESERVAS.has(folio)) return { ok: true, ya_estaba: true };
+
+  const identidad = opciones.identidad ? String(opciones.identidad) : null;
+
+  let unidades = 0;
+  for (const l of lineas) {
+    unidades += l.cantidad;
+    if (l.cantidad > MAX_POR_SKU) {
+      const p = getProductoPorSku(l.sku);
+      return {
+        ok: false,
+        motivo: "tope-por-sku",
+        error:
+          `El máximo por compra en línea es ${MAX_POR_SKU} piezas de ` +
+          `${p?.nombre || l.sku}. Para pedidos mayores te atendemos por ` +
+          `WhatsApp al +52 771 795 9131 con precio de volumen.`
+      };
+    }
+  }
+  if (unidades > MAX_UNIDADES) {
+    return {
+      ok: false,
+      motivo: "tope-unidades",
+      error:
+        `El máximo por compra en línea es ${MAX_UNIDADES} piezas en total. ` +
+        `Para pedidos mayores te atendemos por WhatsApp al +52 771 795 9131 ` +
+        `con precio de volumen.`
+    };
+  }
+  if (reservasVivasDe(identidad) >= MAX_RESERVAS_POR_IDENTIDAD) {
+    return {
+      ok: false,
+      motivo: "tope-reservas",
+      error:
+        `Tienes ${MAX_RESERVAS_POR_IDENTIDAD} pedidos con link de pago sin ` +
+        `terminar. Págalos o espera ${MINUTOS_RESERVA} minutos a que se ` +
+        `liberen, y vuelve a intentar.`
+    };
+  }
 
   const faltantes = [];
   for (const l of lineas) {
@@ -101,12 +194,13 @@ function reservar(folio, lineas) {
       });
     }
   }
-  if (faltantes.length) return { ok: false, faltantes };
+  if (faltantes.length) return { ok: false, motivo: "stock", faltantes };
 
   RESERVAS.set(folio, {
     lineas: lineas.map(l => ({ sku: l.sku, cantidad: l.cantidad })),
     creada: Date.now(),
-    estado: "reservada"
+    estado: "reservada",
+    identidad
   });
   if (RESERVAS.size > MAX_RESERVAS) {
     RESERVAS.delete(RESERVAS.keys().next().value);
@@ -114,15 +208,40 @@ function reservar(folio, lineas) {
   return { ok: true };
 }
 
-/** El pago entró: la reserva pasa a venta y ya no caduca. */
-function confirmar(folio) {
+/**
+ * El pago entró: la reserva pasa a venta y ya no caduca.
+ *
+ * `lineasRespaldo` es lo que salva a los pagos lentos. Con la reserva en 15
+ * minutos, un SPEI o un pago en OXXO llega cuando ya caducó, y sin respaldo
+ * la venta no descontaría nada: el stock quedaría inflado y se volvería a
+ * vender lo mismo. Con él, la venta se registra igual y se devuelve
+ * `caducada:true` para que el aviso lo diga — puede que en ese rato otro se
+ * haya llevado la última pieza, y eso hay que mirarlo con los ojos, no
+ * suponerlo.
+ *
+ * @returns {{ok:boolean, caducada:boolean, repetida:boolean}}
+ */
+function confirmar(folio, lineasRespaldo) {
   const r = RESERVAS.get(folio);
-  if (!r || r.estado === "vendida") return false;
-  r.estado = "vendida";
-  for (const l of r.lineas) {
+
+  if (r && r.estado === "vendida") return { ok: true, caducada: false, repetida: true };
+
+  const lineas = r
+    ? r.lineas
+    : (Array.isArray(lineasRespaldo) ? lineasRespaldo : [])
+        .map(l => ({ sku: l.sku, cantidad: parseInt(l.cantidad, 10) || 0 }))
+        .filter(l => l.sku && l.cantidad > 0);
+
+  if (!lineas.length) return { ok: false, caducada: !r, repetida: false };
+
+  RESERVAS.set(folio, {
+    lineas, creada: r ? r.creada : Date.now(),
+    estado: "vendida", identidad: r ? r.identidad : null
+  });
+  for (const l of lineas) {
     VENDIDO.set(l.sku, (VENDIDO.get(l.sku) || 0) + l.cantidad);
   }
-  return true;
+  return { ok: true, caducada: !r, repetida: false };
 }
 
 /** El pago no entró: la mercancía vuelve al mostrador ya. */
@@ -156,7 +275,7 @@ function _reiniciar() {
 
 module.exports = {
   reservar, confirmar, liberar,
-  disponible, comprometido, estadoInventario,
-  MINUTOS_RESERVA,
+  disponible, comprometido, estadoInventario, reservasVivasDe,
+  MINUTOS_RESERVA, MAX_POR_SKU, MAX_UNIDADES, MAX_RESERVAS_POR_IDENTIDAD,
   _reiniciar
 };

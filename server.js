@@ -1263,7 +1263,17 @@ function recordarPedido(folio, datos) {
 
 /** Reenvía un hecho de pago a donde el negocio lo pueda ver de verdad. */
 function avisarPedido(evento) {
-  console.log(`[PEDIDO] ${JSON.stringify(evento)}`);
+  /* El LOG lleva lo que sirve para operar; el WEBHOOK lleva todo.
+     No es la misma audiencia: el webhook va al CRM del dueño, y los logs de
+     Render los ve cualquiera con acceso al panel —y quedan ahí meses—. Volcar
+     ahí el nombre, el correo, el teléfono y el domicilio de cada comprador es
+     una fuga silenciosa que no compra nada: para depurar basta el folio. */
+  console.log(
+    `[PEDIDO] folio=${evento.folio} estado=${evento.estado} ` +
+    `total=${evento.total} metodo=${evento.metodo || "—"} ` +
+    `items=${(evento.items || []).map(i => `${i.cantidad}×${i.sku}`).join(",") || "—"}` +
+    `${evento.comprador ? " contacto=sí" : " contacto=NO"}`
+  );
   const url = process.env.PEDIDOS_WEBHOOK_URL || process.env.LEADS_WEBHOOK_URL;
   if (!url) return;
   fetch(url, {
@@ -1325,6 +1335,40 @@ app.post("/api/pago", limitarPagos, async (req, res) => {
       return res.status(400).json({ error: cot.error });
     }
 
+    /* ═══ EL ENVÍO SE COTIZA AQUÍ, CON EL MISMO MOTOR QUE LO ENSEÑÓ ═══
+       `calcularCotizacion` usa una tarifa PLANA de referencia; la pantalla del
+       cliente usa `cotizarEnvio`, que cobra por código postal. Cuando no
+       coincidían, el sitio decía $536.83 y Mercado Pago cobraba $551.83. Que
+       sean quince pesos no lo hace menor: es el importe del banco
+       contradiciendo al de la pantalla, y eso convierte una compra en una
+       disputa. Ahora el CP del comprador —que ya es obligatorio— entra al
+       mismo motor y su resultado es lo que se cobra. */
+    const envioReal = await cotizarEnvio({
+      cp_destino: comprador.datos.cp,
+      lineas: cot.lineas.map(l => ({ sku: l.sku, cantidad: l.cantidad })),
+      subtotal_centavos: cot._raw.subtotal_centavos
+    });
+    if (!envioReal.ok) {
+      /* El CP tiene forma de CP pero no existe. Es un dato del comprador que
+         falta, no una avería: se devuelve como los demás. */
+      return res.status(400).json({
+        error: envioReal.error ||
+          "No pude calcular el envío a ese código postal. Revísalo, por favor.",
+        faltan: ["cp"]
+      });
+    }
+    const opcionEnvio =
+      envioReal.opciones.find(o => o.recomendada) || envioReal.opciones[0];
+    if (!opcionEnvio) {
+      return res.status(400).json({
+        error: "No tenemos servicio de entrega a ese código postal. " +
+               "Escríbenos por WhatsApp al +52 771 795 9131 y lo resolvemos.",
+        faltan: ["cp"]
+      });
+    }
+    const envioCentavos = opcionEnvio.costo_centavos;
+    const totalCentavos = cot._raw.subtotal_centavos + envioCentavos;
+
     const folio = "VQ-" + Date.now().toString(36).toUpperCase() +
                   "-" + crypto.randomBytes(3).toString("hex").toUpperCase();
 
@@ -1335,9 +1379,20 @@ app.post("/api/pago", limitarPagos, async (req, res) => {
        vende. */
     const reserva = inventario.reservar(
       folio,
-      cot.lineas.map(l => ({ sku: l.sku, cantidad: l.cantidad }))
+      cot.lineas.map(l => ({ sku: l.sku, cantidad: l.cantidad })),
+      /* La identidad es la misma que usa el limitador: sirve para que nadie
+         esquive el tope por reserva abriendo cinco pedidos seguidos. */
+      { identidad: identidad(req) }
     );
     if (!reserva.ok) {
+      /* Los topes de autoservicio no son un fallo de stock: no son un 409
+         («alguien se te adelantó»), son un 400 con una salida —el canal de
+         mayoreo— porque quien pide 27 piezas casi siempre es un cliente de
+         volumen, no un atacante. */
+      if (reserva.motivo && reserva.motivo !== "stock") {
+        console.warn(`[pago] Reserva rechazada por ${reserva.motivo}`);
+        return res.status(400).json({ error: reserva.error, motivo: reserva.motivo });
+      }
       const detalle = reserva.faltantes
         .map(f => `${f.nombre}: pediste ${f.pedido} y quedan ${f.disponible}`)
         .join("; ");
@@ -1356,7 +1411,8 @@ app.post("/api/pago", limitarPagos, async (req, res) => {
       folio,
       sitioUrl: SITIO_URL,
       notificacionUrl: BACKEND_URL ? `${BACKEND_URL}/api/pago/webhook` : null,
-      comprador: comprador.datos
+      comprador: comprador.datos,
+      envio: { centavos: envioCentavos, servicio: opcionEnvio.servicio }
     });
 
     let data;
@@ -1373,8 +1429,14 @@ app.post("/api/pago", limitarPagos, async (req, res) => {
     recordarPedido(folio, {
       estado: "pendiente",
       creado: new Date().toISOString(),
-      total: cot.total,
-      total_centavos: cot._raw.total_centavos,
+      /* El total que se guarda es el que se COBRA. De él sale el cuadre del
+         webhook: guardar el de la tarifa plana haría saltar un descuadre en
+         cada pedido con envío. */
+      total: centavosAPesos(totalCentavos),
+      total_centavos: totalCentavos,
+      envio_centavos: envioCentavos,
+      envio: `${opcionEnvio.servicio} · ${opcionEnvio.costo}` +
+             (opcionEnvio.texto ? ` · ${opcionEnvio.texto}` : ""),
       items: cot.lineas.map(l => ({
         sku: l.sku, cantidad: l.cantidad, titulo: l.titulo || l.nombre || l.sku
       })),
@@ -1390,7 +1452,7 @@ app.post("/api/pago", limitarPagos, async (req, res) => {
     avisos.avisar({
       tipo: "pago_iniciado",
       folio,
-      total_centavos: cot._raw.total_centavos,
+      total_centavos: totalCentavos,
       items: cot.lineas.map(l => `${l.cantidad}× ${l.titulo || l.sku}`).join(", "),
       /* Con esto el carrito abandonado deja de ser una estadística y pasa a
          ser un número de WhatsApp al que se le puede escribir. */
@@ -1399,7 +1461,10 @@ app.post("/api/pago", limitarPagos, async (req, res) => {
       cp: comprador.datos.cp
     });
 
-    console.log(`[pago] Preferencia ${folio} → ${cot.total} (pref ${data.id})`);
+    console.log(
+      `[pago] Preferencia ${folio} → ${centavosAPesos(totalCentavos)} ` +
+      `(envío ${opcionEnvio.costo} a CP ${envioReal.destino.cp}, pref ${data.id})`
+    );
     if (!BACKEND_URL) {
       console.warn(
         "[/api/pago] Sin BACKEND_URL ni RENDER_EXTERNAL_URL: la preferencia va " +
@@ -1411,7 +1476,26 @@ app.post("/api/pago", limitarPagos, async (req, res) => {
     return res.json({
       url: data.init_point,
       folio,
-      total: cot.total,
+      total: centavosAPesos(totalCentavos),
+      total_centavos: totalCentavos,
+      /* El desglose viaja para que la página pueda SUSTITUIR su estimación
+         por el número que va a cobrar Mercado Pago antes de saltar. Si no
+         coincide, el front se planta y lo enseña en vez de redirigir: nadie
+         debería descubrir el importe real en la pantalla del banco. */
+      desglose: {
+        subtotal_centavos: cot._raw.subtotal_centavos,
+        envio_centavos: envioCentavos,
+        total_centavos: totalCentavos,
+        envio: {
+          cp: envioReal.destino.cp,
+          servicio: opcionEnvio.servicio,
+          costo: opcionEnvio.costo,
+          costo_centavos: envioCentavos,
+          gratis: !!opcionEnvio.envio_gratis,
+          texto: opcionEnvio.texto || "",
+          es_estimacion: !!envioReal.es_estimacion
+        }
+      },
       /* El link de sandbox solo aparece con credenciales de prueba; sirve
          para ensayar el flujo completo sin cobrar de verdad. */
       url_prueba: data.sandbox_init_point || undefined
@@ -1446,6 +1530,33 @@ app.post("/api/pago", limitarPagos, async (req, res) => {
  * Siempre responde 200 salvo que la firma sea inválida: si devolviera 500 por
  * un fallo nuestro, Mercado Pago reintentaría durante días.
  */
+/* Notificaciones ya procesadas, por pago Y por estado.
+   ─────────────────────────────────────────────────────────────────────────
+   Mercado Pago reintenta —y ahora, con el 200 al final, reintenta MÁS: es el
+   precio de no perder un pago cuando su API no responde. Sin esta memoria,
+   cada reintento de un pago ya resuelto volvía a sonar el teléfono con el
+   mismo «PAGO APROBADO», y un canal de avisos que repite deja de leerse.
+
+   La llave lleva el estado además del id porque las transiciones sí importan:
+   un pago que pasa de `pending` a `approved` es noticia nueva; el mismo
+   `approved` dos veces, no. */
+const EVENTOS_VISTOS = new Map();   // "pagoId:estado" → ms
+const MAX_EVENTOS_VISTOS = 800;
+const VIDA_EVENTO_MS = 24 * 60 * 60 * 1000;
+
+function eventoYaProcesado(clave) {
+  const corte = Date.now() - VIDA_EVENTO_MS;
+  for (const [k, t] of EVENTOS_VISTOS) if (t < corte) EVENTOS_VISTOS.delete(k);
+  return EVENTOS_VISTOS.has(clave);
+}
+
+function marcarEventoProcesado(clave) {
+  EVENTOS_VISTOS.set(clave, Date.now());
+  if (EVENTOS_VISTOS.size > MAX_EVENTOS_VISTOS) {
+    EVENTOS_VISTOS.delete(EVENTOS_VISTOS.keys().next().value);
+  }
+}
+
 app.post("/api/pago/webhook", async (req, res) => {
   const mpToken = process.env.MP_ACCESS_TOKEN;
   const dataId = req.body?.data?.id || req.query?.["data.id"] || req.query?.id;
@@ -1487,70 +1598,105 @@ app.post("/api/pago/webhook", async (req, res) => {
     return res.status(503).json({ error: "Webhook sin configurar." });
   }
 
-  /* Acuse inmediato: Mercado Pago espera un 200 rápido, y lo que sigue puede
-     tardar lo que tarde la consulta del pago. */
-  res.status(200).json({ recibido: true });
+  /* Lo que no es un pago se acusa y se olvida: hay notificaciones de tipos
+     que no nos incumben y reintentarlas no arreglaría nada. */
+  if (tipo !== "payment" || !dataId || !mpToken) {
+    return res.status(200).json({ recibido: true, ignorado: true });
+  }
 
-  if (tipo !== "payment" || !dataId || !mpToken) return;
+  /* ═══ EL 200 VA AL FINAL, Y ESO ES EL ARREGLO ═══
+     Antes se acusaba recibo ANTES de consultar el pago, «para no hacer
+     esperar a Mercado Pago». El precio de esa cortesía era el peor de todos:
+     si su API o la red fallaban después del acuse, el error se escribía en un
+     log que nadie mira y Mercado Pago ya tenía su 200 — el pago quedaba
+     cobrado y el pedido sin registrar, sin inventario y sin aviso.
 
+     Ahora se consulta, se persiste y se avisa; y solo entonces se responde
+     200. Si algo falla, se responde 5xx y Mercado Pago reintenta, que es
+     exactamente para lo que existen los reintentos. La idempotencia de arriba
+     es lo que hace que reintentar sea barato. */
   try {
     const pago = await consultarPago(dataId, mpToken, conTimeout);
     const folio = pago.external_reference || null;
     const estado = pago.status;
+    const clave = `${pago.id}:${estado}`;
 
-    if (folio) {
-      recordarPedido(folio, {
-        estado,
-        detalle_estado: pago.status_detail,
-        pago_id: pago.id,
-        metodo: pago.payment_method_id,
-        tipo_metodo: pago.payment_type_id,
-        pagado: new Date().toISOString(),
-        email: pago.payer?.email || null
-      });
+    if (eventoYaProcesado(clave)) {
+      console.log(`[webhook] Repetido, ignorado: pago ${pago.id} estado=${estado}`);
+      return res.status(200).json({ recibido: true, repetido: true });
     }
+
+    const guardado = (folio && PEDIDOS.get(folio)) || {};
+    const esperado = guardado.total_centavos;
+    const cobrado = Math.round((pago.transaction_amount || 0) * 100);
 
     /* Cuadre: lo que Mercado Pago dice que se cobró contra lo que este
-       servidor calculó al crear la preferencia. Si no coincide, se grita —es
-       la señal de que alguien manipuló el importe o de que el catálogo cambió
-       entre la creación del link y el pago. */
-    const esperado = PEDIDOS.get(folio)?.total_centavos;
-    const cobrado = Math.round((pago.transaction_amount || 0) * 100);
-    if (estado === "approved" && esperado != null && cobrado !== esperado) {
-      console.error(
-        `[webhook] ⚠️  DESCUADRE en ${folio}: se cobró ${cobrado} centavos y ` +
-        `se esperaban ${esperado}. NO surtas este pedido sin revisarlo.`
-      );
-      avisos.avisar({
-        tipo: "descuadre",
-        folio,
-        esperado_centavos: esperado,
-        recibido_centavos: cobrado
-      });
-    }
+       servidor calculó al crear la preferencia. Un descuadre NO es un
+       aprobado con nota al pie: es un pedido que no se toca. */
+    const descuadre =
+      estado === "approved" && esperado != null && cobrado !== esperado;
 
-    console.log(
-      `[webhook] pago ${pago.id} folio=${folio} estado=${estado} ` +
-      `metodo=${pago.payment_type_id}/${pago.payment_method_id}`
-    );
-
-    const guardado = PEDIDOS.get(folio) || {};
     const descripcionItems = Array.isArray(guardado.items)
       ? guardado.items.map(i => `${i.cantidad}× ${i.titulo || i.sku}`).join(", ")
       : null;
-
-    /* El inventario sigue al pago: aprobado consuma la reserva, rechazado la
-       devuelve al mostrador sin esperar a que caduque. */
-    if (folio) {
-      if (estado === "approved") inventario.confirmar(folio);
-      else if (estado === "rejected" || estado === "cancelled") inventario.liberar(folio);
-    }
 
     /* Quien compró. Se prefiere lo que ESTE servidor validó al crear la
        preferencia sobre lo que devuelve Mercado Pago: el correo del payer de
        MP puede ser el de la cuenta con la que pagó —el de su pareja, el de la
        clínica— y no aquel donde el cliente pidió el comprobante. */
     const quien = guardado.comprador || null;
+
+    if (folio) {
+      recordarPedido(folio, {
+        /* `revision` no es `approved`. Mientras el importe no cuadre, este
+           pedido no se surte, no descuenta inventario y no aparece como
+           venta en el panel. */
+        estado: descuadre ? "revision" : estado,
+        detalle_estado: pago.status_detail,
+        pago_id: pago.id,
+        metodo: pago.payment_method_id,
+        tipo_metodo: pago.payment_type_id,
+        pagado: new Date().toISOString(),
+        cobrado_centavos: cobrado,
+        email: pago.payer?.email || null
+      });
+    }
+
+    console.log(
+      `[webhook] pago ${pago.id} folio=${folio} estado=${estado}` +
+      `${descuadre ? " DESCUADRE" : ""} metodo=${pago.payment_type_id}/${pago.payment_method_id}`
+    );
+
+    if (descuadre) {
+      /* Ni inventario, ni aviso de preparación, ni webhook de pedido: lo
+         único que sale de aquí es la alarma. El comentario ya decía «no
+         surtas»; ahora es el código el que no surte. */
+      console.error(
+        `[webhook] ⚠️  DESCUADRE en ${folio}: se cobró ${cobrado} centavos y ` +
+        `se esperaban ${esperado}. El pedido queda en REVISIÓN.`
+      );
+      avisos.avisar({
+        tipo: "descuadre",
+        folio,
+        esperado_centavos: esperado,
+        recibido_centavos: cobrado,
+        comprador: contactoEnUnaLinea(quien)
+      });
+      marcarEventoProcesado(clave);
+      return res.status(200).json({ recibido: true, revision: true });
+    }
+
+    /* El inventario sigue al pago: aprobado consuma la reserva, rechazado la
+       devuelve al mostrador sin esperar a que caduque. */
+    let reservaCaducada = false;
+    if (folio) {
+      if (estado === "approved") {
+        const r = inventario.confirmar(folio, guardado.items);
+        reservaCaducada = !!r.caducada;
+      } else if (estado === "rejected" || estado === "cancelled") {
+        inventario.liberar(folio);
+      }
+    }
 
     if (estado === "approved") {
       avisarPedido({
@@ -1562,9 +1708,7 @@ app.post("/api/pago/webhook", async (req, res) => {
         items: guardado.items || []
       });
       /* ESTE es el aviso que evita que "solo caiga dinero": suena el teléfono
-         con el folio, el importe, qué hay que empacar y A QUIÉN. Sin el
-         contacto, un pago aprobado seguía siendo un enigma que había que ir a
-         buscar al panel de Mercado Pago. */
+         con el folio, el importe, qué hay que empacar y A QUIÉN. */
       avisos.avisar({
         tipo: "pago_aprobado",
         folio,
@@ -1576,6 +1720,7 @@ app.post("/api/pago/webhook", async (req, res) => {
         items: descripcionItems,
         envio: guardado.envio || null,
         metodo: `${pago.payment_type_id || "—"}/${pago.payment_method_id || "—"}`,
+        reserva_caducada: reservaCaducada,
         pago_id: pago.id
       });
     } else if (estado === "rejected" || estado === "cancelled") {
@@ -1605,21 +1750,43 @@ app.post("/api/pago/webhook", async (req, res) => {
         metodo: `${pago.payment_type_id || "—"}/${pago.payment_method_id || "—"}`
       });
     }
+
+    marcarEventoProcesado(clave);
+    return res.status(200).json({ recibido: true });
   } catch (e) {
+    /* 5xx a propósito: es la única forma de pedirle a Mercado Pago que
+       vuelva a intentarlo. Un 200 aquí sería dar por procesado un pago que
+       no se pudo ni leer. */
     console.error("[webhook] No se pudo verificar el pago:", String(e.message).slice(0, 200));
+    return res.status(502).json({
+      error: "No se pudo verificar el pago con Mercado Pago. Reintenta."
+    });
   }
 });
 
-/** Estado de un pedido, para que la página de gracias pueda confirmarlo. */
-app.get("/api/pedido/:folio", limitarTasa, (req, res) => {
+/**
+ * Estado de un pedido. Es la ÚNICA fuente que la página de gracias puede
+ * creer: los parámetros que Mercado Pago pega a la URL de retorno los puede
+ * escribir cualquiera en la barra de direcciones.
+ *
+ * Va con el cupo de telemetría y no con el del chat a propósito: la página
+ * de retorno pregunta varias veces seguidas mientras espera al webhook, y
+ * gastar en eso los mensajes que le quedan al visitante para hablar con el
+ * Asesor sería cobrarle su propia compra.
+ *
+ * Devuelve lo mínimo. El folio lleva seis bytes de azar además de la marca de
+ * tiempo, así que no se adivina; aun así, aquí no salen ni el contacto ni la
+ * dirección — quien pregunta por un folio no demuestra ser su dueño.
+ */
+app.get("/api/pedido/:folio", limitarPulso, (req, res) => {
   const p = PEDIDOS.get(String(req.params.folio || ""));
   if (!p) return res.status(404).json({ error: "Pedido no encontrado." });
-  /* Solo lo que el comprador puede ver de su propio pedido. */
   return res.json({
     ok: true,
     folio: p.folio,
     estado: p.estado,
     total: p.total,
+    total_centavos: p.total_centavos,
     creado: p.creado
   });
 });
@@ -1771,7 +1938,12 @@ app.post("/api/evento", limitarPulso, (req, res) => {
  * webhook de avisos. Este panel es el mirador rápido, no la contabilidad.
  */
 function exigirAdmin(req, res) {
-  const token = req.get("x-leads-token") || req.query?.t;
+  /* SOLO cabecera. El `?t=` que había aquí por comodidad ponía el token del
+     panel —que enseña pedidos, contactos y domicilios— en el historial del
+     navegador, en las capturas de pantalla, en los logs del proxy y en el
+     Referer de cualquier recurso externo que cargara la página. Un token en
+     una URL es un token compartido sin querer. */
+  const token = req.get("x-leads-token");
   if (!tokenValido(String(token || ""), process.env.LEADS_TOKEN)) {
     res.status(404).json({ error: "No encontrado." });
     return false;
@@ -1798,6 +1970,9 @@ app.get("/api/admin/resumen", (req, res) => {
 
   const aprobados = pedidos.filter(p => p.estado === "approved");
   const pendientes = pedidos.filter(p => p.estado === "pendiente");
+  /* En revisión = el importe no cuadró. No son ventas ni son fallos: son
+     pedidos que nadie debe surtir hasta mirarlos en Mercado Pago. */
+  const enRevision = pedidos.filter(p => p.estado === "revision");
 
   res.json({
     ok: true,
@@ -1807,6 +1982,7 @@ app.get("/api/admin/resumen", (req, res) => {
       pedidos_totales: pedidos.length,
       pagados: aprobados.length,
       pendientes: pendientes.length,
+      en_revision: enRevision.length,
       cobrado_centavos: aprobados.reduce((s, p) => s + (p.total_centavos || 0), 0),
       cobrado: centavosAPesos(
         aprobados.reduce((s, p) => s + (p.total_centavos || 0), 0)
