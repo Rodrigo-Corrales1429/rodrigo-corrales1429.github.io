@@ -8,7 +8,7 @@
 <meta name="robots" content="index,follow,max-image-preview:large">
 <meta name="theme-color" content="#060606">
 <meta name="referrer" content="strict-origin-when-cross-origin">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self' https://wa.me; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://rodrigo-corrales1429-github-io.onrender.com; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self' https://wa.me; script-src 'self' 'wasm-unsafe-eval' https://unpkg.com blob: 'sha256-BZkocn+ywLdsBE9hJt20df3bHXZ6Rm5wv/OfIHU0XLA=' 'sha256-lIsIpOeFOQ6D89VuT2NnTedUBoyAzKxiLrgdh4kTfBk='; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' blob: https://unpkg.com https://rodrigo-corrales1429-github-io.onrender.com; upgrade-insecure-requests">
 <link rel="canonical" href="https://valquiriainc.com/pack/">
 <link rel="alternate" hreflang="es-mx" href="https://valquiriainc.com/pack/">
 <link rel="alternate" hreflang="x-default" href="https://valquiriainc.com/pack/">
@@ -33,9 +33,24 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600&amp;family=Montserrat:wght@300;400;500&amp;family=IBM+Plex+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/assets/css/seo-pages.css">
+<link rel="stylesheet" href="/assets/css/division-page.css?v=74">
+<!-- El motor 3D es el mismo del hub y de /dental/: mismas figuras, mismo
+     muestreo, misma impresión por capas. Lo único propio de esta página es
+     QUÉ figura monta, y eso lo dice el atributo data-division del documento. -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.170.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.170.0/examples/jsm/"
+  }
+}
+</script>
+<link rel="modulepreload" href="/assets/js/division-page.js?v=74">
+<link rel="modulepreload" href="/assets/js/escena.js?v=74">
+<link rel="modulepreload" href="/assets/js/figuras.js?v=74">
 <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Organization","@id":"https://valquiriainc.com/#organization","name":"Valquiria Inc.","url":"https://valquiriainc.com/"},{"@type":"Service","name":"Diseño y fabricación de empaques termoformados a la medida","provider":{"@id":"https://valquiriainc.com/#organization"},"areaServed":"MX","serviceType":"Empaque termoformado, blísteres y charolas a la medida","url":"https://valquiriainc.com/pack/"},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Valquiria Inc.","item":"https://valquiriainc.com/"},{"@type":"ListItem","position":2,"name":"Valquiria Pack","item":"https://valquiriainc.com/pack/"}]}]}</script>
 </head>
-<body>
+<body data-division="pack">
 <a class="skip-link" href="#contenido">Saltar al contenido</a>
 <header class="topbar">
 <div class="wrap">
@@ -43,7 +58,7 @@
 <img src="/assets/isotipo_gold.svg" alt="" width="30" height="30">
 <span>Valquiria Inc.</span>
 </a>
-<nav class="nav" aria-label="Principal">
+<nav class="nav global-nav" aria-label="Principal">
 <a href="/">Inicio</a>
 <a href="/dental/">Dental</a>
 <a href="/ia/">IA</a>
@@ -60,14 +75,33 @@
 <nav class="wrap crumbs" aria-label="Migas de pan">
 <ol><li><a href="/">Inicio</a></li><li aria-current="page">Valquiria Pack</li></ol>
 </nav>
-<section class="hero">
-<div class="wrap">
-<div class="kicker">Valquiria Pack · Termoformado</div>
-<h1>Empaques termoformados diseñados alrededor de tu producto.</h1>
-<p class="lead">Desarrollamos charolas, blísteres y empaques termoformados a la medida para productos que necesitan protección, presentación y una cavidad hecha para su geometría real.</p>
-<div class="actions">
+<section class="division-hero" aria-labelledby="hero-title">
+<div class="hero-grid scene-idle" data-division-experience>
+<div class="hero-copy">
+<div class="division-mark">Valquiria Pack · Termoformado</div>
+<h1 id="hero-title">Empaques termoformados diseñados alrededor de tu producto.</h1>
+<p class="hero-summary">Desarrollamos charolas, blísteres y empaques termoformados a la medida para productos que necesitan protección, presentación y una cavidad hecha para su geometría real.</p>
+</div>
+<div class="hero-visual" aria-label="Representación de la charola termoformada fabricándose por capas">
+<div class="print-rail" aria-hidden="true">
+<div class="rail-track">
+<div class="rail-fill" data-rail-fill></div>
+<div class="rail-head" data-rail-head></div>
+</div>
+<div class="rail-meta">
+<strong data-rail-z>0.00 mm</strong>
+<span data-rail-layer>Capa 000</span>
+<div class="rail-state" data-rail-state>Impresión</div>
+</div>
+</div>
+<div class="scene-frame">
+<canvas id="escena" data-scene-viewport="contained" aria-hidden="true" width="760" height="620"></canvas>
+<div class="scene-fallback" aria-hidden="true"><span>Charola termoformada · fabricación por capas</span></div>
+</div>
+</div>
+<div class="hero-actions actions">
 <a class="btn" href="https://wa.me/527717959131">Cotizar un empaque</a>
-<a class="btn ghost" href="/#/pack">Ver experiencia interactiva</a>
+<a class="btn ghost" href="/?asesor=1">Hablar con el Asesor</a>
 </div>
 </div>
 </section>
@@ -143,6 +177,7 @@
 </nav>
 </div>
 </footer>
-<script src="/assets/js/pulso.js?v=73" defer></script>
+<script type="module" src="/assets/js/division-page.js?v=74"></script>
+<script src="/assets/js/pulso.js?v=74" defer></script>
 </body>
 </html>

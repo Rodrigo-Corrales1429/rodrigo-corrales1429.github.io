@@ -1,4 +1,4 @@
-import { VALQUIRIA_MODEL, DENTAL_MODEL, IA_MODEL } from './division-config.js?v=72';
+import { VALQUIRIA_MODEL, DENTAL_MODEL, IA_MODEL } from './division-config.js?v=74';
 
 /* ═══════════════════════════════════════════════════════════════════════════
    VALQUIRIA — FÁBRICA DE FIGURAS
@@ -942,16 +942,35 @@ const FIGURAS = {
     encaje: 0.88, alza: 0.12,
     bb: { x0: -.62, x1: .62, y0: -1.10, y1: .90, z0: -.56, z1: .56 }
   },
+  /* ── Las tres de taller ─────────────────────────────────────────────────
+     Estas tres NO esperan malla: la SDF ES la pieza, y por eso llevan
+     `solida`. Sin esa bandera se quedaban en nube —`uEsSolida` a 0, el paso
+     de sólido apagado— y el resultado era una división que enseñaba una
+     constelación de puntos donde las otras tres enseñaban un objeto. Vistas
+     una detrás de otra, /3d, /pack y /lux parecían rotas.
+
+     Y `solida` sola no basta: pide su propia rejilla. Con el paso grueso
+     (0.020 en escritorio, 0.027 en el teléfono) los discos del curado miden
+     más que el detalle que representan y la pieza sale de palomitas, igual
+     que le pasaba a la valquiria antes de tener el suyo. Los números salen de
+     medir: a 0.0090 el engrane son ~181 k puntos, la charola ~133 k y la
+     lámpara ~230 k, todos por debajo de los ~271 k de la valquiria, que es el
+     techo que ya se sabe que un navegador dibuja sin sudar. En móvil, 0.0150
+     los deja entre 49 k y 84 k — justo el presupuesto de 80 000 que aplica
+     `montar`, así que la nube llega entera y no diezmada. */
   engrane: {
     fn: engrane, modo: 2, dist: 5.2, mm: 64, nombre: 'Engrane',
+    paso: 0.0090, pasoMovil: 0.0150, solida: true,
     bb: { x0: -.76, x1: .76, y0: -.76, y1: .76, z0: -.16, z1: .16 }
   },
   empaque: {
     fn: empaque, modo: 3, dist: 3.6, mm: 52, nombre: 'Charola',
+    paso: 0.0090, pasoMovil: 0.0150, solida: true,
     bb: { x0: -.57, x1: .75, y0: -.43, y1: .31, z0: -.81, z1: .31 }
   },
   lampara: {
     fn: lampara, modo: 1, dist: 4.7, mm: 210, nombre: 'Lámpara voxel',
+    paso: 0.0090, pasoMovil: 0.0150, solida: true,
     bb: { x0: -.56, x1: .56, y0: -.93, y1: .80, z0: -.56, z1: .56 }
   }
 };

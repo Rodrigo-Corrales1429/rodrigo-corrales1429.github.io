@@ -8,7 +8,7 @@
 <meta name="robots" content="index,follow,max-image-preview:large">
 <meta name="theme-color" content="#060606">
 <meta name="referrer" content="strict-origin-when-cross-origin">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self' https://wa.me; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://rodrigo-corrales1429-github-io.onrender.com; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self' https://wa.me; script-src 'self' 'wasm-unsafe-eval' https://unpkg.com blob: 'sha256-BZkocn+ywLdsBE9hJt20df3bHXZ6Rm5wv/OfIHU0XLA=' 'sha256-bGu750VRSNdjDn91alC7MmYXlmCwLFHOfJxMCJCGV3U='; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' blob: https://unpkg.com https://rodrigo-corrales1429-github-io.onrender.com; upgrade-insecure-requests">
 <link rel="canonical" href="https://valquiriainc.com/ia/">
 <link rel="alternate" hreflang="es-mx" href="https://valquiriainc.com/ia/">
 <link rel="alternate" hreflang="x-default" href="https://valquiriainc.com/ia/">
@@ -33,9 +33,26 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600&amp;family=Montserrat:wght@300;400;500&amp;family=IBM+Plex+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/assets/css/seo-pages.css">
+<link rel="stylesheet" href="/assets/css/division-page.css?v=74">
+<!-- El motor 3D es el mismo del hub y de /dental/: mismas figuras, mismo
+     muestreo, misma impresión por capas. Lo único propio de esta página es
+     QUÉ figura monta, y eso lo dice el atributo data-division del documento. -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.170.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.170.0/examples/jsm/"
+  }
+}
+</script>
+<link rel="modulepreload" href="/assets/js/division-page.js?v=74">
+<link rel="modulepreload" href="/assets/js/escena.js?v=74">
+<link rel="modulepreload" href="/assets/js/figuras.js?v=74">
+<link rel="preload" href="/assets/cyborg.glb" as="fetch" crossorigin>
+<link rel="modulepreload" href="/assets/js/modelo.js?v=74">
 <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Organization","@id":"https://valquiriainc.com/#organization","name":"Valquiria Inc.","url":"https://valquiriainc.com/"},{"@type":"Service","name":"Soluciones de inteligencia artificial y automatización","provider":{"@id":"https://valquiriainc.com/#organization"},"areaServed":"MX","serviceType":"Consultoría, automatización y desarrollo de soluciones con inteligencia artificial","url":"https://valquiriainc.com/ia/"},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Valquiria Inc.","item":"https://valquiriainc.com/"},{"@type":"ListItem","position":2,"name":"Valquiria IA","item":"https://valquiriainc.com/ia/"}]},{"@type":"SoftwareApplication","@id":"https://valquiriainc.com/ia/#dental-os","name":"Valquiria Dental OS","applicationCategory":"BusinessApplication","applicationSubCategory":"Software de gestión para consultorios dentales","operatingSystem":"Web, iOS, Android","url":"https://valquiriainc.com/ia/#dental-os","inLanguage":"es-MX","description":"Sistema operativo inteligente para consultorios dentales: agenda con lista de espera, expediente de pacientes, atención por WhatsApp y un asistente de IA que confirma citas, reagenda cancelaciones y da seguimiento a tratamientos.","provider":{"@id":"https://valquiriainc.com/#organization"},"featureList":["Confirmación y recordatorio de citas por WhatsApp","Reventa automática de horarios cancelados con lista de espera","Seguimiento de pacientes con tratamiento pendiente","Recepción automatizada fuera de horario","Reporte auditable de ingresos recuperados"],"offers":[{"@type":"Offer","name":"Founder","price":"1999","priceCurrency":"MXN","description":"Por mes, un dentista. Cupo limitado. Dentista adicional +$1,399 MXN/mes.","availability":"https://schema.org/LimitedAvailability"},{"@type":"Offer","name":"Early Adopter","price":"2199","priceCurrency":"MXN","description":"Por mes, un dentista. Dentista adicional +$1,599 MXN/mes.","availability":"https://schema.org/InStock"},{"@type":"Offer","name":"Lista","price":"2499","priceCurrency":"MXN","description":"Por mes, un dentista. Dentista adicional +$1,800 MXN/mes.","availability":"https://schema.org/InStock"}]}]}</script>
 </head>
-<body>
+<body data-division="ia">
 <a class="skip-link" href="#contenido">Saltar al contenido</a>
 <header class="topbar">
 <div class="wrap">
@@ -43,7 +60,7 @@
 <img src="/assets/isotipo_gold.svg" alt="" width="30" height="30">
 <span>Valquiria Inc.</span>
 </a>
-<nav class="nav" aria-label="Principal">
+<nav class="nav global-nav" aria-label="Principal">
 <a href="/">Inicio</a>
 <a href="/dental/">Dental</a>
 <a aria-current="page" href="/ia/">IA</a>
@@ -60,15 +77,34 @@
 <nav class="wrap crumbs" aria-label="Migas de pan">
 <ol><li><a href="/">Inicio</a></li><li aria-current="page">Valquiria IA</li></ol>
 </nav>
-<section class="hero">
-<div class="wrap">
-<div class="kicker">Valquiria IA · Inteligencia artificial aplicada</div>
-<h1>IA que entra a operación y se puede medir.</h1>
-<p class="lead">Diseñamos soluciones de inteligencia artificial para procesos que ya existen: atención, análisis, inspección, automatización y toma de decisiones. El proyecto empieza entendiendo el proceso y termina con una herramienta que alguien puede usar.</p>
-<div class="actions">
+<section class="division-hero" aria-labelledby="hero-title">
+<div class="hero-grid scene-idle" data-division-experience>
+<div class="hero-copy">
+<div class="division-mark">Valquiria IA · Inteligencia artificial aplicada</div>
+<h1 id="hero-title">IA que entra a operación y se puede medir.</h1>
+<p class="hero-summary">Diseñamos soluciones de inteligencia artificial para procesos que ya existen: atención, análisis, inspección, automatización y toma de decisiones. El proyecto empieza entendiendo el proceso y termina con una herramienta que alguien puede usar.</p>
+</div>
+<div class="hero-visual" aria-label="Representación de la figura de Valquiria IA fabricándose por capas">
+<div class="print-rail" aria-hidden="true">
+<div class="rail-track">
+<div class="rail-fill" data-rail-fill></div>
+<div class="rail-head" data-rail-head></div>
+</div>
+<div class="rail-meta">
+<strong data-rail-z>0.00 mm</strong>
+<span data-rail-layer>Capa 000</span>
+<div class="rail-state" data-rail-state>Impresión</div>
+</div>
+</div>
+<div class="scene-frame">
+<canvas id="escena" data-scene-viewport="contained" aria-hidden="true" width="760" height="620"></canvas>
+<div class="scene-fallback" aria-hidden="true"><span>Valquiria IA · fabricación por capas</span></div>
+</div>
+</div>
+<div class="hero-actions actions">
 <a class="btn" href="#dental-os">Ver Valquiria Dental OS</a>
 <a class="btn ghost" href="mailto:ventas@valquiriadental.com?subject=Proyecto%20Valquiria%20IA">Hablar de un proyecto</a>
-<a class="btn ghost" href="/#/ia">Ver la demo interactiva</a>
+<a class="btn ghost" href="/?asesor=1">Probar el Asesor</a>
 </div>
 </div>
 </section>
@@ -167,7 +203,7 @@
 
 <div class="actions">
 <a class="btn" href="https://wa.me/527717959131?text=Hola%20Valquiria%2C%20me%20interesa%20Valquiria%20Dental%20OS%20para%20mi%20consultorio.%20%C2%BFPodemos%20agendar%20una%20demo%3F">Agendar demo por WhatsApp</a>
-<a class="btn ghost" href="/#/ia">Preguntarle al Asesor</a>
+<a class="btn ghost" href="/?asesor=1">Preguntarle al Asesor</a>
 </div>
 </div>
 </section>
@@ -220,6 +256,7 @@
 </nav>
 </div>
 </footer>
-<script src="/assets/js/pulso.js?v=73" defer></script>
+<script type="module" src="/assets/js/division-page.js?v=74"></script>
+<script src="/assets/js/pulso.js?v=74" defer></script>
 </body>
 </html>

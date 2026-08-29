@@ -1,5 +1,5 @@
-import { escena } from './escena.js?v=72';
-import { getDivisionConfig } from './division-config.js?v=72';
+import { escena } from './escena.js?v=74';
+import { getDivisionConfig } from './division-config.js?v=74';
 
 const divisionId = document.body.dataset.division;
 const config = getDivisionConfig(divisionId);
@@ -30,7 +30,15 @@ function updateRail(progress, state) {
   if (head) head.style.top = percent + '%';
   if (z) z.textContent = mm + ' mm';
   if (layerNode) layerNode.textContent = 'Capa ' + String(layer).padStart(3, '0');
-  if (stateNode) stateNode.textContent = state === 'listo' ? 'Pieza lista' : 'Imprimiendo';
+  /* «Pieza lista» solo si la división imprime entera. Con `progress` por
+     debajo de 1 la pieza está EN OBRA a propósito —es lo que dice de esa
+     división—, y rotularla como terminada contradice al riel, que enseña un
+     corte a media altura. El hub ya distinguía los dos casos; esta página no. */
+  if (stateNode) {
+    stateNode.textContent = state === 'listo'
+      ? (config.progress >= 1 ? 'Pieza lista' : 'En proceso')
+      : 'Imprimiendo';
+  }
 }
 
 function failGracefully(error) {

@@ -19,8 +19,11 @@ body{overflow-x:clip;background:#060606}
 .division-nav a{flex:0 0 auto;color:#9f9a90;text-decoration:none;font:400 10px/1 "IBM Plex Mono",monospace;letter-spacing:.13em;text-transform:uppercase}
 .division-nav a:hover{color:var(--gold)}
 
-.dental-hero{position:relative;border-bottom:1px solid var(--line);background:radial-gradient(circle at 30% 42%,rgba(201,168,76,.1),transparent 33%),#060606}
-.dental-hero::before{content:"";position:absolute;inset:0;pointer-events:none;opacity:.22;background-image:linear-gradient(rgba(255,255,255,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.025) 1px,transparent 1px);background-size:56px 56px;mask-image:linear-gradient(90deg,#000,transparent 68%)}
+/* `.dental-hero` nació con la única división que tenía escena. Ahora la
+   tienen las seis, así que el nombre genérico es el bueno; el viejo se
+   conserva porque /dental/ ya está publicado con él. */
+.dental-hero,.division-hero{position:relative;border-bottom:1px solid var(--line);background:radial-gradient(circle at 30% 42%,rgba(201,168,76,.1),transparent 33%),#060606}
+.dental-hero::before,.division-hero::before{content:"";position:absolute;inset:0;pointer-events:none;opacity:.22;background-image:linear-gradient(rgba(255,255,255,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.025) 1px,transparent 1px);background-size:56px 56px;mask-image:linear-gradient(90deg,#000,transparent 68%)}
 .hero-grid{position:relative;width:min(calc(100% - 48px),var(--division-max));min-height:calc(100svh - var(--nav-height) - var(--subnav-height));margin:auto;display:grid;grid-template-columns:minmax(480px,1.22fr) minmax(360px,.78fr);grid-template-rows:1fr auto;grid-template-areas:"visual copy" "visual actions";gap:24px clamp(40px,5vw,84px);align-items:center;padding:clamp(44px,7vh,88px) 0 clamp(42px,6vh,72px)}
 .hero-copy{grid-area:copy;align-self:end;max-width:600px;position:relative;z-index:2}
 .division-mark{margin-bottom:18px;color:var(--gold);font:500 11px/1.4 "IBM Plex Mono",monospace;letter-spacing:.2em;text-transform:uppercase}

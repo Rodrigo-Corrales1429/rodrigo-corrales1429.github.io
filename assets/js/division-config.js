@@ -11,6 +11,12 @@ export const IA_MODEL = '/assets/cyborg.glb';
 export const PACK_MODEL = null;
 export const LUX_MODEL = null;
 
+/* `progress` es hasta dónde imprime la pieza de cada división, y es una
+   afirmación sobre el NEGOCIO, no un ajuste visual: Dental está en producción
+   y su molar imprime entero; IA va al 94 % porque está en beta; 3D, Pack y Lux
+   imprimen la fracción que corresponde a lo construido de cada taller. Los
+   mismos números viven en las RUTAS del hub (app.js) — si cambian ahí, cambian
+   aquí, o el visitante vería dos verdades distintas de la misma división. */
 export const DIVISION_CONFIG = Object.freeze({
   dental: Object.freeze({
     route: '/dental/',
@@ -19,6 +25,38 @@ export const DIVISION_CONFIG = Object.freeze({
     progress: 1,
     side: 0,
     title: 'Valquiria Dental'
+  }),
+  ia: Object.freeze({
+    route: '/ia/',
+    figure: 'cyborg',
+    model: IA_MODEL,
+    progress: 0.94,
+    side: 0,
+    title: 'Valquiria IA'
+  }),
+  '3d': Object.freeze({
+    route: '/3d/',
+    figure: 'engrane',
+    model: null,
+    progress: 0.62,
+    side: 0,
+    title: 'Valquiria 3D'
+  }),
+  pack: Object.freeze({
+    route: '/pack/',
+    figure: 'empaque',
+    model: PACK_MODEL,
+    progress: 0.88,
+    side: 0,
+    title: 'Valquiria Pack'
+  }),
+  lux: Object.freeze({
+    route: '/lux/',
+    figure: 'lampara',
+    model: LUX_MODEL,
+    progress: 0.68,
+    side: 0,
+    title: 'Valquiria Lux'
   })
 });
 
