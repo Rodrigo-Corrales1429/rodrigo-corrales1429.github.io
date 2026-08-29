@@ -162,8 +162,41 @@ con la responsabilidad del cumplimiento PCI del lado de Mercado Pago.
 
 ---
 
-## 7 · Las reglas que no se rompen
+## 7 · La vuelta del cliente, y por qué /gracias/ existe
 
+Mercado Pago devuelve al comprador a las `back_urls` de la preferencia, y les
+pega sus propios parámetros (`collection_status`, `payment_id`,
+`external_reference`). Apuntan a **rutas reales**, no a fragmentos:
+
+| Resultado | Vuelve a |
+|---|---|
+| Aprobado | `https://valquiriainc.com/gracias/` |
+| Pendiente | `https://valquiriainc.com/gracias/?estado=pendiente` |
+| Rechazado | `https://valquiriainc.com/gracias/?estado=fallo` |
+
+`/gracias/` es una página de verdad que solo hace una cosa: entregarle esos
+parámetros a la aplicación (`/#/gracias?...`). Antes las `back_urls` llevaban
+`#` dentro, y los parámetros acababan a un lado u otro del fragmento según el
+caso: el cliente que acababa de pagar aterrizaba en el home, sin folio y sin
+confirmación.
+
+Al volver, el Asesor **restaura la conversación** (vive en `sessionStorage`,
+así que sobrevive al viaje a la pasarela) y habla primero: confirma el folio y
+desglosa lo comprado. **El carrito se vacía después de enseñarlo, y solo si el
+pago fue aprobado** — quien vuelve de un pago rechazado necesita su pedido
+intacto para reintentar.
+
+Si cambias `SITIO_URL`, la página `/gracias/` tiene que existir en el dominio
+nuevo o el comprador vuelve a un 404 justo después de pagarte.
+
+---
+
+## 8 · Las reglas que no se rompen
+
+- **Sin contacto no hay link de pago.** `/api/pago` responde 400 si falta
+  nombre, WhatsApp (10 dígitos), correo, código postal o calle con número, y
+  dice cuál falta en `faltan` para que el Asesor lo pregunte. Un pago a medias
+  sin contacto es un pedido que nadie puede rescatar.
 - **El total lo calcula el backend, siempre.** El navegador manda SKUs y
   cantidades; los precios se releen del catálogo. Un carrito editado desde la
   consola no cambia lo que se cobra: el precio que traiga ni se lee.

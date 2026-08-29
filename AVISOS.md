@@ -19,6 +19,7 @@ y a la semana de silenciarlo se te pasa un pago real. Así que hay dos carriles:
 |---|---|
 | 💰 **Pago aprobado** | Hay dinero en tu cuenta y una caja que preparar. |
 | 🟡 **Pago iniciado** | Alguien se fue al banco. Si no llega el "aprobado" en un rato, es un carrito abandonado que puedes rescatar. |
+| 🟠 **Pago pendiente** | SPEI, OXXO o pago en revisión. El dinero NO ha entrado: no lo mandes todavía. |
 | 🔴 **Pago rechazado** | Casi siempre es el banco, no el cliente. Escribirle recupera la venta. |
 | ⚠️ **Descuadre** | Se cobró un importe distinto del calculado. **No surtas ese pedido sin revisarlo.** |
 | 🔔 **Interés con contacto** | Un prospecto dejó su teléfono o correo. A las 24 h ya se enfrió. |
@@ -29,6 +30,19 @@ y a la semana de silenciarlo se te pasa un pago real. Así que hay dos carriles:
 
 Visitas, preguntas al Asesor, cotizaciones chicas, intereses sin contacto.
 Sale un solo mensaje al día a las 20:00 (hora del centro).
+
+### Todo aviso de pago trae a quién escribirle
+
+Los tres avisos de pago llegan con **nombre, WhatsApp con enlace directo,
+correo, código postal y calle** del comprador. No es adorno: antes de esto un
+pago aprobado era un folio y un importe, y averiguar de quién era exigía entrar
+al panel de Mercado Pago; un pago rechazado no se podía rescatar porque no
+había a quién escribirle.
+
+Esos datos los valida el servidor antes de crear el link de pago (`/api/pago`
+responde 400 si falta alguno), así que un aviso sin contacto solo puede
+significar un pedido creado antes de este cambio. Cuando pasa, el aviso lo
+dice: **⚠️ SIN datos de contacto**.
 
 ### Cortafuegos
 

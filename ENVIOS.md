@@ -133,3 +133,28 @@ En el sitio: mete algo al carrito, ábrelo, escribe tu código postal y pulsa
 
 Los dos números deben coincidir. Si no coinciden, algo se rompió — son el mismo
 código.
+
+---
+
+## 5. TODO — Fase B: la guía de verdad
+
+Lo que hay hoy **cotiza** y **promete fecha**. Lo que NO hay todavía es
+generar la guía: hoy la imprime una persona en el panel de la paquetería,
+copia el número de rastreo y se lo manda al cliente por WhatsApp.
+
+El hook ya está puesto y es el único punto que hay que tocar:
+
+- `cotizar_envio` (herramienta del Asesor) y `POST /api/envio` comparten el
+  mismo motor, `envios.js`. Con `ENVIOS_PROVEEDOR=envia` o `skydropx` y su
+  API key, la cotización pasa a ser en vivo y `es_estimacion` se apaga solo.
+- Falta el paso siguiente: **crear** la guía. Sería un `generarGuia(folio)` en
+  `envios.js`, llamado desde el webhook de Mercado Pago justo donde hoy se
+  hace `inventario.confirmar(folio)` (`server.js`, estado `approved`), con el
+  contacto que ya viaja en `PEDIDOS.get(folio).comprador` — nombre, teléfono,
+  CP y calle ya vienen validados desde `sanearComprador`.
+- El número de rastreo entraría al aviso de `pago_aprobado`, que ya tiene su
+  hueco: el campo `envio` de la plantilla en `notificaciones.js`.
+
+**Por qué no está**: generar guías cobra de verdad y contra una cuenta real.
+Encenderlo sin haber pesado una caja (§3) imprime etiquetas con el peso
+equivocado, y eso se paga guía por guía. Primero la báscula, luego la API.
