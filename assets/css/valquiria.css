@@ -25,7 +25,7 @@
 }
 
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
-html{-webkit-text-size-adjust:100%}
+html{-webkit-text-size-adjust:100%; scroll-behavior:smooth}
 body{
   background:var(--void); color:var(--ivory);
   font-family:var(--f-body); font-weight:300;
@@ -322,7 +322,7 @@ h3{font-family:var(--f-display); font-weight:400; font-size:1.3rem; line-height:
 
 .sub{
   margin-top:clamp(18px,3vh,28px); font-size:clamp(.85rem,1.3vw,.95rem);
-  line-height:1.78; color:#B9B2A4; max-width:42ch;
+  line-height:1.78; color:rgba(255,255,255,.8); max-width:42ch;
   opacity:0; transform:translateY(14px); transition:all 1s var(--ease);
 }
 .sub.built{opacity:1; transform:none}
@@ -332,20 +332,22 @@ h3{font-family:var(--f-display); font-weight:400; font-size:1.3rem; line-height:
 
 .btn{
   position:relative; overflow:hidden; padding:15px 28px;
+  background:transparent;
   border:1px solid var(--gold); font-size:.66rem; letter-spacing:.2em;
   text-transform:uppercase; color:var(--gold-lit); text-decoration:none;
-  transition:color .35s var(--ease); display:inline-flex; align-items:center; gap:9px;
+  transition:color .35s var(--ease), border-color .35s var(--ease), box-shadow .35s var(--ease);
+  display:inline-flex; align-items:center; gap:9px;
 }
 .btn::after{content:''; position:absolute; inset:0; background:var(--gold);
   transform:translateY(101%); transition:transform .45s var(--ease)}
-.btn:hover{color:var(--void)}
+.btn:hover{color:var(--void); box-shadow:0 0 20px rgba(201,168,76,.25)}
 .btn:hover::after{transform:translateY(0)}
 .btn>*{position:relative; z-index:1}
 .btn.ghost{border-color:rgba(255,255,255,.16); color:#CFC8B9}
 .btn.ghost::after{background:rgba(255,255,255,.92)}
 .btn.ia{border-color:rgba(122,92,255,.5); color:var(--cure-lit)}
 .btn.ia::after{background:var(--cure)}
-.btn.ia:hover{color:#fff}
+.btn.ia:hover{color:#fff; box-shadow:0 0 20px rgba(122,92,255,.3)}
 
 /* ── PORTALES DE DIVISIÓN ─────────────────────────────────────────────────
    La rejilla del hub. Cada portal lleva su propio estado de impresión: la
