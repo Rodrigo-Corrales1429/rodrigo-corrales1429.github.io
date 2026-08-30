@@ -11,11 +11,13 @@
 <!-- El panel SÍ necesita hablar con el backend, y en local con el puerto de
      desarrollo: es la única página del sitio que se prueba contra un servidor
      propio. Todo lo demás queda cerrado. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://rodrigo-corrales1429-github-io.onrender.com http://localhost:3000 http://127.0.0.1:3000">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https://*.basemaps.cartocdn.com https://tile.openstreetmap.org; connect-src 'self' https://rodrigo-corrales1429-github-io.onrender.com http://localhost:3000 http://127.0.0.1:3000 https://*.basemaps.cartocdn.com https://tile.openstreetmap.org">
 <link rel="icon" href="/favicon.ico">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500&family=Montserrat:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="leaflet.css">
+<script src="leaflet.js"></script>
 <style>
 :root{--bg:#060606;--panel:#0d0d0d;--panel2:#111;--text:#f2efe7;--muted:#b5b0a5;--gold:#c9a84c;--line:#28251d;--ok:#5fbf7f;--warn:#e0a33c;--bad:#e06a5a;--max:1240px}
 *{box-sizing:border-box}
@@ -78,7 +80,57 @@ td.num{text-align:right;font-family:"IBM Plex Mono",monospace;white-space:nowrap
 .linea .q{color:#d7d2c8;word-break:break-word}
 .vacio{color:var(--muted);font-size:13px;padding:22px 0;font-style:italic}
 .oculto{display:none}
-@media(max-width:640px){h2{font-size:25px}.t .n{font-size:32px}}
+
+/* ── Mapa Geográfico de Ventas & Pauta ────────────────────────────────── */
+.mapa-seccion{margin-top:40px}
+.mapa-marco{border:1px solid var(--line);background:var(--panel2);position:relative;overflow:hidden}
+#mapa-ventas{height:460px;width:100%;background:#080808;z-index:1}
+.mapa-encabezado-acciones{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+
+/* Personalización oscura de Leaflet */
+.leaflet-container{font-family:Montserrat,system-ui,sans-serif;background:#080808!important;outline:none}
+.leaflet-tile{filter:brightness(90%) contrast(105%)!important}
+.leaflet-bar{border:1px solid var(--line)!important;box-shadow:none!important}
+.leaflet-bar a{background:var(--panel2)!important;color:var(--gold)!important;border-bottom:1px solid var(--line)!important}
+.leaflet-bar a:hover{background:var(--gold)!important;color:#060606!important}
+.leaflet-control-attribution{background:rgba(10,10,10,.88)!important;color:var(--muted)!important;font-size:10px!important}
+.leaflet-control-attribution a{color:var(--gold)!important;text-decoration:none}
+
+/* Popups en modo oscuro Valquiria */
+.leaflet-popup-content-wrapper{background:var(--panel2)!important;color:var(--text)!important;border:1px solid var(--gold);box-shadow:0 10px 28px rgba(0,0,0,.75)!important;border-radius:2px!important;padding:0!important}
+.leaflet-popup-tip{background:var(--panel2)!important;border:1px solid var(--gold)}
+.leaflet-popup-content{margin:12px 15px!important;font-size:12px;line-height:1.5}
+.leaflet-container a.leaflet-popup-close-button{color:var(--muted)!important;padding:4px}
+.leaflet-container a.leaflet-popup-close-button:hover{color:var(--gold)!important}
+
+.pop-titulo{font-family:"Cormorant Garamond",serif;font-size:19px;font-weight:500;color:var(--gold);margin:0 0 4px;border-bottom:1px solid var(--line);padding-bottom:4px}
+.pop-cp{font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--muted);margin-bottom:8px}
+.pop-dato{display:flex;justify-content:space-between;gap:12px;font-size:11px;margin:3px 0}
+.pop-dato span:first-child{color:var(--muted)}
+.pop-dato span:last-child{font-weight:500;font-family:"IBM Plex Mono",monospace;color:var(--text)}
+.pop-pauta{margin-top:10px;padding:8px;background:rgba(201,168,76,.08);border-left:2px solid var(--gold);font-size:11px;color:#e8e3d8}
+
+/* Marcadores dorados pulsantes */
+.marcador-oro{position:relative;display:flex;align-items:center;justify-content:center;cursor:pointer}
+.marcador-oro .halo{position:absolute;width:100%;height:100%;border-radius:50%;background:rgba(201,168,76,.32);animation:pulso-oro 2.4s infinite ease-out}
+.marcador-oro .nucleo{position:relative;z-index:2;display:flex;align-items:center;justify-content:center;border-radius:50%;background:radial-gradient(circle at 35% 35%, #e8c55f, #c9a84c 60%, #80631f);border:2px solid #060606;box-shadow:0 0 14px rgba(201,168,76,.75);color:#060606;font-family:"IBM Plex Mono",monospace;font-weight:600;font-size:10px}
+@keyframes pulso-oro{0%{transform:scale(.65);opacity:.95}70%{transform:scale(2.2);opacity:0}100%{transform:scale(2.2);opacity:0}}
+
+/* Panel de Pauta y Densidad */
+.mapa-panel-pauta{margin-top:14px;border:1px solid var(--line);background:var(--panel2);padding:18px}
+.pauta-cabecera{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;gap:12px;flex-wrap:wrap}
+.pauta-cabecera h3{font-family:"Cormorant Garamond",serif;font-size:20px;font-weight:500;margin:0;color:var(--text)}
+.pauta-badge{font-family:"IBM Plex Mono",monospace;font-size:10px;padding:3px 8px;border:1px solid var(--gold);color:var(--gold);text-transform:uppercase}
+.pauta-estrategia{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px;margin-top:14px}
+.pauta-tarjeta{background:rgba(201,168,76,.03);border:1px solid var(--line);padding:14px}
+.pauta-tarjeta h4{margin:0 0 6px;font-size:13px;color:var(--gold);text-transform:uppercase;letter-spacing:.08em;font-weight:500}
+.pauta-tarjeta p{margin:0;font-size:12px;color:var(--muted);line-height:1.5}
+.plazas-lista{margin-top:14px;display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:8px}
+.plaza-item{display:flex;justify-content:space-between;padding:7px 10px;background:rgba(255,255,255,.02);border:1px solid var(--line);font-size:12px}
+.plaza-item .nom{color:var(--text)}
+.plaza-item .val{font-family:"IBM Plex Mono",monospace;color:var(--gold)}
+
+@media(max-width:640px){h2{font-size:25px}.t .n{font-size:32px}#mapa-ventas{height:360px}}
 </style>
 </head>
 <body>
@@ -89,7 +141,7 @@ td.num{text-align:right;font-family:"IBM Plex Mono",monospace;white-space:nowrap
   <p>Pega el <span class="mono">LEADS_TOKEN</span> que configuraste en Render.
      Se guarda solo en este navegador.</p>
   <form id="forma-entrar">
-    <input type="password" id="token" placeholder="LEADS_TOKEN" autocomplete="current-password" required>
+    <input type="password" id="token" placeholder="LEADS_TOKEN" autocomplete="current-password" aria-label="Token de acceso LEADS_TOKEN" title="Ingresa tu LEADS_TOKEN configurado en Render" required>
     <button type="submit" style="width:100%">Entrar</button>
   </form>
   <p id="error-entrar" class="oculto" style="color:var(--bad)"></p>
@@ -120,6 +172,24 @@ td.num{text-align:right;font-family:"IBM Plex Mono",monospace;white-space:nowrap
   <h2>Dinero</h2>
   <p class="sub">Lo que se cobró de verdad y lo que quedó a medias.</p>
   <div class="tarjetas" id="tarjetas-dinero"></div>
+
+  <!-- ═══ GEOGRAFÍA DE VENTAS & PAUTA PUBLICITARIA ═══ -->
+  <section class="mapa-seccion">
+    <div class="mapa-encabezado-acciones">
+      <div>
+        <h2>Geografía de Ventas y Pauta Publicitaria</h2>
+        <p class="sub">Densidad de pedidos completados por plaza para dirigir campañas publicitarias geolocalizadas (Meta Ads / Google Ads).</p>
+      </div>
+      <div>
+        <button id="btn-toggle-demo" class="sutil" type="button">Ver simulación de pauta</button>
+      </div>
+    </div>
+    <div class="tarjetas" id="tarjetas-mapa" style="margin-bottom:14px"></div>
+    <div class="mapa-marco">
+      <div id="mapa-ventas"></div>
+    </div>
+    <div id="panel-pauta" class="mapa-panel-pauta"></div>
+  </section>
 
   <h2>Pedidos</h2>
   <p class="sub">Quién pagó, cuánto y qué se lleva. Lo que está en
@@ -362,6 +432,7 @@ td.num{text-align:right;font-family:"IBM Plex Mono",monospace;white-space:nowrap
       tarjeta("Pedidos", d.dinero.pedidos_totales, "en esta sesión del servidor");
 
     pintarAlertas(d);
+    pintarMapaVentas(d.pedidos || []);
     pintarPedidos(d.pedidos || []);
     pintarLeads(d.leads || []);
     pintarPreguntas(d.actividad || []);
@@ -380,6 +451,322 @@ td.num{text-align:right;font-family:"IBM Plex Mono",monospace;white-space:nowrap
         { chico: true }) +
       tarjeta("Modelo", d.configuracion.modelo || "—", "el cerebro del Asesor", { chico: true });
   }
+
+  // ── Módulo Mapa Geográfico de Ventas & Pauta Publicitaria ─────────────────
+  const COORDENADAS_PLAZAS = {
+    "Hidalgo": [20.1011, -98.7591],
+    "Pachuca": [20.1011, -98.7591],
+    "Tulancingo": [20.0825, -98.3631],
+    "Ciudad de México": [19.4326, -99.1332],
+    "CDMX": [19.4326, -99.1332],
+    "Estado de México": [19.2826, -99.6557],
+    "Toluca": [19.2826, -99.6557],
+    "Naucalpan": [19.4785, -99.2396],
+    "Tlalnepantla": [19.5400, -99.1950],
+    "Jalisco": [20.6597, -103.3496],
+    "Guadalajara": [20.6597, -103.3496],
+    "Zapopan": [20.7167, -103.4000],
+    "Nuevo León": [25.6866, -100.3161],
+    "Monterrey": [25.6866, -100.3161],
+    "San Pedro": [25.6572, -100.4023],
+    "Puebla": [19.0414, -98.2063],
+    "Querétaro": [20.5888, -100.3899],
+    "Guanajuato": [21.0190, -101.2574],
+    "León": [21.1221, -101.6826],
+    "Veracruz": [19.1738, -96.1342],
+    "Xalapa": [19.5438, -96.9102],
+    "Yucatán": [20.9674, -89.5926],
+    "Mérida": [20.9674, -89.5926],
+    "Quintana Roo": [21.1619, -86.8515],
+    "Cancún": [21.1619, -86.8515],
+    "Playa del Carmen": [20.6296, -87.0739],
+    "Baja California": [32.5149, -117.0382],
+    "Tijuana": [32.5149, -117.0382],
+    "Mexicali": [32.6245, -115.4523],
+    "Baja California Sur": [24.1426, -110.3128],
+    "La Paz": [24.1426, -110.3128],
+    "Sonora": [29.0729, -110.9559],
+    "Hermosillo": [29.0729, -110.9559],
+    "Sinaloa": [24.8091, -107.3940],
+    "Culiacán": [24.8091, -107.3940],
+    "Mazatlán": [23.2494, -106.4111],
+    "Chihuahua": [28.6353, -106.0889],
+    "Ciudad Juárez": [31.6904, -106.4245],
+    "Coahuila": [25.4383, -101.0053],
+    "Saltillo": [25.4383, -101.0053],
+    "Torreón": [25.5428, -103.4068],
+    "San Luis Potosí": [22.1565, -100.9855],
+    "Aguascalientes": [21.8853, -102.2916],
+    "Michoacán": [19.7060, -101.1950],
+    "Morelia": [19.7060, -101.1950],
+    "Morelos": [18.9242, -99.2216],
+    "Cuernavaca": [18.9242, -99.2216],
+    "Tlaxcala": [19.3182, -98.2375],
+    "Tabasco": [17.9892, -92.9281],
+    "Villahermosa": [17.9892, -92.9281],
+    "Chiapas": [16.7569, -93.1292],
+    "Tuxtla Gutiérrez": [16.7569, -93.1292],
+    "Oaxaca": [17.0732, -96.7266],
+    "Guerrero": [16.8531, -99.8237],
+    "Acapulco": [16.8531, -99.8237],
+    "Durango": [24.0277, -104.6532],
+    "Zacatecas": [22.7709, -102.5832],
+    "Nayarit": [21.5039, -104.8946],
+    "Tepic": [21.5039, -104.8946],
+    "Colima": [19.2452, -103.7240],
+    "Manzanillo": [19.0522, -104.3158],
+    "Tamaulipas": [26.0573, -98.2974],
+    "Reynosa": [26.0573, -98.2974],
+    "Tampico": [22.2331, -97.8611],
+    "Campeche": [19.8301, -90.5349]
+  };
+
+  const ESTADOS_POR_PREFIJO_CP = [
+    [1, 16, "Ciudad de México"], [20, 20, "Aguascalientes"], [21, 22, "Baja California"],
+    [23, 23, "Baja California Sur"], [24, 24, "Campeche"], [25, 27, "Coahuila"],
+    [28, 28, "Colima"], [29, 30, "Chiapas"], [31, 33, "Chihuahua"],
+    [34, 35, "Durango"], [36, 38, "Guanajuato"], [39, 41, "Guerrero"],
+    [42, 43, "Hidalgo"], [44, 49, "Jalisco"], [50, 57, "Estado de México"],
+    [58, 61, "Michoacán"], [62, 62, "Morelos"], [63, 63, "Nayarit"],
+    [64, 67, "Nuevo León"], [68, 71, "Oaxaca"], [72, 75, "Puebla"],
+    [76, 76, "Querétaro"], [77, 77, "Quintana Roo"], [78, 79, "San Luis Potosí"],
+    [80, 82, "Sinaloa"], [83, 85, "Sonora"], [86, 86, "Tabasco"],
+    [87, 89, "Tamaulipas"], [90, 90, "Tlaxcala"], [91, 96, "Veracruz"],
+    [97, 97, "Yucatán"], [98, 99, "Zacatecas"]
+  ];
+
+  const PEDIDOS_DEMO = [
+    { folio: "VQ-CDMX-101", estado: "approved", total: "$3,850.00", total_centavos: 385000, pagado: new Date().toISOString(), destino: { cp: "06600", estado: "Ciudad de México", direccion: "Paseo de la Reforma 222, Juárez, Cuauhtémoc, CDMX" }, items: [{ cantidad: 2, titulo: "ValEndo Pro Anatómico" }] },
+    { folio: "VQ-CDMX-102", estado: "approved", total: "$5,200.00", total_centavos: 520000, pagado: new Date(Date.now() - 3600000).toISOString(), destino: { cp: "03100", estado: "Ciudad de México", direccion: "Av. Insurgentes Sur 800, Del Valle, CDMX" }, items: [{ cantidad: 1, titulo: "Pack Anatómico Clínico Completo" }] },
+    { folio: "VQ-HGO-103", estado: "approved", total: "$6,500.00", total_centavos: 650000, pagado: new Date(Date.now() - 7200000).toISOString(), destino: { cp: "42000", estado: "Hidalgo", direccion: "Av. Juárez 110, Centro, Pachuca" }, items: [{ cantidad: 3, titulo: "Kit Impresión 3D Grado Dental" }] },
+    { folio: "VQ-JAL-104", estado: "approved", total: "$4,800.00", total_centavos: 480000, pagado: new Date(Date.now() - 14400000).toISOString(), destino: { cp: "44100", estado: "Jalisco", direccion: "Av. Américas 1500, Guadalajara" }, items: [{ cantidad: 1, titulo: "Modelo Mandibular Nervio Sintético" }] },
+    { folio: "VQ-NL-105", estado: "approved", total: "$7,400.00", total_centavos: 740000, pagado: new Date(Date.now() - 28800000).toISOString(), destino: { cp: "64000", estado: "Nuevo León", direccion: "Calzada del Valle 400, San Pedro Garza García, Monterrey" }, items: [{ cantidad: 2, titulo: "Termoformado de Precisión Especializada" }] },
+    { folio: "VQ-PUE-106", estado: "approved", total: "$2,650.00", total_centavos: 265000, pagado: new Date(Date.now() - 43200000).toISOString(), destino: { cp: "72000", estado: "Puebla", direccion: "Av. Juárez 2108, La Paz, Puebla" }, items: [{ cantidad: 1, titulo: "ValEndo Starter Dental" }] },
+    { folio: "VQ-QRO-107", estado: "approved", total: "$3,100.00", total_centavos: 310000, pagado: new Date(Date.now() - 86400000).toISOString(), destino: { cp: "76000", estado: "Querétaro", direccion: "Bernardo Quintana 500, Querétaro" }, items: [{ cantidad: 1, titulo: "Guía Quirúrgica Prototipo Valquiria 3D" }] }
+  ];
+
+  let mapaLeaflet = null;
+  let capaMarcadores = null;
+  let simularPautaActiva = false;
+  let ultimosPedidosCargados = [];
+
+  function resolverPlaza(p) {
+    let cp = p.destino?.cp || p.comprador?.cp || "";
+    let estado = p.destino?.estado || p.comprador?.estado || "";
+    let direccion = p.destino?.direccion || p.comprador?.direccion || "";
+
+    if (!estado && cp) {
+      const prefijo = parseInt(String(cp).slice(0, 2), 10);
+      const match = ESTADOS_POR_PREFIJO_CP.find(([a, b]) => prefijo >= a && prefijo <= b);
+      if (match) estado = match[2];
+    }
+
+    let ciudad = "";
+    if (direccion) {
+      for (const nombrePlaza of Object.keys(COORDENADAS_PLAZAS)) {
+        const re = new RegExp(`\\b${nombrePlaza}\\b`, "i");
+        if (re.test(direccion)) {
+          ciudad = nombrePlaza;
+          break;
+        }
+      }
+    }
+    if (!ciudad && estado) ciudad = estado;
+    if (!ciudad) ciudad = "Centro";
+
+    let coords = COORDENADAS_PLAZAS[ciudad] || (estado ? COORDENADAS_PLAZAS[estado] : null) || [19.4326, -99.1332];
+    return {
+      nombre: ciudad === estado ? estado : `${ciudad}, ${estado}`,
+      ciudad,
+      estado: estado || "México",
+      coords,
+      cp: cp || "—"
+    };
+  }
+
+  function inicializarMapa() {
+    if (mapaLeaflet || typeof L === "undefined") return;
+    const contenedor = $("#mapa-ventas");
+    if (!contenedor) return;
+
+    mapaLeaflet = L.map("mapa-ventas", {
+      center: [22.8, -101.5],
+      zoom: 5,
+      minZoom: 4,
+      maxZoom: 14,
+      attributionControl: true
+    });
+
+    L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+      subdomains: "abcd",
+      maxZoom: 19,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a>'
+    }).addTo(mapaLeaflet);
+
+    capaMarcadores = L.layerGroup().addTo(mapaLeaflet);
+
+    $("#btn-toggle-demo")?.addEventListener("click", () => {
+      simularPautaActiva = !simularPautaActiva;
+      const b = $("#btn-toggle-demo");
+      if (b) b.textContent = simularPautaActiva ? "Ver pedidos reales" : "Ver simulación de pauta";
+      pintarMapaVentas(ultimosPedidosCargados);
+    });
+  }
+
+  function pintarMapaVentas(pedidos) {
+    ultimosPedidosCargados = pedidos;
+    if (typeof L === "undefined") return;
+
+    if (!mapaLeaflet) {
+      inicializarMapa();
+    }
+    if (!mapaLeaflet || !capaMarcadores) return;
+
+    // Asegurar que el tamaño del lienzo de Leaflet se sincronice con el DOM
+    setTimeout(() => { try { mapaLeaflet.invalidateSize(); } catch {} }, 100);
+
+    capaMarcadores.clearLayers();
+
+    let aprobados = (pedidos || []).filter(p => p.estado === "approved");
+    const hayVentasReales = aprobados.length > 0;
+
+    const usandoDemo = simularPautaActiva || !hayVentasReales;
+    const lista = usandoDemo ? PEDIDOS_DEMO : aprobados;
+
+    // Agrupar por coordenada / plaza
+    const grupos = new Map();
+    let totalCobradoGrupo = 0;
+
+    for (const p of lista) {
+      const plaza = resolverPlaza(p);
+      const clave = plaza.coords.join(",");
+      if (!grupos.has(clave)) {
+        grupos.set(clave, {
+          plaza,
+          pedidos: [],
+          total_centavos: 0
+        });
+      }
+      const g = grupos.get(clave);
+      g.pedidos.push(p);
+      const centavos = p.total_centavos || (parseFloat(String(p.total || "").replace(/[^0-9.]/g, "")) * 100) || 0;
+      g.total_centavos += centavos;
+      totalCobradoGrupo += centavos;
+    }
+
+    const bounds = [];
+
+    grupos.forEach(g => {
+      const cantidad = g.pedidos.length;
+      const radio = Math.min(48, Math.max(22, 18 + cantidad * 5));
+      const nucleoTam = Math.round(radio * 0.72);
+
+      const icono = L.divIcon({
+        className: "marcador-oro-contenedor",
+        html: `<div class="marcador-oro" style="width:${radio}px;height:${radio}px">
+                 <div class="halo"></div>
+                 <div class="nucleo" style="width:${nucleoTam}px;height:${nucleoTam}px">${cantidad}</div>
+               </div>`,
+        iconSize: [radio, radio],
+        iconAnchor: [radio / 2, radio / 2],
+        popupAnchor: [0, -radio / 2]
+      });
+
+      const m = L.marker(g.plaza.coords, { icon: icono });
+
+      // Recomendación de pauta publicitaria adaptada al volumen
+      let nivelPauta = "Expansión y Tráfico";
+      let consejoPauta = "Plaza con primeras ventas. Se recomienda pauta de consideración (tráfico al catálogo / mensajes directos a WhatsApp) con radio de 40 km.";
+      if (cantidad >= 3 || g.total_centavos >= 600000) {
+        nivelPauta = "Alta Conversión / Retargeting";
+        consejoPauta = "Plaza consolidada con alta densidad de compra. Prioridad máxima para campañas de Conversión en Meta Ads y Búsqueda de alta intención en Google Ads (radio 25-35 km).";
+      } else if (cantidad === 2) {
+        nivelPauta = "Crecimiento Acelerado";
+        consejoPauta = "Plaza con tracción confirmada. Asignar 20% del presupuesto mensual a audiencias Lookalike (similares) y retargeting de carritos.";
+      }
+
+      const foliosTxt = g.pedidos.slice(0, 3).map(p => esc(p.folio)).join(", ");
+
+      const popupHtml = `
+        <div class="pop-titulo">${esc(g.plaza.nombre)}</div>
+        <div class="pop-cp">CP ${esc(g.plaza.cp)} · ${esc(g.plaza.estado)}</div>
+        <div class="pop-dato"><span>Pedidos completados:</span><span>${cantidad}</span></div>
+        <div class="pop-dato"><span>Facturación en plaza:</span><span>${pesos(g.total_centavos)}</span></div>
+        <div class="pop-dato"><span>Folios muestra:</span><span style="font-size:10px">${foliosTxt}</span></div>
+        <div class="pop-pauta">
+          <strong style="display:block;color:var(--gold);margin-bottom:3px">🎯 Pauta sugerida (${nivelPauta}):</strong>
+          ${consejoPauta}
+        </div>
+      `;
+
+      m.bindPopup(popupHtml);
+      capaMarcadores.addLayer(m);
+      bounds.push(g.plaza.coords);
+    });
+
+    if (bounds.length > 0) {
+      try {
+        mapaLeaflet.fitBounds(L.latLngBounds(bounds), { padding: [45, 45], maxZoom: 10 });
+      } catch {}
+    }
+
+    // Actualizar Tarjetas KPI del Mapa
+    const plazasOrdenadas = [...grupos.values()].sort((a, b) => b.total_centavos - a.total_centavos);
+    const plazaTop = plazasOrdenadas[0];
+
+    const estadoSimulacionTxt = usandoDemo
+      ? (hayVentasReales ? "Modo simulación activo" : "Datos simulados (sin ventas en esta sesión)")
+      : "Datos reales en vivo";
+
+    $("#tarjetas-mapa").innerHTML =
+      tarjeta("Plazas activas", grupos.size, "ciudades con ventas completadas") +
+      tarjeta("Plaza líder", plazaTop ? plazaTop.plaza.ciudad : "—",
+        plazaTop ? pesos(plazaTop.total_centavos) + " (" + plazaTop.pedidos.length + " ped)" : "sin ventas",
+        { destaca: true }) +
+      tarjeta("Ventas en mapa", pesos(totalCobradoGrupo), estadoSimulacionTxt, { chico: true }) +
+      tarjeta("Segmentación", plazasOrdenadas.length > 1 ? "Multirregional" : "Focalizada",
+        "campañas recomendadas", { chico: true });
+
+    // Panel de Estrategia Publicitaria
+    const top3Plazas = plazasOrdenadas.slice(0, 3);
+    let htmlPauta = `
+      <div class="pauta-cabecera">
+        <div>
+          <h3>Dirección de Pauta Publicitaria y Densidad Territorial</h3>
+          <span class="sub" style="margin:0">${estadoSimulacionTxt}</span>
+        </div>
+        <span class="pauta-badge">Estrategia Valquiria Ads</span>
+      </div>
+      <div class="pauta-estrategia">
+        <div class="pauta-tarjeta">
+          <h4>1. Campañas de Conversión (Meta Ads)</h4>
+          <p>Concentrar el <strong>55% del presupuesto de pauta</strong> en ${top3Plazas.map(p => p.plaza.ciudad).join(", ") || "plazas clave"} usando ubicaciones en feed e Instagram Stories con radio cerrado de 30 km.</p>
+        </div>
+        <div class="pauta-tarjeta">
+          <h4>2. Google Ads (Búsqueda de Intención)</h4>
+          <p>Pujar agresivamente por términos de <em>impresión 3d dental</em> y <em>empaques termoformados</em> geolocalizados en los estados líderes para capturar demanda con intención inmediata.</p>
+        </div>
+        <div class="pauta-tarjeta">
+          <h4>3. Retargeting y Cierre WhatsApp</h4>
+          <p>Utilizar Click-to-WhatsApp en prospectos de estas plazas con alta tasa de cobro para optimizar el CAC y elevar el ticket promedio regional.</p>
+        </div>
+      </div>
+      <div style="margin-top:16px">
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--muted);text-transform:uppercase;margin-bottom:6px">Distribución por Plaza:</div>
+        <div class="plazas-lista">
+          ${plazasOrdenadas.map(g => `
+            <div class="plaza-item">
+              <span class="nom">${esc(g.plaza.nombre)}</span>
+              <span class="val">${pesos(g.total_centavos)}</span>
+            </div>
+          `).join("")}
+        </div>
+      </div>
+    `;
+
+    $("#panel-pauta").innerHTML = htmlPauta;
+  }
+
 
   // ── Arranque ──────────────────────────────────────────────────────────
   let guardado = null;

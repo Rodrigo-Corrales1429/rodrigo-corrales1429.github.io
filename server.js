@@ -54,7 +54,7 @@ const {
   sanearComprador,
   contactoEnUnaLinea
 } = require("./pagos.js");
-const { estadoEnvios, cotizarEnvio } = require("./envios.js");
+const { estadoEnvios, cotizarEnvio, ubicar } = require("./envios.js");
 const avisos = require("./notificaciones.js");
 const inventario = require("./inventario.js");
 const almacen = require("./almacen.js");
@@ -1978,7 +1978,12 @@ app.get("/api/admin/resumen", (req, res) => {
       pagado: p.pagado || null,
       email: p.email || null,
       metodo: p.metodo || null,
-      items: p.items || []
+      items: p.items || [],
+      destino: p.comprador ? {
+        cp: p.comprador.cp || null,
+        estado: (p.comprador.cp && ubicar(p.comprador.cp)?.estado) || null,
+        direccion: p.comprador.direccion || null
+      } : null
     }));
 
   const aprobados = pedidos.filter(p => p.estado === "approved");
