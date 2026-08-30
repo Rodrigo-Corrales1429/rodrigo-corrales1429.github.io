@@ -228,6 +228,35 @@ producto lo dejaba agotado 24 horas sin pagar un peso. Tres topes lo cierran:
 | `INVENTARIO_MAX_UNIDADES` | 12 | Lo mismo, repartido entre varios productos. |
 | `INVENTARIO_MAX_RESERVAS_POR_IDENTIDAD` | 1 | Que un visitante acumule mercancía apartada. Abrir un pedido nuevo **reemplaza** el anterior, así que no bloquea a quien reintenta. |
 | `INVENTARIO_FRACCION_RESERVABLE` | 0.5 | **El techo que no depende de quién pida.** Las reservas sin pagar nunca retienen más de esa fracción de lo que queda por vender, vengan de las IPs que vengan. |
+| `INVENTARIO_STOCK_SEGURIDAD` | 1 | Piezas que nunca se apartan sin pagar. Con stock bajo la fracción sola no basta: de 1 pieza, la mitad redondea a 0. |
+
+El techo se calcula así, y **`INVENTARIO_MAX_POR_SKU` no entra en la cuenta**:
+
+```
+porVender  = stock − vendido
+techo      = min( floor(porVender × FRACCION) , porVender − STOCK_SEGURIDAD )
+cupo       = max( 0 , techo − apartado_sin_pagar )
+```
+
+`MAX_POR_SKU` es un límite **por pedido**; el techo es **por producto**. Ese
+era el fallo que quedaba: con `max(MAX_POR_SKU, fracción)`, el suelo del
+primero anulaba al segundo justo cuando quedaba poco stock — con 21 de 27
+vendidas quedaban 6, la fracción daba 3, el `max` lo subía a 6, y una sola
+reserva sin pagar volvía a dejar disponible en cero.
+
+| Quedan | Apartable sin pagar | Siempre comprable |
+|---|---|---|
+| 27 | 13 | 14 |
+| 10 | 5 | 5 |
+| 6 | 3 | 3 |
+| 2 | 1 | 1 |
+| 1 | 0 | 1 |
+
+La última fila es una decisión, no un descuido: **la última pieza no se aparta
+de forma anónima**. No se puede sostener a la vez «un bot nunca aparta la
+última» y «cualquier anónimo puede apartar la última». Se protege la pieza, y
+el rechazo (`motivo: "stock-protegido"`, con `disponible`, `apartado`, `techo`
+y `maximo_comprable_en_linea`) manda a WhatsApp, donde hay una persona.
 
 Los tres primeros son fricción por visitante, y un visitante son cinco
 pestañas o cinco IPs: con reserva de 15 min, 6 por SKU y 3 por identidad, dos

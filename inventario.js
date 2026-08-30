@@ -111,8 +111,18 @@ const MAX_RESERVAS_POR_IDENTIDAD = Math.max(
    El suelo de MAX_POR_SKU existe para que una compra normal quepa siempre,
    incluso con el catálogo casi agotado. */
 const FRACCION_RESERVABLE = Math.min(
-  0.9,
+  0.8,
   Math.max(0.1, parseFloat(process.env.INVENTARIO_FRACCION_RESERVABLE || "0.5") || 0.5)
+);
+
+/* Piezas que NUNCA se apartan sin pagar, por encima de lo que diga la
+   fracción. Con stock bajo la fracción sola no basta: de 2 piezas, la mitad es
+   1 y la otra se puede apartar — pero de 1 pieza, la mitad es 0 y sin este
+   suelo el redondeo dejaría pasar la última. Es la garantía de que quien
+   entra a comprar de verdad SIEMPRE encuentra algo que comprar. */
+const STOCK_SEGURIDAD = Math.max(
+  1,
+  parseInt(process.env.INVENTARIO_STOCK_SEGURIDAD || "1", 10) || 1
 );
 
 /* folio → { lineas:[{sku,cantidad}], creada:ms, estado:'reservada'|'vendida',
@@ -159,12 +169,47 @@ function apartadoSinPagar(sku) {
   return n;
 }
 
-/** Cuánto de un SKU pueden retener a la vez TODAS las reservas sin pagar. */
+/**
+ * Cuánto de un SKU pueden retener a la vez TODAS las reservas sin pagar.
+ *
+ * EL ERROR QUE TENÍA: `Math.max(MAX_POR_SKU, fracción)`.
+ * Ese suelo parecía sensato —«que una compra normal quepa siempre»— y anulaba
+ * la protección entera justo cuando más falta hacía. Con 27 piezas vendidas 21,
+ * quedaban 6, la fracción daba 3… y el `max` lo subía a 6: una sola reserva sin
+ * pagar volvía a dejar disponible en CERO. El agujero no estaba en el número,
+ * estaba en mezclar dos límites que no son lo mismo.
+ *
+ * Son independientes, y ninguno puede levantar al otro:
+ *   · MAX_POR_SKU es un límite POR PEDIDO — cuánto se lleva alguien de una vez.
+ *   · Esto es un límite POR PRODUCTO — cuánto puede estar apartado sin pagar.
+ *
+ * Y encima del fraccional, una reserva de seguridad: `STOCK_SEGURIDAD` piezas
+ * que no se apartan nunca de forma anónima. Es lo que hace que el invariante
+ * sea cierto para CUALQUIER nivel de stock y no solo para el catálogo lleno.
+ *
+ *   quedan 27 → apartable 13 → siempre comprables 14
+ *   quedan 10 → apartable  5 → siempre comprables  5
+ *   quedan  6 → apartable  3 → siempre comprables  3
+ *   quedan  2 → apartable  1 → siempre comprables  1
+ *   quedan  1 → apartable  0 → la última pieza no se aparta sola
+ *
+ * La última línea es una decisión, no un descuido: no se puede sostener a la
+ * vez «un bot nunca aparta la última pieza» y «cualquier anónimo puede apartar
+ * la última pieza». Se elige proteger la pieza; quien la quiera de verdad la
+ * cierra por WhatsApp, y ahí hay una persona mirando.
+ */
 function techoReservable(sku) {
   const p = getProductoPorSku(sku);
   if (!p) return 0;
   const porVender = Math.max(0, (p.stock || 0) - (VENDIDO.get(sku) || 0));
-  return Math.max(MAX_POR_SKU, Math.floor(porVender * FRACCION_RESERVABLE));
+  const fraccional = Math.floor(porVender * FRACCION_RESERVABLE);
+  const conSeguridad = Math.max(0, porVender - STOCK_SEGURIDAD);
+  return Math.min(fraccional, conSeguridad);
+}
+
+/** Lo que todavía se puede apartar sin pagar de un SKU. Nunca negativo. */
+function cupoReservable(sku) {
+  return Math.max(0, techoReservable(sku) - apartadoSinPagar(sku));
 }
 
 /** Reservas vivas —ni vendidas ni caducadas— de un mismo visitante. */
@@ -246,25 +291,6 @@ function reservar(folio, lineas, opciones = {}) {
     .slice(0, Math.max(0, sobrantes.length - (MAX_RESERVAS_POR_IDENTIDAD - 1)))
     .forEach(f => RESERVAS.delete(f));
 
-  /* El techo global va ANTES del stock: no es «no queda», es «no queda
-     disponible para apartar sin pagar», y eso se cuenta distinto. */
-  for (const l of lineas) {
-    const techo = techoReservable(l.sku);
-    if (apartadoSinPagar(l.sku) + l.cantidad > techo) {
-      const p = getProductoPorSku(l.sku);
-      return {
-        ok: false,
-        motivo: "tope-global",
-        sku: l.sku,
-        error:
-          `Hay varias personas comprando ${p?.nombre || l.sku} ahora mismo y ` +
-          `estamos guardando existencias para que nadie se quede sin la suya. ` +
-          `Intenta de nuevo en ${MINUTOS_RESERVA} minutos, o escríbenos por ` +
-          `WhatsApp al +52 771 795 9131 y te lo apartamos a mano.`
-      };
-    }
-  }
-
   const faltantes = [];
   for (const l of lineas) {
     const libre = disponible(l.sku);
@@ -279,6 +305,34 @@ function reservar(folio, lineas, opciones = {}) {
     }
   }
   if (faltantes.length) return { ok: false, motivo: "stock", faltantes };
+
+  /* El cupo va DESPUÉS del stock, y el orden importa para decir la verdad:
+     «se agotó» y «queda, pero no se aparta sin pagar» son dos cosas distintas
+     y el cliente merece saber cuál de las dos le está pasando. */
+  for (const l of lineas) {
+    const cupo = cupoReservable(l.sku);
+    if (l.cantidad > cupo) {
+      const p = getProductoPorSku(l.sku);
+      const nombre = p?.nombre || l.sku;
+      return {
+        ok: false,
+        motivo: "stock-protegido",
+        sku: l.sku,
+        disponible: disponible(l.sku),
+        apartado: apartadoSinPagar(l.sku),
+        techo: techoReservable(l.sku),
+        maximo_comprable_en_linea: cupo,
+        error: cupo > 0
+          ? `De ${nombre} puedo apartarte ${cupo} ` +
+            `${cupo === 1 ? "pieza" : "piezas"} ahora mismo. Si necesitas más, ` +
+            `escríbenos por WhatsApp al +52 771 795 9131 y te las apartamos a mano.`
+          : `Nos quedan muy pocas piezas de ${nombre} y las últimas no se ` +
+            `apartan solas: así nos aseguramos de que no se pierdan en un ` +
+            `carrito que nadie termina. Escríbenos por WhatsApp al ` +
+            `+52 771 795 9131 y te la guardamos en el momento.`
+      };
+    }
+  }
 
   RESERVAS.set(folio, {
     lineas: lineas.map(l => ({ sku: l.sku, cantidad: l.cantidad })),
@@ -360,8 +414,8 @@ function _reiniciar() {
 module.exports = {
   reservar, confirmar, liberar,
   disponible, comprometido, estadoInventario, reservasVivasDe,
-  apartadoSinPagar, techoReservable,
+  apartadoSinPagar, techoReservable, cupoReservable,
   MINUTOS_RESERVA, TECHO_MINUTOS_RESERVA, MAX_POR_SKU, MAX_UNIDADES,
-  MAX_RESERVAS_POR_IDENTIDAD, FRACCION_RESERVABLE,
+  MAX_RESERVAS_POR_IDENTIDAD, FRACCION_RESERVABLE, STOCK_SEGURIDAD,
   _reiniciar
 };

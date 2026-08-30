@@ -371,6 +371,85 @@ async function correrPruebas() {
     inv._reiniciar();
   });
 
+  await prueba("ninguna reserva sin pagar deja el stock en cero, en NINGÚN nivel", () => {
+    /* El hueco que quedaba: el techo era `max(MAX_POR_SKU, fracción)`, y ese
+       suelo anulaba la protección justo cuando quedaba poco. Con 21 de 27
+       vendidas quedaban 6, la fracción daba 3, el `max` lo subía a 6 — y una
+       sola reserva sin pagar volvía a dejar disponible en cero.
+
+       Esto recorre los VEINTIOCHO niveles de stock, no solo el catálogo
+       recién arrancado, y en cada uno lanza 100 identidades distintas
+       pidiendo desde el máximo hacia abajo. */
+    const inv = require("./inventario.js");
+    const STOCK = 27;   // ValEnd, según productos.json
+
+    for (let vendidas = 0; vendidas <= STOCK; vendidas++) {
+      inv._reiniciar();
+      /* Las ventas confirmadas sí pueden llevar el stock a cero: eso es
+         vender. Lo que no puede es una reserva que nadie pagó. */
+      if (vendidas) inv.confirmar("VENTA", [{ sku: "ValEnd", cantidad: vendidas }]);
+      const quedan = inv.disponible("ValEnd");
+
+      for (let i = 0; i < 100; i++) {
+        for (let q = inv.MAX_POR_SKU; q >= 1; q--) {
+          if (inv.reservar(`A${i}-${q}`, [{ sku: "ValEnd", cantidad: q }],
+              { identidad: "ip" + i }).ok) break;
+        }
+      }
+
+      const apartado = inv.apartadoSinPagar("ValEnd");
+      const techo = inv.techoReservable("ValEnd");
+      afirmar(apartado <= techo,
+        `con ${quedan} en stock se apartaron ${apartado} y el techo era ${techo}`);
+      afirmar(inv.disponible("ValEnd") >= Math.min(quedan, inv.STOCK_SEGURIDAD),
+        `con ${quedan} en stock, 100 identidades dejaron disponible en ` +
+        `${inv.disponible("ValEnd")}`);
+    }
+    inv._reiniciar();
+  });
+
+  await prueba("el caso exacto del informe: 21 vendidas, quedan 6, reserva de 6", () => {
+    const inv = require("./inventario.js");
+    inv._reiniciar();
+    inv.confirmar("VENTA", [{ sku: "ValEnd", cantidad: 21 }]);
+    afirmar(inv.disponible("ValEnd") === 6, "no quedaron 6 piezas");
+
+    const r = inv.reservar("BOT", [{ sku: "ValEnd", cantidad: 6 }], { identidad: "bot" });
+    afirmar(!r.ok, "la reserva de las 6 últimas pasó");
+    afirmar(r.motivo === "stock-protegido", `motivo inesperado: ${r.motivo}`);
+    afirmar(r.maximo_comprable_en_linea === 3,
+      `el cupo debería ser 3 y fue ${r.maximo_comprable_en_linea}`);
+    afirmar(/WhatsApp/.test(r.error), "el rechazo no ofrece salida");
+    afirmar(inv.disponible("ValEnd") === 6, "el intento fallido movió el inventario");
+    inv._reiniciar();
+  });
+
+  await prueba("MAX_POR_SKU es un límite por pedido y NUNCA levanta el techo", () => {
+    const inv = require("./inventario.js");
+    inv._reiniciar();
+    for (let vendidas = 0; vendidas <= 27; vendidas++) {
+      if (vendidas) { inv._reiniciar(); inv.confirmar("V", [{ sku: "ValEnd", cantidad: vendidas }]); }
+      const porVender = 27 - vendidas;
+      const esperado = Math.min(
+        Math.floor(porVender * inv.FRACCION_RESERVABLE),
+        Math.max(0, porVender - inv.STOCK_SEGURIDAD)
+      );
+      afirmar(inv.techoReservable("ValEnd") === esperado,
+        `con ${porVender} por vender el techo fue ${inv.techoReservable("ValEnd")} ` +
+        `y debía ser ${esperado}`);
+    }
+    inv._reiniciar();
+  });
+
+  await prueba("las variables absurdas se recortan en vez de abrir el agujero", () => {
+    const inv = require("./inventario.js");
+    afirmar(inv.FRACCION_RESERVABLE >= 0.1 && inv.FRACCION_RESERVABLE <= 0.8,
+      `la fracción quedó en ${inv.FRACCION_RESERVABLE}`);
+    afirmar(inv.STOCK_SEGURIDAD >= 1, "la reserva de seguridad bajó de 1");
+    afirmar(inv.MINUTOS_RESERVA >= 1 && inv.MINUTOS_RESERVA <= 60,
+      `la reserva dura ${inv.MINUTOS_RESERVA} minutos`);
+  });
+
   await prueba("una reserva larga heredada del panel no revive el agujero", () => {
     const inv = require("./inventario.js");
     afirmar(inv.MINUTOS_RESERVA <= inv.TECHO_MINUTOS_RESERVA,

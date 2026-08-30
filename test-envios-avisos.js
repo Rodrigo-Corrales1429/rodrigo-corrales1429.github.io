@@ -512,25 +512,14 @@ test("no se puede vender más de lo que hay: el segundo comprador se rechaza", (
   /* Este es el agujero que cerró el módulo: antes los dos recibían link de
      pago y el segundo se enteraba cuando no le llegaba nada.
 
-     Se agota con VENTAS confirmadas, no con reservas: apartar sin pagar tiene
-     ahora su propio techo —ninguna cantidad de reservas puede dejar un
-     producto en cero, y eso se prueba aparte— así que la única forma de
-     quedarse sin existencias es que la gente pague. */
+     Se agota con VENTAS, no con reservas. Apartar sin pagar tiene su propio
+     techo —y las últimas piezas no se apartan solas, a propósito—, así que la
+     única forma de llegar a cero es que la mercancía se venda de verdad: por
+     el checkout o a mano por WhatsApp, que es la vía que representa este
+     `confirmar` con líneas de respaldo. */
   inventario._reiniciar();
   const hay = inventario.disponible("Endotnissin");
-  let vendidas = 0;
-  for (let quedan = hay, i = 0; quedan > 0; i++) {
-    const n = Math.min(inventario.MAX_POR_SKU, quedan);
-    const folio = "V" + i;
-    assert.strictEqual(
-      inventario.reservar(folio, [{ sku: "Endotnissin", cantidad: n }],
-        { identidad: "ip-" + i }).ok,
-      true, `no se pudo reservar el lote ${i}`
-    );
-    assert.strictEqual(inventario.confirmar(folio).ok, true);
-    quedan -= n; vendidas += n;
-  }
-  assert.strictEqual(vendidas, hay);
+  inventario.confirmar("VENTA-TOTAL", [{ sku: "Endotnissin", cantidad: hay }]);
   assert.strictEqual(inventario.disponible("Endotnissin"), 0);
 
   const segundo = inventario.reservar("B", [{ sku: "Endotnissin", cantidad: 1 }],
