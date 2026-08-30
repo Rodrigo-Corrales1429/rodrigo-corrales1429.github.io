@@ -11,7 +11,7 @@
 <!-- El panel SÍ necesita hablar con el backend, y en local con el puerto de
      desarrollo: es la única página del sitio que se prueba contra un servidor
      propio. Todo lo demás queda cerrado. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https://*.basemaps.cartocdn.com https://tile.openstreetmap.org; connect-src 'self' https://rodrigo-corrales1429-github-io.onrender.com http://localhost:3000 http://127.0.0.1:3000 https://*.basemaps.cartocdn.com https://tile.openstreetmap.org">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https://server.arcgisonline.com https://*.basemaps.cartocdn.com https://tile.openstreetmap.org; connect-src 'self' https://rodrigo-corrales1429-github-io.onrender.com http://localhost:3000 http://127.0.0.1:3000 https://server.arcgisonline.com https://*.basemaps.cartocdn.com https://tile.openstreetmap.org">
 <link rel="icon" href="/favicon.ico">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -597,10 +597,9 @@ td.num{text-align:right;font-family:"IBM Plex Mono",monospace;white-space:nowrap
       attributionControl: true
     });
 
-    L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
-      subdomains: "abcd",
-      maxZoom: 19,
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a>'
+    L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}", {
+      maxZoom: 16,
+      attribution: '&copy; <a href="https://www.esri.com/" target="_blank" rel="noopener">Esri</a> &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>'
     }).addTo(mapaLeaflet);
 
     capaMarcadores = L.layerGroup().addTo(mapaLeaflet);
