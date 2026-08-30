@@ -59,7 +59,8 @@ test('/dental/ conserva canonical, robots y datos estructurados', () => {
 test('el sitemap usa sólo URLs limpias y ninguna ruta hash', () => {
   const sitemap = read('sitemap.xml');
   assert(!sitemap.includes('/#/'), 'El sitemap contiene una ruta legacy');
-  cleanRoutes.forEach(route => {
+  const sitemapRoutes = ['/', '/dental/', '/ia/', '/3d/', '/pack/', '/lux/'];
+  sitemapRoutes.forEach(route => {
     const url = `https://valquiriainc.com${route}`;
     assert(sitemap.includes(`<loc>${url}</loc>`), `Falta ${url}`);
   });

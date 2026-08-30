@@ -1,9 +1,21 @@
 User-agent: *
 Allow: /
 
-# La trastienda no se indexa: no tiene contenido público y sí un formulario
-# de token. Que no aparezca en resultados es higiene, no seguridad — la
-# protección real es el token que valida el backend.
+# Rutas de administración y post-compra
 Disallow: /admin/
+Disallow: /gracias/
+
+# Documentos internos técnicos y operativos
+Disallow: /*.md$
+Disallow: /AUDITORIA.md
+Disallow: /AVISOS.md
+Disallow: /ENVIOS.md
+Disallow: /IA_PRO.md
+Disallow: /MODELO.md
+Disallow: /PAGOS.md
+Disallow: /PHASE_1_5_ARCHITECTURE.md
+Disallow: /SEGURIDAD.md
+Disallow: /SEO_AUDIT_PHASE1.md
+Disallow: /SEO_PLAN.md
 
 Sitemap: https://valquiriainc.com/sitemap.xml
