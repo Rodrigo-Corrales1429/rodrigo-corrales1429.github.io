@@ -1272,7 +1272,7 @@ function pintarCatalogo() {
    ROUTER
    ═══════════════════════════════════════════════════════════════════════════ */
 const RUTAS = {
-  '/':           { vista:'v-hub',        fig:'valquiria', tope:1,    lado:1,  titulo:'Valquiria Inc. — Manufactura aditiva en México' },
+  '/':           { vista:'v-hub',        fig:'valquiria', tope:1,    lado:1,  titulo:'Valquiria Inc. | Manufactura Aditiva, Tecnología Dental e IA' },
   '/dental':     { vista:'v-dental',     fig:'diente',    tope:1,    lado:-1, titulo:'Valquiria Dental — Modelos anatómicos con nervio sintético' },
   '/ia':         { vista:'v-ia',         fig:'cyborg',    tope:.94,  lado:1,  titulo:'Valquiria IA — Automatización y consultoría en inteligencia artificial' },
   '/3d':         { vista:'v-3d',         fig:'engrane',   tope:.62,  lado:-1, titulo:'Valquiria 3D — Prototipado y manufactura aditiva' },
