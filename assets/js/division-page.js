@@ -1,5 +1,5 @@
-import { escena } from './escena.js?v=74';
-import { getDivisionConfig } from './division-config.js?v=74';
+import { escena } from './escena.js?v=75';
+import { getDivisionConfig } from './division-config.js?v=75';
 
 const divisionId = document.body.dataset.division;
 const config = getDivisionConfig(divisionId);

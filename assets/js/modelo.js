@@ -280,12 +280,9 @@ float vqOrbita(vec3 base, inout vec3 p){
 }
 `;
 
-/* Qué animación le toca a cada modo. Devuelve null cuando la malla no lleva
-   ninguna, que es lo correcto para las piezas quietas (modo 3) y lo aceptable
-   para las dos que hoy no tienen malla: el grupo entero ya gira despacio en el
-   bucle, así que nada se queda muerto. Si algún día la lámpara o el engrane
-   pasan a ser esculpidos, aquí se añade su rama —copiada del shader de puntos,
-   no reinventada. */
+/* Qué animación le toca a cada modo. Devuelve null para las piezas quietas
+   (modo 3); el grupo compartido conserva su giro lento y la respuesta al
+   puntero, así que los modelos de taller siguen vivos sin deformar su diseño. */
 function animacionDe(modo) {
   if (modo === 0) return { glsl: GLSL_IDLE, fn: 'vqIdle', clave: 'vq-idle' };
   if (modo === 4) return { glsl: GLSL_ORBITA, fn: 'vqOrbita', clave: 'vq-orbita' };

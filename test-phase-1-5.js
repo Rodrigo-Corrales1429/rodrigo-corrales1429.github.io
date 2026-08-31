@@ -159,10 +159,10 @@ test('schema, frontend y Asesor contienen el número nuevo', () => {
 
 console.log('\n[FASE 1.5] 3D, layout y referencias');
 
-test('Dental usa el motor y el molar existentes con canvas decorativo', () => {
+test('Dental usa el motor y el diente vikingo con canvas decorativo', () => {
   assert(dental.includes('id="escena"'), 'Falta canvas de escena');
   assert(dental.includes('aria-hidden="true"'), 'El canvas no está oculto a lectores de pantalla');
-  assert(dental.includes('href="/assets/diente.glb"'), 'No se precarga el molar existente');
+  assert(dental.includes('href="/assets/dental-viking-web.glb"'), 'No se precarga el diente vikingo');
   assert(read('assets/js/division-config.js').includes("figure: 'diente'"), 'La configuración no monta el molar');
   assert(read('assets/js/figuras.js').includes('glb: DENTAL_MODEL'), 'El registro no usa DENTAL_MODEL');
   assert(!read('assets/js/escena.js').includes('const modeloListo = pedirMalla(FIGURA_HUB)'), 'Dental descargaría también la figura del home');
@@ -203,13 +203,28 @@ test('Asesor, carrito y pagos existentes siguen presentes', () => {
   assert(dental.includes('>Asesor</a>') && dental.includes('>Carrito</a>'), 'Dental no conserva accesos comerciales');
 });
 
-test('Pack y Lux conservan sus modelos y puntos de reemplazo', () => {
+test('Dental, 3D, Pack y Lux usan copias web GLB válidas y ligeras', () => {
   const config = read('assets/js/division-config.js');
-  assert(config.includes('PACK_MODEL = null'), 'PACK_MODEL fue sustituido');
-  assert(config.includes('LUX_MODEL = null'), 'LUX_MODEL fue sustituido');
   const figures = read('assets/js/figuras.js');
-  assert(!/empaque:\s*{[\s\S]*?glb:/.test(figures.match(/empaque:\s*{[\s\S]*?\n  },/)[0]), 'Pack recibió un GLB en esta fase');
-  assert(!/lampara:\s*{[\s\S]*?glb:/.test(figures.match(/lampara:\s*{[\s\S]*?\n  }/)[0]), 'Lux recibió un GLB en esta fase');
+  const models = {
+    DENTAL_MODEL: 'assets/dental-viking-web.glb',
+    PRINT_3D_MODEL: 'assets/valquiria-3d-web.glb',
+    PACK_MODEL: 'assets/valquiria-pack-web.glb',
+    LUX_MODEL: 'assets/valquiria-lux-web.glb'
+  };
+
+  for (const [constant, file] of Object.entries(models)) {
+    const absolute = path.join(ROOT, file);
+    assert(config.includes(`/${file}`), `${constant} no apunta a ${file}`);
+    assert(fs.existsSync(absolute), `Falta ${file}`);
+    assert(fs.statSync(absolute).size <= 3 * 1024 * 1024, `${file} supera 3 MiB`);
+    const fd = fs.openSync(absolute, 'r');
+    const header = Buffer.alloc(4);
+    fs.readSync(fd, header, 0, 4, 0);
+    fs.closeSync(fd);
+    assert(header.toString('ascii') === 'glTF', `${file} no es un GLB válido`);
+    assert(figures.includes(`glb: ${constant}`), `figuras.js no conecta ${constant}`);
+  }
 });
 
 console.log(`\n${passed} pruebas pasaron, ${failed} fallaron.`);

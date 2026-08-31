@@ -1,11 +1,19 @@
-import { VALQUIRIA_MODEL, DENTAL_MODEL, IA_MODEL } from './division-config.js?v=74';
+import {
+  VALQUIRIA_MODEL,
+  DENTAL_MODEL,
+  IA_MODEL,
+  PRINT_3D_MODEL,
+  PACK_MODEL,
+  LUX_MODEL
+} from './division-config.js?v=75';
 
 /* ═══════════════════════════════════════════════════════════════════════════
    VALQUIRIA — FÁBRICA DE FIGURAS
    ───────────────────────────────────────────────────────────────────────────
-   Ninguna figura es un archivo 3D. Todas son funciones de distancia con signo
-   (SDF) que se muestrean en una rejilla, se proyectan a la superficie con dos
-   pasos de Newton y se imprimen capa por capa en el canvas.
+   Toda figura conserva una función de distancia con signo (SDF), que se
+   muestrea en una rejilla y sirve como fallback. Las piezas aprobadas pueden
+   declarar además un GLB y reemplazar visualmente esa SDF sin borrar la red de
+   seguridad procedural.
 
    Agregar una pieza al catálogo visual = escribir una función. 0 kb de assets,
    0 peticiones de red, y la silueta se puede afinar con un número.
@@ -943,11 +951,9 @@ const FIGURAS = {
     bb: { x0: -.62, x1: .62, y0: -1.10, y1: .90, z0: -.56, z1: .56 }
   },
   /* ── Las tres de taller ─────────────────────────────────────────────────
-     Estas tres NO esperan malla: la SDF ES la pieza, y por eso llevan
-     `solida`. Sin esa bandera se quedaban en nube —`uEsSolida` a 0, el paso
-     de sólido apagado— y el resultado era una división que enseñaba una
-     constelación de puntos donde las otras tres enseñaban un objeto. Vistas
-     una detrás de otra, /3d, /pack y /lux parecían rotas.
+     Estas tres usan ahora mallas optimizadas de Tripo. La SDF se conserva y
+     `solida` sigue siendo necesaria para que un fallo de red, Draco o WebGL
+     degrade a una pieza procedural curada, no a un hueco ni a una nube.
 
      Y `solida` sola no basta: pide su propia rejilla. Con el paso grueso
      (0.020 en escritorio, 0.027 en el teléfono) los discos del curado miden
@@ -959,17 +965,26 @@ const FIGURAS = {
      los deja entre 49 k y 84 k — justo el presupuesto de 80 000 que aplica
      `montar`, así que la nube llega entera y no diezmada. */
   engrane: {
-    fn: engrane, modo: 2, dist: 5.2, mm: 64, nombre: 'Engrane',
+    fn: engrane, modo: 3, dist: 5.2, mm: 64, nombre: 'Escultura generativa',
+    glb: PRINT_3D_MODEL,
+    /* /3d conserva su avance comercial de 62 %. La holgura deja ese 38 %
+       restante por encima de la malla para que el plano de impresión no
+       rebane el diseño aprobado. */
+    holgura: 1.64,
     paso: 0.0090, pasoMovil: 0.0150, solida: true,
     bb: { x0: -.76, x1: .76, y0: -.76, y1: .76, z0: -.16, z1: .16 }
   },
   empaque: {
     fn: empaque, modo: 3, dist: 3.6, mm: 52, nombre: 'Charola',
+    glb: PACK_MODEL,
+    holgura: 1.15,
     paso: 0.0090, pasoMovil: 0.0150, solida: true,
     bb: { x0: -.57, x1: .75, y0: -.43, y1: .31, z0: -.81, z1: .31 }
   },
   lampara: {
-    fn: lampara, modo: 1, dist: 4.7, mm: 210, nombre: 'Lámpara voxel',
+    fn: lampara, modo: 3, dist: 4.7, mm: 210, nombre: 'Luminaria Valquiria',
+    glb: LUX_MODEL,
+    holgura: 1.49,
     paso: 0.0090, pasoMovil: 0.0150, solida: true,
     bb: { x0: -.56, x1: .56, y0: -.93, y1: .80, z0: -.56, z1: .56 }
   }

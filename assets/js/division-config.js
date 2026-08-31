@@ -2,14 +2,11 @@
    El contenido indexable vive en HTML; este archivo sólo decide qué experiencia
    monta el motor 3D. Las rutas absolutas funcionan igual desde / y /dental/. */
 export const VALQUIRIA_MODEL = '/assets/valquiria.glb';
-export const DENTAL_MODEL = '/assets/diente.glb';
+export const DENTAL_MODEL = '/assets/dental-viking-web.glb';
 export const IA_MODEL = '/assets/cyborg.glb';
-
-/* Pack y Lux siguen usando sus figuras procedurales. Cuando existan los GLB
-   aprobados por el flujo externo, cambia null por una ruta /assets/*.glb y
-   conecta la constante en figuras.js. Ver MODELO.md. */
-export const PACK_MODEL = null;
-export const LUX_MODEL = null;
+export const PRINT_3D_MODEL = '/assets/valquiria-3d-web.glb';
+export const PACK_MODEL = '/assets/valquiria-pack-web.glb';
+export const LUX_MODEL = '/assets/valquiria-lux-web.glb';
 
 /* `progress` es hasta dónde imprime la pieza de cada división, y es una
    afirmación sobre el NEGOCIO, no un ajuste visual: Dental está en producción
@@ -37,7 +34,7 @@ export const DIVISION_CONFIG = Object.freeze({
   '3d': Object.freeze({
     route: '/3d/',
     figure: 'engrane',
-    model: null,
+    model: PRINT_3D_MODEL,
     progress: 0.62,
     side: 0,
     title: 'Valquiria 3D'

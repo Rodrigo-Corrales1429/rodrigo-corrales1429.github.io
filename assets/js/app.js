@@ -9,7 +9,7 @@
    ═══════════════════════════════════════════════════════════════════════════ */
 /* La escena se importa por su efecto: al evaluarse deja lista `window.VQ`,
    que es la superficie que usa todo lo de abajo. */
-import './escena.js?v=74';
+import './escena.js?v=75';
 /* Las reglas de «qué se puede creer al volver de pagar» viven aparte y sin
    DOM, para que las pruebas puedan ejecutarlas contra un ataque real. */
 import { decidirVeredicto, folioDeLaUrl } from './veredicto-pago.js?v=74';

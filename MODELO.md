@@ -19,17 +19,19 @@ probada, no es teórica.
 | Figura | Sección | Cómo se dibuja hoy | Veredicto |
 |---|---|---|---|
 | Valquiria | Hub | **Malla** (`valquiria.glb`, 1.9 MB) | Listo |
-| Molar | Dental | **Malla** (`diente.glb`, 0.98 MB) | Listo |
+| Diente vikingo | Dental | **Malla** (`dental-viking-web.glb`, 1.53 MB) | Listo |
 | Cyborg | IA | **Malla** (`cyborg.glb`, 2.2 MB) | Listo |
-| Charola | Pack | SDF | Listo |
-| Lámpara voxel | Lux | SDF | Listo |
-| Engrane | 3D | SDF | Listo |
+| Empaque termoformado | Pack | **Malla** (`valquiria-pack-web.glb`, 1.58 MB) | Listo |
+| Luminaria | Lux | **Malla** (`valquiria-lux-web.glb`, 1.13 MB) | Listo |
+| Escultura generativa | 3D | **Malla** (`valquiria-3d-web.glb`, 1.62 MB) | Listo |
 
-Las tres mallas salieron de Tripo con ~2 M de triángulos y ~55 MB, y las tres
-pasaron por la misma receta de abajo. La caída a SDF sigue viva y sigue siendo
-la red de seguridad: si un `.glb` no llega, esa sección se dibuja procedural.
+Las mallas de Tripo parten de ~2 M de triángulos y 55–59 MB. Las copias web
+pasan por simplificación consciente de normales y UV, resizing de texturas y
+Draco. La caída a SDF sigue viva: si un `.glb` no llega, esa sección se dibuja
+procedural. Las métricas y hashes de la integración más reciente están en
+`MODELOS_3D_REPORTE.md`.
 
-### Por qué esas dos y no las otras
+### Por qué se conserva la SDF
 
 Una función de distancia construida con elipsoides y cajas fundidas da muy bien
 la **geometría de taller**: un engrane maquinado, una charola termoformada, una
@@ -43,25 +45,19 @@ que no puede llegar al nivel del resto del sitio.
 
 ---
 
-## Las dos piezas que hacen falta
+## Piezas con requisitos especiales
 
-### 1 · `assets/diente.glb` — molar para Valquiria Dental
+### 1 · `assets/dental-viking-web.glb` — diente vikingo Dental
 
 Es la pieza que vende la división que **sí** está facturando, así que es la más
 importante de las dos.
 
-- **Qué**: un primer molar inferior humano, aislado, corona + dos raíces.
-- **Anatomía**: cinco cúspides (tres vestibulares —la distal más pequeña— y dos
-  linguales), surco oclusal principal mesio-distal con sus ramas, línea cervical
-  marcada, raíz mesial más larga y curva que la distal, concavidad en la furca,
-  ápices afilados.
-- **Referencia útil**: los productos del catálogo. Que se parezca a lo que
-  vendes es la mitad del argumento.
-- **Orientación**: corona hacia **+Y**, cara vestibular hacia **+Z**.
-- **Escala**: irrelevante, el sitio la normaliza. La proporción sí importa: la
-  raíz mide del orden de 1.7 veces la corona.
-- **Color**: marfil cálido con la dentina algo más saturada hacia el cuello. Si
-  puede verse la cámara pulpar en una sección, mejor — pero no es obligatorio.
+- **Qué**: el diente con casco vikingo que identifica a Valquiria Dental.
+- **Detalles críticos**: silueta del diente, cuernos, casco, banda, remaches y
+  separación limpia entre cerámica, metal oscuro y oro.
+- **Orientación**: corona y casco hacia **+Y**, frente hacia **+Z**.
+- **Escala**: el sitio la normaliza; `encaje` conserva su ancho dentro del hero.
+- **Color**: cerámica marfil, metal oscuro reflectante y detalles dorados.
 
 ### 2 · `assets/cyborg.glb` — la Valquiria IA
 
@@ -102,7 +98,8 @@ Valen para cualquier `.glb` que entre al sitio:
 
 ### Si el archivo que te entrega el generador es enorme
 
-Es lo normal, y ya pasó tres veces:
+Es lo normal. Esta tabla conserva el historial anterior; la corrida actual está
+documentada en `MODELOS_3D_REPORTE.md`:
 
 | Pieza | Entrada | Triángulos | Salida | Factor |
 |---|---|---|---|---|
@@ -115,7 +112,8 @@ La receta, con `gltf-transform`, en este orden y por estas razones:
 1. **`weld()` primero.** Los generadores entregan la malla sin soldar: vértices
    duplicados en cada costura. Sin soldar, el simplificador no puede colapsar
    aristas a través de ellas y no baja del 60 % por más que se le insista.
-2. **`simplify({ ratio: 0.09, error: 0.001 })`** con MeshoptSimplifier.
+2. **Simplificar con posiciones, normales y UV**. En superficies metálicas,
+   usar sólo posiciones puede conservar la silueta y aun así deformar reflejos.
 3. **`dedup()` y `prune()`** para tirar lo que quedó huérfano.
 4. **`textureCompress({ resize: [2048, 2048], quality: 88 })`.**
 5. **`draco({ quantizePositionBits: 14 })`** al final. Es lo que convierte
@@ -130,35 +128,18 @@ En `assets/js/figuras.js`, dentro del registro `FIGURAS`:
 ```js
 diente: {
   fn: diente, modo: 3, dist: 5.0, mm: 20.7, nombre: 'Molar',
-  glb: 'assets/diente.glb',
+  glb: DENTAL_MODEL,
   bb: { x0: -.62, x1: .62, y0: -1.10, y1: .90, z0: -.56, z1: .56 }
 },
 ```
 
-### Reemplazo futuro de Pack y Lux
+### Modelos de 3D, Pack y Lux
 
-Fase 1.5 reserva dos constantes en `assets/js/division-config.js`:
-
-```js
-export const PACK_MODEL = null;
-export const LUX_MODEL = null;
-```
-
-Los valores `null` son deliberados: Pack conserva la charola procedural y Lux
-la lámpara procedural actuales. Cuando los modelos definitivos salgan del flujo
-externo de Tripo3D y cumplan los requisitos de este documento:
-
-1. colocar los archivos optimizados en `assets/`, por ejemplo
-   `assets/pack.glb` y `assets/lux.glb`;
-2. cambiar únicamente la constante correspondiente por la ruta absoluta
-   (`'/assets/pack.glb'` o `'/assets/lux.glb'`);
-3. importar esa constante en `assets/js/figuras.js` y asignarla al campo `glb`
-   de `empaque` o `lampara`;
-4. ajustar `encaje`, `alza` o `holgura` sólo si el encuadre del modelo aprobado
-   lo exige, y ejecutar las pruebas 3D y visuales.
-
-El adaptador de página, el riel y el layout no deben cambiar. La SDF actual
-permanece como fallback incluso después de conectar el GLB.
+Las tres constantes están conectadas en `assets/js/division-config.js` y sus
+figuras declaran el `glb` correspondiente en `assets/js/figuras.js`. El
+adaptador de página, el riel y el layout no cambiaron; la SDF de cada figura
+permanece como fallback. Como sus avances son inferiores a 1, las tres usan
+`holgura` para mantener el modelo aprobado por debajo del plano de recorte.
 
 - `glb` — la ruta. Con esto basta.
 - `encaje` y `alza` — opcionales. Ajustan la malla al marco de la SDF cuando las
@@ -170,8 +151,8 @@ permanece como fallback incluso después de conectar el GLB.
   en la malla. Lo necesita la cyborg: `/ia` imprime al 94 % a propósito, y sin
   holgura ese 6 % que falta se lo lleva la cabeza. La cuenta es
   `holgura ≥ 1 / tope` (con `tope` .94 → 1.07, que deja un pelo de margen).
-- `solida` — **no hace falta ponerlo** en una figura con malla. El curado se
-  activa solo cuando hay algo debajo que enseñar.
+- `solida` — la malla activa el curado por sí sola, pero las figuras de taller
+  la conservan para que su SDF fallback también termine como pieza sólida.
 
 ### Animación
 
@@ -184,11 +165,8 @@ estados— se rompe delante del visitante. Eso vive en `animarMallas` de
   visitante con la mirada.
 - `modo: 4` — la cyborg: levita, la órbita gira más rápido que el cuerpo y el
   núcleo late.
-- `modo: 3` — quieta. No necesita nada, y es el caso del molar.
-
-Si algún día la lámpara (`modo: 1`) o el engrane (`modo: 2`) pasan a ser
-esculpidos, hay que añadir su rama ahí — **copiada del shader de puntos de
-`escena.js`, no reinventada**.
+- `modo: 3` — quieta dentro del grupo compartido. El grupo conserva su giro
+  lento y la respuesta al puntero; es el modo de Dental, 3D, Pack y Lux.
 
 ---
 
