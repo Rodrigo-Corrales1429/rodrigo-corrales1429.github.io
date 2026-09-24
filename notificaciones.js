@@ -130,12 +130,12 @@ async function porTelegram(texto) {
       })
     });
     if (!r.ok) {
-      console.error(`[avisos] Telegram respondió ${r.status}: ${(await r.text()).slice(0, 200)}`);
+      console.error(`[avisos] Telegram respondió HTTP ${r.status}`);
       return false;
     }
     return true;
   } catch (e) {
-    console.error("[avisos] Telegram falló:", String(e?.message || e).slice(0, 160));
+    console.error("[avisos] Telegram falló");
     return false;
   }
 }
@@ -189,7 +189,7 @@ async function porWhatsApp(texto) {
     );
     if (!r.ok) {
       const detalle = (await r.text()).slice(0, 300);
-      console.error(`[avisos] WhatsApp respondió ${r.status}: ${detalle}`);
+      console.error(`[avisos] WhatsApp respondió HTTP ${r.status}`);
       /* El 131047 de Meta es "fuera de la ventana de 24 h". Merece un
          mensaje explícito o se pierden horas buscando el motivo. */
       if (detalle.includes("131047") && !plantilla) {
@@ -203,7 +203,7 @@ async function porWhatsApp(texto) {
     }
     return true;
   } catch (e) {
-    console.error("[avisos] WhatsApp falló:", String(e?.message || e).slice(0, 160));
+    console.error("[avisos] WhatsApp falló");
     return false;
   }
 }
@@ -219,7 +219,7 @@ async function porWebhook(evento, texto) {
     });
     return r.ok;
   } catch (e) {
-    console.error("[avisos] Webhook falló:", String(e?.message || e).slice(0, 160));
+    console.error("[avisos] Webhook falló");
     return false;
   }
 }
@@ -232,10 +232,15 @@ async function porWebhook(evento, texto) {
 const SILENCIO =
   process.env.AVISOS_SILENCIO === "1" || process.env.NODE_ENV === "test";
 
+function idAviso(evento) {
+  const valor = String(evento.pago_id || evento.folio || "");
+  return /^[A-Za-z0-9_-]{1,64}$/.test(valor) ? valor : "no-disponible";
+}
+
 /** Reparte un texto por todos los canales encendidos. */
 async function repartir(evento, texto) {
   if (SILENCIO) {
-    console.log(`[AVISO-SILENCIADO/${evento.prioridad}] ${texto.replace(/<[^>]+>/g, "").slice(0, 120)}`);
+    console.log(`[AVISO-SILENCIADO] tipo=${/^[a-z_]{1,40}$/.test(evento.tipo || "") ? evento.tipo : "desconocido"} id=${idAviso(evento)} prioridad=${evento.prioridad}`);
     return true;
   }
   const resultados = await Promise.allSettled([
@@ -247,7 +252,7 @@ async function repartir(evento, texto) {
   if (!entregado) {
     /* Ningún canal configurado o todos fallaron. La consola es lo último que
        queda, y se marca como AVISO para poder filtrarlo en Render. */
-    console.log(`[AVISO/${evento.prioridad}] ${texto.replace(/<[^>]+>/g, "")}`);
+    console.log(`[AVISO] tipo=${/^[a-z_]{1,40}$/.test(evento.tipo || "") ? evento.tipo : "desconocido"} id=${idAviso(evento)} prioridad=${evento.prioridad} entrega=fallida`);
   }
   return entregado;
 }
@@ -435,7 +440,7 @@ function avisar(evento) {
       return;
     }
     repartir({ ...registro, prioridad: "urgente" }, `${texto}\n\n🕐 ${sello.hhmm}`)
-      .catch(e => console.error("[avisos] fallo al repartir:", e?.message));
+      .catch(() => console.error("[avisos] fallo al repartir"));
   } else {
     PENDIENTES_DE_RESUMEN.push({ ...registro, texto });
     if (PENDIENTES_DE_RESUMEN.length > MAX_BITACORA) PENDIENTES_DE_RESUMEN.shift();

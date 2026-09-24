@@ -67,6 +67,7 @@ exclude:
   - test-envios-avisos.js
   - test-asesor-mostrador.js
   - test-blindaje-pago.js
+  - test-hardening.js
 
   # Plantilla de configuración: no lleva valores reales, pero enumera cada
   # variable de entorno que existe. No hace falta publicarla.

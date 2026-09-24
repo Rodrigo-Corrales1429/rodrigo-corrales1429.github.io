@@ -754,16 +754,24 @@ test("los documentos internos NO se publican en el sitio", () => {
     "así que PAGOS.md, SEGURIDAD.md y AUDITORIA.md vuelven a ser públicos");
 
   const cfg = fs.readFileSync("_config.yml", "utf8");
-  /* Todo .md de la raíz debe estar excluido, y también el backend: publicar
-     server.js regala la lógica de precios y los nombres de las variables. */
-  const deben = fs.readdirSync(".")
-    .filter(f => f.endsWith(".md"))
+  /* Los .md locales ignorados por Git no forman parte del artefacto de Pages.
+     Los documentos versionados sí deben quedar excluidos por Jekyll. */
+  const { execFileSync } = require("child_process");
+  const versionados = execFileSync("git", ["ls-files", "--", "*.md"], { encoding: "utf8" })
+    .split("\n").filter(f => f && !f.includes("/"));
+  const deben = versionados
     .concat(["server.js", "conocimiento.js", "quote-engine.js", "productos.json",
              "envios.js", "notificaciones.js", "pagos.js", ".env.example"]);
 
   const faltan = deben.filter(f => !cfg.includes(`- ${f}`));
   assert.strictEqual(faltan.length, 0,
     `_config.yml no excluye: ${faltan.join(", ")} — serían públicos en valquiriainc.com`);
+
+  for (const local of ["AGENTS.md", "docs/HARDENING_PLAN.md"]) {
+    if (!fs.existsSync(local)) continue;
+    const ignorado = execFileSync("git", ["check-ignore", "--", local], { encoding: "utf8" });
+    assert.strictEqual(ignorado.trim(), local, `${local} debe permanecer local e ignorado`);
+  }
 });
 
 test("el CSP lleva el hash de cada script en línea (y no 'unsafe-inline')", () => {

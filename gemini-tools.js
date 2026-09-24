@@ -698,10 +698,9 @@ function registrarInteres(args) {
   LEADS_EN_MEMORIA.push(lead);
   if (LEADS_EN_MEMORIA.length > MAX_LEADS_MEMORIA) LEADS_EN_MEMORIA.shift();
 
-  /* El log estructurado es la última red: aunque el webhook no exista y el
-     proceso se reinicie, el lead queda en los logs de Render y se puede
-     rescatar buscando "[LEAD]". */
-  console.log(`[LEAD] ${JSON.stringify(lead)}`);
+  /* Los datos de contacto permanecen en el lead y en el webhook; el log solo
+     conserva el identificador necesario para localizarlo. */
+  console.log(`[LEAD] id=${lead.id} urgencia=${lead.urgencia}`);
 
   const webhook = process.env.LEADS_WEBHOOK_URL;
   if (!webhook) {
@@ -709,7 +708,7 @@ function registrarInteres(args) {
        duerme el servicio. Sin webhook, este prospecto vive solo en memoria y
        en el log: es exactamente así como se pierde un cliente. */
     console.warn(
-      `[LEAD] ⚠️  ${lead.id} solo existe en memoria y en este log: falta ` +
+      `[LEAD] ⚠️  ${lead.id} solo existe en memoria: falta ` +
       `LEADS_WEBHOOK_URL. Al reiniciarse Render se pierde el registro ` +
       `consultable. Ver SEGURIDAD.md.`
     );
@@ -742,13 +741,13 @@ function enviarConReintento(url, cuerpo, intentos, n = 1) {
     .catch(e => {
       if (n >= intentos) {
         console.error(
-          `[LEAD] ⚠️  Webhook falló ${intentos} veces (${e.message}). El lead ` +
-          `${cuerpo.id || ""} SOLO queda en este log. Revísalo a mano.`
+          `[LEAD] ⚠️  Webhook falló ${intentos} veces. Lead ` +
+          `${cuerpo.id || ""} permanece en memoria. Revísalo a mano.`
         );
         return;
       }
       const espera = 2000 * n;
-      console.warn(`[LEAD] Webhook falló (${e.message}); reintento ${n + 1}/${intentos} en ${espera}ms`);
+      console.warn(`[LEAD] Webhook falló; reintento ${n + 1}/${intentos} en ${espera}ms`);
       setTimeout(() => enviarConReintento(url, cuerpo, intentos, n + 1), espera).unref?.();
     });
 }
@@ -944,7 +943,7 @@ async function ejecutarHerramienta({ name, args }, ctx = {}) {
         };
     }
   } catch (e) {
-    console.error(`[gemini-tools] Error ejecutando ${name}:`, e);
+    console.error("[gemini-tools] Error ejecutando herramienta");
     return {
       ok: false,
       error:

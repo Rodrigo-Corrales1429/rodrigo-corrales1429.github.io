@@ -300,7 +300,6 @@ async function correrPruebas() {
        que deja un pago a medias y vuelve a intentarlo no se queda bloqueado,
        y lo de antes se libera en el acto. Lo que NO puede pasar es que se
        sumen. */
-    const inv = require("./inventario.js");
     const abrir = () => pedir("/api/pago", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -312,10 +311,6 @@ async function correrPruebas() {
     [a, b, c].forEach((r, i) =>
       afirmar(r.status === 200, `el intento ${i + 1} se bloqueó (${r.status})`));
 
-    const salud = await pedir("/health");
-    const ficha = salud.cuerpo.inventario.apartado_por_sku
-      ? salud.cuerpo.inventario.apartado_por_sku.ValPulpo
-      : null;
     /* No se puede leer el estado interno del hijo, así que se comprueba lo
        observable: tres pedidos de 5 no dejaron 15 piezas apartadas — si las
        hubieran dejado, el stock de ValPulpo (23) no daría para el siguiente. */
@@ -323,7 +318,6 @@ async function correrPruebas() {
     afirmar(cuarto.status === 200,
       `las reservas se acumularon: el cuarto pedido ya no cabe (${cuarto.status}: ` +
       `${JSON.stringify(cuarto.cuerpo).slice(0, 120)})`);
-    afirmar(ficha === undefined || ficha <= inv.MAX_POR_SKU, "quedó más de una reserva viva");
   });
 
   await prueba("ni muchas identidades pueden dejar un producto en cero", () => {
@@ -494,15 +488,22 @@ async function correrPruebas() {
       payer: { email: "otro@ejemplo.mx" }
     });
 
+    const inventarioAntes = await pedir("/api/admin/resumen", {
+      headers: { "X-Leads-Token": TOKEN_PANEL }
+    });
+    afirmar(inventarioAntes.status === 200, "no se pudo consultar el inventario antes del aviso");
+
     const r = await avisarWebhook("descuadre-1");
     afirmar(r.status === 200, `respondió ${r.status}`);
     afirmar(r.cuerpo.revision === true, "el pedido no quedó marcado como revisión");
 
-    /* Y el inventario NO se tocó: la única forma de comprobarlo desde fuera es
-       que el SKU siga tan disponible como antes de aprobar. */
-    const salud = await pedir("/health");
-    afirmar(!(salud.cuerpo.inventario.agotados || []).includes("ValEnd"),
-      "un descuadre agotó inventario");
+    /* Comparar el estado interno por la ruta autenticada, no por health. */
+    const inventarioDespues = await pedir("/api/admin/resumen", {
+      headers: { "X-Leads-Token": TOKEN_PANEL }
+    });
+    afirmar(inventarioDespues.status === 200, "no se pudo consultar el inventario después del aviso");
+    afirmar(JSON.stringify(inventarioDespues.cuerpo.inventario) === JSON.stringify(inventarioAntes.cuerpo.inventario),
+      "un descuadre modificó el inventario");
   });
 
   // -------------------------------------------------------------------------

@@ -61,6 +61,7 @@ const almacen = require("./almacen.js");
 
 const app = express();
 const port = process.env.PORT || 3000;
+app.disable("x-powered-by");
 
 // Render corre detrás de un proxy: sin esto, req.ip es la IP del proxy y el
 // rate limiter trataría a todo el internet como un solo visitante.
@@ -70,17 +71,28 @@ app.set("trust proxy", 1);
 // CONFIGURACIÓN
 // ----------------------------------------------------------------------------
 
-/* En producción NO se aceptan orígenes de localhost.
-   El riesgo es acotado —un navegador no deja falsificar el Origin— pero la
-   superficie no tiene por qué existir: en el servidor real nadie desarrolla.
-   Se activa poniendo NODE_ENV=production en Render. */
-const ES_PRODUCCION = process.env.NODE_ENV === "production";
+/* Localhost solo se autoriza cuando el modo de desarrollo es explícito. */
+const ES_DESARROLLO = process.env.NODE_ENV === "development";
 
-const ORIGENES_PRODUCCION = [
+const ORIGENES_PRODUCCION_POR_DEFECTO = [
   "https://valquiriainc.com",
   "https://www.valquiriainc.com",
   "https://rodrigo-corrales1429.github.io"
 ];
+
+/* Se agregan orígenes explícitos sin quitar los actuales por accidente.
+   Nunca se acepta '*' ni una URL con path o credenciales. */
+const ORIGENES_ADICIONALES = process.env.CORS_ORIGENES
+  ? process.env.CORS_ORIGENES.split(",").map(s => s.trim()) : [];
+for (const origen of ORIGENES_ADICIONALES) {
+  let url;
+  try { url = new URL(origen); } catch { /* Validación debajo. */ }
+  if (!url || url.protocol !== "https:" || url.origin !== origen ||
+      url.username || url.password || origen.includes("*") ||
+      /(^|\.)localhost\.?$|^127(?:\.[0-9]{1,3}){3}$|^\[::1\]$/.test(url.hostname)) {
+    throw new Error("CORS_ORIGENES debe contener orígenes HTTPS exactos.");
+  }
+}
 
 /* Servidores estáticos de desarrollo (.claude/launch.json). Sin ellos, el
    panel /admin y el Asesor no se pueden probar en local: el navegador bloquea
@@ -92,42 +104,21 @@ const ORIGENES_DESARROLLO = [
   "http://127.0.0.1:5174", "http://localhost:5174"
 ];
 
-const ORIGENES_PERMITIDOS = ES_PRODUCCION
-  ? ORIGENES_PRODUCCION
-  : [...ORIGENES_PRODUCCION, ...ORIGENES_DESARROLLO];
+const ORIGENES_PERMITIDOS = new Set([
+  ...ORIGENES_PRODUCCION_POR_DEFECTO,
+  ...ORIGENES_ADICIONALES,
+  ...(ES_DESARROLLO ? ORIGENES_DESARROLLO : [])
+]);
 
-app.use(
-  cors({
-    origin: function (origin, callback) {
-      if (!origin) return callback(null, true);
-      if (ORIGENES_PERMITIDOS.includes(origin)) return callback(null, true);
-      return callback(new Error(`Origen no permitido por CORS: ${origin}`));
-    }
-  })
-);
-app.use(express.json({ limit: "100kb" }));
-
-/* Cabeceras de seguridad de una API JSON. No sustituyen a la CSP del frontend
-   (que vive en su <meta> porque GitHub Pages no deja poner cabeceras): impiden
-   que una respuesta de esta API se interprete como otra cosa, quede cacheada
-   con datos de una conversación, o se embeba en una página ajena.
-
-   Aquí SÍ se pueden poner las que en <meta> el navegador ignora —
-   frame-ancestors y X-Frame-Options— porque este servidor sí controla sus
-   cabeceras. Cubren a la API, no al sitio: el sitio necesitaría un proxy
-   delante. Ver SEGURIDAD.md. */
+/* Los errores de CORS y de parseo también deben llevar headers de seguridad. */
 app.use((req, res, next) => {
   res.set("X-Content-Type-Options", "nosniff");
   res.set("Referrer-Policy", "no-referrer");
   res.set("Cache-Control", "no-store");
-  /* Nada de esta API se dibuja: negar el marco por completo es gratis y cierra
-     el clickjacking sobre los endpoints. */
   res.set("X-Frame-Options", "DENY");
   res.set("Content-Security-Policy",
     "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'");
-  /* Que ningún otro origen pueda leer estas respuestas como recurso. */
   res.set("Cross-Origin-Resource-Policy", "same-site");
-  /* Un navegador que llegue por http se queda en https a partir de aquí. */
   if (req.secure || req.get("x-forwarded-proto") === "https") {
     res.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
   }
@@ -135,6 +126,19 @@ app.use((req, res, next) => {
     "geolocation=(), microphone=(), camera=(), payment=(), usb=()");
   next();
 });
+
+app.use(
+  cors({
+    origin: function (origin, callback) {
+      if (!origin) return callback(null, false);
+      if (ORIGENES_PERMITIDOS.has(origin)) return callback(null, origin);
+      const error = new Error("Origen no permitido por CORS.");
+      error.code = "CORS_DENIED";
+      return callback(error);
+    }
+  })
+);
+app.use(express.json({ limit: "100kb" }));
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
@@ -981,11 +985,7 @@ async function correrConversacion(historialInicial, contextoSesion = "", carrito
 
         herramientasUsadas.push(fc.name);
 
-        console.log(
-          `[fn-call] iter=${iter} ${fc.name}(${JSON.stringify(fc.args || {}).slice(0, 160)}) ` +
-          `-> ${resultado.ok ? "OK" : "ERR"}` +
-          (resultado.error ? ` error="${String(resultado.error).slice(0, 80)}"` : "")
-        );
+        console.log(`[fn-call] iter=${iter} tool=${TOOLS[0].functionDeclarations.some(d => d.name === fc.name) ? fc.name : "desconocida"} estado=${resultado.ok ? "ok" : "error"}`);
 
         if (resultado.ok) {
           if (fc.name === "buscar_productos" && Array.isArray(resultado.resultados)) {
@@ -1114,24 +1114,11 @@ async function correrConversacion(historialInicial, contextoSesion = "", carrito
 // ----------------------------------------------------------------------------
 
 app.get("/", (req, res) => {
-  res.json({ status: "ok", service: "Valquiria Asesor Backend v4" });
+  res.json({ ok: true });
 });
 
 app.get("/health", (req, res) => {
-  res.json({
-    ok: true,
-    modelo: MODELO,
-    divisiones: 5,
-    thinking: THINKING_BUDGET,
-    herramientas: TOOLS[0].functionDeclarations.map(d => d.name),
-    envios: estadoEnvios(),
-    avisos: avisos.estadoAvisos(),
-    almacen: almacen.estadoAlmacen(),
-    inventario: {
-      minutos_reserva: inventario.MINUTOS_RESERVA,
-      agotados: inventario.estadoInventario().filter(p => p.agotado).map(p => p.sku)
-    }
-  });
+  res.json({ ok: true });
 });
 
 app.post("/api/chat", limitarTasa, async (req, res) => {
@@ -1199,7 +1186,7 @@ app.post("/api/chat", limitarTasa, async (req, res) => {
       }
     } catch (e) {
       /* Un fallo avisando NUNCA puede tumbar una respuesta al cliente. */
-      console.error("[avisos] no se pudo registrar el turno:", e?.message);
+      console.error("[avisos] no se pudo registrar el turno");
     }
 
     return res.json(resultado);
@@ -1209,11 +1196,10 @@ app.post("/api/chat", limitarTasa, async (req, res) => {
       /* Un grito, no un susurro: mientras esto salga en los logs de Render el
          asesor está caído para todo el mundo y no se arregla solo. */
       console.error(
-        `[/api/chat] ⚠️  CONFIGURACIÓN — ${f.etiqueta}: revisa GEMINI_API_KEY ` +
-        `en las variables de entorno de Render. Detalle: ${String(error?.message || error).slice(0, 200)}`
+        `[/api/chat] configuración: tipo=${f.etiqueta} http=${f.http}`
       );
     } else {
-      console.error(`[/api/chat] ${f.etiqueta}:`, String(error?.message || error).slice(0, 300));
+      console.error(`[/api/chat] tipo=${f.etiqueta} http=${f.http}`);
     }
     return res.status(f.http).json({ error: f.mensaje, motivo: f.etiqueta });
   }
@@ -1269,9 +1255,9 @@ function avisarPedido(evento) {
      ahí el nombre, el correo, el teléfono y el domicilio de cada comprador es
      una fuga silenciosa que no compra nada: para depurar basta el folio. */
   console.log(
-    `[PEDIDO] folio=${evento.folio} estado=${evento.estado} ` +
-    `total=${evento.total} metodo=${evento.metodo || "—"} ` +
-    `items=${(evento.items || []).map(i => `${i.cantidad}×${i.sku}`).join(",") || "—"}` +
+    `[PEDIDO] folio=${identificadorLog(evento.folio)} estado=${identificadorLog(evento.estado)} ` +
+    `total=${evento.total} metodo=${identificadorLog(evento.metodo)} ` +
+    `lineas=${(evento.items || []).length}` +
     `${evento.comprador ? " contacto=sí" : " contacto=NO"}`
   );
   const url = process.env.PEDIDOS_WEBHOOK_URL || process.env.LEADS_WEBHOOK_URL;
@@ -1280,10 +1266,12 @@ function avisarPedido(evento) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ tipo: "pedido", ...evento })
-  }).catch(e => console.error("[PEDIDO] Webhook falló:", e.message));
+  }).catch(() => console.error(`[PEDIDO] Webhook falló folio=${identificadorLog(evento.folio)}`));
 }
 
 app.post("/api/pago", limitarPagos, async (req, res) => {
+  const requestId = crypto.randomUUID();
+  let folioLog = "no-disponible";
   try {
     const mpToken = process.env.MP_ACCESS_TOKEN;
     if (!mpToken) {
@@ -1371,6 +1359,7 @@ app.post("/api/pago", limitarPagos, async (req, res) => {
 
     const folio = "VQ-" + Date.now().toString(36).toUpperCase() +
                   "-" + crypto.randomBytes(3).toString("hex").toUpperCase();
+    folioLog = folio;
 
     /* Se aparta la mercancía ANTES de crear el link de pago.
        `calcularCotizacion` ya comprobó el stock del catálogo, pero esa
@@ -1409,7 +1398,7 @@ app.post("/api/pago", limitarPagos, async (req, res) => {
       const detalle = reserva.faltantes
         .map(f => `${f.nombre}: pediste ${f.pedido} y quedan ${f.disponible}`)
         .join("; ");
-      console.warn(`[pago] Reserva rechazada por inventario — ${detalle}`);
+      console.warn("[pago] Reserva rechazada por inventario");
       return res.status(409).json({
         error:
           "Alguien se adelantó con parte de tu pedido mientras lo armabas. " +
@@ -1475,8 +1464,8 @@ app.post("/api/pago", limitarPagos, async (req, res) => {
     });
 
     console.log(
-      `[pago] Preferencia ${folio} → ${centavosAPesos(totalCentavos)} ` +
-      `(envío ${opcionEnvio.costo} a CP ${envioReal.destino.cp}, pref ${data.id})`
+      `[pago] req_id=${requestId} Preferencia ${folio} → ${centavosAPesos(totalCentavos)} ` +
+      `(envío ${opcionEnvio.costo}, pref ${identificadorLog(data.id)})`
     );
     if (!BACKEND_URL) {
       console.warn(
@@ -1514,10 +1503,7 @@ app.post("/api/pago", limitarPagos, async (req, res) => {
       url_prueba: data.sandbox_init_point || undefined
     });
   } catch (e) {
-    console.error("[/api/pago] Error:", String(e.message).slice(0, 300));
-    if (e.mpBody) {
-      console.error("[/api/pago] Detalle MP:", JSON.stringify(e.mpBody).slice(0, 400));
-    }
+    console.error(`[/api/pago] req_id=${requestId} folio=${folioLog} fallo mp_http=${Number(e.mpStatus) || 0}`);
     return res.status(502).json({
       error:
         "No pude generar el link de pago en este momento. Intenta de nuevo " +
@@ -1557,6 +1543,15 @@ const EVENTOS_VISTOS = new Map();   // "pagoId:estado" → ms
 const MAX_EVENTOS_VISTOS = 800;
 const VIDA_EVENTO_MS = 24 * 60 * 60 * 1000;
 
+/* IDs de cabeceras y proveedores pueden venir de fuera: nunca se vuelcan
+   intactos en los logs. */
+function identificadorLog(valor) {
+  const texto = typeof valor === "number" && Number.isSafeInteger(valor)
+    ? String(valor) : valor;
+  return typeof texto === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(texto)
+    ? texto : "no-disponible";
+}
+
 function eventoYaProcesado(clave) {
   const corte = Date.now() - VIDA_EVENTO_MS;
   for (const [k, t] of EVENTOS_VISTOS) if (t < corte) EVENTOS_VISTOS.delete(k);
@@ -1583,7 +1578,7 @@ app.post("/api/pago/webhook", async (req, res) => {
   });
 
   if (!firma.ok) {
-    console.warn(`[webhook] Rechazado por firma (${firma.estado}) id=${dataId}`);
+    console.warn(`[webhook] firma=${firma.estado} request_id=${identificadorLog(req.get("x-request-id"))} pago_id=${identificadorLog(dataId)}`);
     return res.status(401).json({ error: "Firma inválida." });
   }
 
@@ -1635,7 +1630,7 @@ app.post("/api/pago/webhook", async (req, res) => {
     const clave = `${pago.id}:${estado}`;
 
     if (eventoYaProcesado(clave)) {
-      console.log(`[webhook] Repetido, ignorado: pago ${pago.id} estado=${estado}`);
+      console.log(`[webhook] repetido pago_id=${identificadorLog(pago.id)} estado=${identificadorLog(estado)}`);
       return res.status(200).json({ recibido: true, repetido: true });
     }
 
@@ -1676,18 +1671,15 @@ app.post("/api/pago/webhook", async (req, res) => {
     }
 
     console.log(
-      `[webhook] pago ${pago.id} folio=${folio} estado=${estado}` +
-      `${descuadre ? " DESCUADRE" : ""} metodo=${pago.payment_type_id}/${pago.payment_method_id}`
+      `[webhook] pago=${identificadorLog(pago.id)} folio=${identificadorLog(folio)} estado=${identificadorLog(estado)}` +
+      `${descuadre ? " DESCUADRE" : ""} metodo=${identificadorLog(pago.payment_type_id)}/${identificadorLog(pago.payment_method_id)}`
     );
 
     if (descuadre) {
       /* Ni inventario, ni aviso de preparación, ni webhook de pedido: lo
          único que sale de aquí es la alarma. El comentario ya decía «no
          surtas»; ahora es el código el que no surte. */
-      console.error(
-        `[webhook] ⚠️  DESCUADRE en ${folio}: se cobró ${cobrado} centavos y ` +
-        `se esperaban ${esperado}. El pedido queda en REVISIÓN.`
-      );
+      console.error(`[webhook] descuadre folio=${identificadorLog(folio)} esperado=${esperado} cobrado=${cobrado}`);
       avisos.avisar({
         tipo: "descuadre",
         folio,
@@ -1770,7 +1762,7 @@ app.post("/api/pago/webhook", async (req, res) => {
     /* 5xx a propósito: es la única forma de pedirle a Mercado Pago que
        vuelva a intentarlo. Un 200 aquí sería dar por procesado un pago que
        no se pudo ni leer. */
-    console.error("[webhook] No se pudo verificar el pago:", String(e.message).slice(0, 200));
+    console.error(`[webhook] fallo al verificar pago_id=${identificadorLog(dataId)} mp_http=${Number(e.mpStatus) || 0}`);
     return res.status(502).json({
       error: "No se pudo verificar el pago con Mercado Pago. Reintenta."
     });
@@ -1873,7 +1865,7 @@ app.post("/api/envio", limitarPulso, async (req, res) => {
     });
     return res.status(cot.ok ? 200 : 400).json(cot);
   } catch (e) {
-    console.error("[/api/envio]", String(e?.message || e).slice(0, 200));
+    console.error("[/api/envio] fallo de cotización");
     return res.status(500).json({
       ok: false,
       error: "No pude calcular el envío en este momento. Intenta de nuevo."
@@ -1930,7 +1922,7 @@ app.post("/api/evento", limitarPulso, (req, res) => {
       nuevo: Boolean(req.body?.nuevo)
     });
   } catch (e) {
-    console.error("[/api/evento]", e?.message);
+    console.error("[/api/evento] fallo al registrar evento");
   }
 });
 
@@ -2049,10 +2041,10 @@ app.use((err, req, res, next) => {
   if (err instanceof SyntaxError && err.status === 400) {
     return res.status(400).json({ error: "El cuerpo de la petición no es JSON válido." });
   }
-  if (err && /CORS/i.test(err.message || "")) {
+  if (err && err.code === "CORS_DENIED") {
     return res.status(403).json({ error: "Origen no permitido." });
   }
-  console.error("[error-mw]", err && err.message);
+  console.error("[error-mw] error no clasificado");
   return res.status(500).json({ error: "Ocurrió un inconveniente temporal." });
 });
 
@@ -2103,7 +2095,7 @@ function auditarConfiguracion() {
   }
   if (!process.env.NODE_ENV) {
     flojos.push(
-      "NODE_ENV — sin 'production' se siguen aceptando orígenes de localhost en CORS."
+      "NODE_ENV — define 'production' en el despliegue; localhost en CORS solo se permite con 'development'."
     );
   }
   if (!avisos.estadoAvisos().hay_canal) {
@@ -2177,7 +2169,7 @@ avisos.avisar = function (evento) {
 const RELOJ_RESUMEN_MS = 10 * 60_000;
 setInterval(() => {
   avisos.quizaResumenDiario().catch(e =>
-    console.error("[avisos] resumen diario falló:", e?.message)
+    console.error("[avisos] resumen diario falló")
   );
 }, RELOJ_RESUMEN_MS).unref();
 
@@ -2244,5 +2236,5 @@ process.on("SIGINT", () => cerrarLimpio("SIGINT"));
 /* Una promesa rechazada sin catch mata el proceso en Node 18+ sin decir por
    qué. Registrarla convierte una caída muda en una línea accionable. */
 process.on("unhandledRejection", (razon) => {
-  console.error("[fatal] Promesa rechazada sin manejar:", razon);
+  console.error("[fatal] Promesa rechazada sin manejar");
 });
