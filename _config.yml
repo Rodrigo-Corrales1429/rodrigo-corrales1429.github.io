@@ -57,6 +57,8 @@ exclude:
   - package.json
   - package-lock.json
   - scripts
+  - db
+  - repositories
 
   # Pruebas
   - test-quote-engine.js
@@ -68,6 +70,7 @@ exclude:
   - test-asesor-mostrador.js
   - test-blindaje-pago.js
   - test-hardening.js
+  - test-persistence.js
 
   # Plantilla de configuración: no lleva valores reales, pero enumera cada
   # variable de entorno que existe. No hace falta publicarla.
