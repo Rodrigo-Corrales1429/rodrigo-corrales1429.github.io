@@ -226,3 +226,54 @@ Con el sitio servido, y con algo en el carrito:
 Debe decir **«No pudimos confirmar tu pago»**, conservar el carrito íntegro y
 no enseñar en ninguna parte la frase «Pago confirmado». El mismo ataque, sin
 navegador, está en `node test-blindaje-pago.js`.
+
+---
+
+# Tercera auditoría — la lista de 20 puntos (26-09-2026)
+
+Revisión completa contra la lista «valida esto antes de lanzar tu web», con
+ataques reales contra producción (solo lecturas, sin crear pedidos ni gastar
+créditos) y contra el servidor local. Cada punto tiene prueba ejecutable en
+`test-seguridad.js`: **15 de sus 42 pruebas fallan contra el código anterior**
+y las otras 27 documentan defensas que ya existían.
+
+## Lo que se encontró en producción y se arregló
+
+- **El rate limit contaba por la IP de Cloudflare, no por la del visitante.**
+  Nueve intentos de pago seguidos desde una sola máquina no activaron el
+  límite de 6/min. Además de diluir el límite, hacía que clientes distintos
+  compartieran cupo y que «una reserva por visitante» pudiera borrar la
+  reserva de otro cliente. Ahora la identidad es `CF-Connecting-IP`.
+- **El panel no tenía limitador ni bloqueo por intentos**, aceptaba tokens
+  cortos con solo una advertencia, y el navegador guardaba el token maestro
+  para siempre. Ahora: bloqueo tras 5 fallos con aviso, token mínimo de 24
+  caracteres obligatorio y sesiones firmadas de pocas horas.
+- **Un segundo cobro del mismo pedido entraba como venta nueva.** Ahora se
+  reconoce y avisa qué pago reembolsar.
+- **El gasto en Gemini solo tenía límite por visitante.** Ahora hay techo global.
+- **three.js y el decodificador Draco venían de unpkg sin verificación de
+  integridad.** Ahora se sirven desde el propio dominio.
+- **El aviso de privacidad no mencionaba a Telegram ni a Render**, que reciben
+  datos de clientes, y afirmaba que las conversaciones solo vivían en el
+  navegador. Corregido, y el aviso aparece en el formulario de entrega.
+- `robots.txt` anunciaba la ruta del panel y el nombre de cada documento interno.
+- `qs` (dependencia de Express) con dos avisos de seguridad moderados.
+
+## Tareas que son tuyas (no se arreglan con código)
+
+1. **El repositorio de GitHub es público.** El sitio oculta los documentos
+   internos, pero github.com no. Hazlo privado (GitHub Pages en repositorio
+   privado requiere GitHub Pro) o separa backend y documentación del sitio.
+2. **Doble factor** en GitHub, Render, Mercado Pago, Google, Telegram y el
+   registrador del dominio. Es lo que protege de verdad: quien entra a
+   cualquiera de esas cuentas no necesita atacar el código.
+3. **LEADS_TOKEN de 24+ caracteres** en Render antes de desplegar, o el panel
+   quedará cerrado a propósito.
+4. **Presupuesto con tope en Google Cloud** para Gemini, además del techo del
+   servidor, que se reinicia con Render.
+5. **Respaldos**: el mecanismo funciona (lo prueba el punto 20), pero en
+   producción no está activo. Requiere disco persistente en Render o la base
+   de datos de la fase 2.
+6. **Revisión legal** del aviso de privacidad y los términos por un abogado.
+   Lo corregido aquí es que el aviso diga la verdad sobre lo que hace el
+   sistema; no sustituye una revisión profesional.
