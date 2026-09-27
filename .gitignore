@@ -36,3 +36,6 @@ coverage/
 
 # Config local del previsualizador (no es del sitio)
 .claude/
+
+# Ignorar también symlink local de node_modules
+node_modules

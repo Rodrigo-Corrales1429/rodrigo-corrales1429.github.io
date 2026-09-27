@@ -66,12 +66,12 @@
   base-uri 'self';
   object-src 'none';
   form-action 'self' https://wa.me;
-  script-src 'self' 'wasm-unsafe-eval' https://unpkg.com blob: 'sha256-mYMyfSVAAaoYPNGdAjyFSBHbLiwA60yeK51WkTWKqaQ=' 'sha256-BZkocn+ywLdsBE9hJt20df3bHXZ6Rm5wv/OfIHU0XLA=' 'sha256-QonWuRMXfHaYWzUuNWWKxQzQ+Gv3QgS1/0zkP8qjWHM=' 'sha256-7hcWFuRH46ZK5Prd9T3EEazYTGP1tud+w0zm5l3XAX0=';
+  script-src 'self' 'wasm-unsafe-eval' blob: 'sha256-mYMyfSVAAaoYPNGdAjyFSBHbLiwA60yeK51WkTWKqaQ=' 'sha256-nZUmrawap3d+zvPZb6NpJTpJe7vRO1hgktlomHw8AME=' 'sha256-QonWuRMXfHaYWzUuNWWKxQzQ+Gv3QgS1/0zkP8qjWHM=' 'sha256-7hcWFuRH46ZK5Prd9T3EEazYTGP1tud+w0zm5l3XAX0=';
   worker-src 'self' blob:;
   style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
   font-src 'self' https://fonts.gstatic.com;
   img-src 'self' data: blob: https://res.cloudinary.com;
-  connect-src 'self' blob: https://unpkg.com https://rodrigo-corrales1429-github-io.onrender.com;
+  connect-src 'self' blob: https://rodrigo-corrales1429-github-io.onrender.com;
   upgrade-insecure-requests">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 
@@ -107,10 +107,13 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preconnect" href="https://res.cloudinary.com">
-<!-- unpkg sirve three.js, que es la dependencia más pesada del sitio y la
-     única sin la que no hay nada que ver. Abrir el TLS con antelación ahorra
-     el saludo completo —DNS, TCP, TLS— del camino crítico. -->
-<link rel="preconnect" href="https://unpkg.com" crossorigin>
+<!-- three.js es la dependencia más pesada del sitio y la única sin la que no
+     hay nada que ver. Se sirve desde este mismo dominio (assets/vendor, copia
+     verificada del paquete oficial de npm) y se precarga para que no espere a
+     que lo descubra el módulo que lo importa. Antes venía de unpkg sin ninguna
+     verificación de integridad: un CDN comprometido podía ejecutar código en la
+     tienda. Ver assets/vendor/three-0.170.0/ORIGEN.md. -->
+<link rel="modulepreload" href="/assets/vendor/three-0.170.0/build/three.module.js">
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300&amp;family=Montserrat:wght@200;300;400;500&amp;family=IBM+Plex+Mono:wght@300;400;500&amp;display=swap" rel="stylesheet">
 <link rel="stylesheet" href="assets/css/valquiria.css?v=74">
 
@@ -140,8 +143,8 @@
 <script type="importmap">
 {
   "imports": {
-    "three": "https://unpkg.com/three@0.170.0/build/three.module.js",
-    "three/addons/": "https://unpkg.com/three@0.170.0/examples/jsm/"
+    "three": "/assets/vendor/three-0.170.0/build/three.module.js",
+    "three/addons/": "/assets/vendor/three-0.170.0/examples/jsm/"
   }
 }
 </script>
@@ -750,7 +753,7 @@
         <h2>Aviso de privacidad</h2>
       </div>
       <div class="prosa">
-        <p class="fecha">Última actualización: 9 de agosto de 2026</p>
+        <p class="fecha">Última actualización: 26 de septiembre de 2026</p>
 
         <h3>1. Responsable del tratamiento</h3>
         <p>
@@ -808,8 +811,8 @@
           <strong>Google LLC</strong> (Gemini API). Esto significa que
           <strong>el texto que escribas en el chat se transmite a servidores de
           Google, que pueden ubicarse fuera de México</strong>, para generar la
-          respuesta. Esa transferencia es necesaria para prestarte el servicio y
-          está prevista en el artículo 37 de la LFPDPPP.
+          respuesta. Esa transferencia es necesaria para prestarte el servicio
+          que solicitas y está prevista en el artículo 36 de la LFPDPPP.
         </p>
         <p>
           Por esa razón te pedimos <strong>no escribir en el chat datos
@@ -832,6 +835,13 @@
           <li><strong>Cloudinary Ltd.</strong> — entrega de las imágenes del catálogo; recibe tu dirección IP al cargarlas.</li>
           <li><strong>Mercado Pago (DineroMail México / Mercado Libre)</strong> — procesamiento de pagos.</li>
           <li><strong>Meta Platforms</strong> — únicamente si eliges continuar por WhatsApp.</li>
+          <li><strong>Render Services, Inc.</strong> — alojamiento del servidor
+            que calcula precios, genera los links de pago y registra los pedidos.
+            Sus servidores pueden ubicarse fuera de México.</li>
+          <li><strong>Telegram</strong> — canal interno por el que el equipo de
+            Valquiria recibe el aviso de cada pedido para prepararlo: incluye
+            nombre, WhatsApp, correo y domicilio de entrega. Sus servidores
+            pueden ubicarse fuera de México.</li>
           <li><strong>Paqueterías</strong> — nombre, domicilio y teléfono, para entregarte el pedido.</li>
           <li><strong>Autoridades competentes</strong> — cuando exista requerimiento fundado y motivado.</li>
         </ul>
@@ -859,17 +869,33 @@
 
         <h3>7. Cookies y tecnologías de rastreo</h3>
         <p>
-          Usamos almacenamiento local del navegador para conservar tu carrito
-          entre visitas. Es funcional y no se comparte con terceros. Puedes
-          borrarlo desde la configuración de tu navegador; perderás el contenido
-          del carrito y nada más.
+          No usamos cookies de publicidad ni de rastreo. Usamos el
+          almacenamiento del navegador, de forma funcional y sin compartirlo
+          con terceros, para:
+        </p>
+        <ul>
+          <li>conservar tu <strong>carrito</strong>, tu <strong>código postal</strong>
+            y la última cotización de envío entre visitas (almacenamiento local);</li>
+          <li>conservar la <strong>conversación con el Asesor</strong> y los
+            <strong>datos de entrega</strong> que tecleaste mientras dura la
+            pestaña abierta (almacenamiento de sesión): se borran al cerrarla y,
+            los datos de entrega, también al confirmarse tu pago.</li>
+        </ul>
+        <p>
+          Puedes borrarlo desde la configuración de tu navegador; perderás el
+          contenido del carrito y nada más.
         </p>
 
         <h3>8. Conservación de los datos</h3>
         <p>
           Conservamos los datos de pedidos durante el plazo que exige la
-          legislación fiscal y mercantil (cinco años). Las conversaciones con el
-          Asesor se conservan solo mientras dura tu sesión en el navegador.
+          legislación fiscal y mercantil (cinco años). En tu navegador, la
+          conversación con el Asesor se conserva solo mientras dura la pestaña.
+          En nuestro servidor, las preguntas que haces al Asesor pueden quedar
+          en un registro interno de actividad y en el resumen diario que recibe
+          el equipo por Telegram, para mejorar la atención; ese registro vive
+          en la memoria del servidor y se borra al reiniciarse. Por eso te
+          pedimos no escribir en el chat datos sensibles ni de pacientes.
         </p>
 
         <h3>9. Cambios a este aviso</h3>
@@ -883,9 +909,8 @@
         <h3>10. Autoridad</h3>
         <p>
           Si consideras que tu derecho a la protección de datos ha sido
-          vulnerado, puedes acudir ante la autoridad garante en materia de
-          protección de datos personales que resulte competente conforme a la
-          legislación vigente.
+          vulnerado, puedes acudir ante la Secretaría Anticorrupción y Buen
+          Gobierno, autoridad competente conforme a la LFPDPPP vigente.
         </p>
       </div>
     </div>
@@ -899,7 +924,7 @@
         <h2>Términos y condiciones de uso</h2>
       </div>
       <div class="prosa">
-        <p class="fecha">Última actualización: 9 de agosto de 2026</p>
+        <p class="fecha">Última actualización: 26 de septiembre de 2026</p>
 
         <h3>1. Aceptación</h3>
         <p>
@@ -919,8 +944,8 @@
           <li>No sustituyen la formación supervisada ni el criterio de un profesional titulado.</li>
         </ul>
         <p>
-          El uso distinto al didáctico es responsabilidad exclusiva de quien lo
-          realiza y libera a Valquiria de cualquier responsabilidad derivada.
+          El uso contrario a estas indicaciones es responsabilidad de quien lo
+          realiza.
         </p>
 
         <h3>3. Precios, disponibilidad y errores</h3>
@@ -964,20 +989,27 @@
         <p>
           Enviamos a toda la República Mexicana. El envío es
           <strong>gratuito en compras iguales o mayores a $999.00 MXN</strong>;
-          por debajo de ese monto aplica un costo de $150.00 MXN.
+          por debajo de ese monto, el costo depende de tu código postal y se te
+          muestra, con la fecha estimada de entrega, antes de pagar. El importe
+          que ves en ese momento es el que se cobra.
         </p>
         <p>
-          Los tiempos de entrega son estimados y dependen de la paquetería. Los
-          retrasos imputables al transportista, al clima o a caso fortuito no dan
-          lugar a cancelación ni a indemnización.
+          Los tiempos de entrega son estimados y dependen de la paquetería. Si
+          un retraso te afecta, escríbenos: te informamos el estado del envío y
+          lo gestionamos con la paquetería.
         </p>
 
         <h3>7. Devoluciones y garantía</h3>
         <p>
-          Si el producto llega dañado o no corresponde con lo solicitado,
-          repórtalo dentro de los <strong>cinco días naturales</strong>
-          siguientes a la entrega, con fotografías, al correo de contacto.
-          Repondremos la pieza o reembolsaremos el importe.
+          Si el producto llega dañado o no corresponde con lo que ofrecimos,
+          escríbenos al correo de contacto con fotografías. Te pedimos hacerlo
+          en cuanto lo recibas —idealmente en los primeros cinco días, para
+          resolverlo más rápido—, pero eso no reduce tu derecho: puedes
+          reclamar dentro de los <strong>dos meses</strong> siguientes a la
+          recepción, como establece el artículo 93 de la Ley Federal de
+          Protección al Consumidor. A tu elección, repondremos la pieza o te
+          devolveremos lo pagado, dentro de los quince días siguientes a tu
+          reclamación.
         </p>
         <p>
           Por su naturaleza, <strong>no se aceptan devoluciones de productos ya
@@ -995,11 +1027,11 @@
 
         <h3>9. Limitación de responsabilidad</h3>
         <p>
-          El sitio se ofrece «tal cual». Valquiria no garantiza que esté libre de
-          interrupciones o errores, y no responde por daños indirectos,
-          incidentales o consecuenciales derivados de su uso. En todo caso, la
-          responsabilidad máxima de Valquiria se limita al importe efectivamente
-          pagado por el pedido de que se trate.
+          Valquiria responde por sus productos y por los pedidos que confirma
+          conforme a la Ley Federal de Protección al Consumidor. Lo que no puede
+          garantizar es que el sitio esté siempre disponible o libre de errores
+          técnicos; si una falla del sitio afecta tu pedido, escríbenos y lo
+          resolvemos contigo.
         </p>
         <p>Nada en esta cláusula limita los derechos que la legislación mexicana de protección al consumidor te reconoce como irrenunciables.</p>
 
@@ -1009,7 +1041,8 @@
           Para cualquier controversia, las partes se someten a la competencia de
           la Procuraduría Federal del Consumidor (PROFECO) en vía conciliatoria
           y, en su caso, a los tribunales competentes de la
-          <strong>Ciudad de México</strong>, renunciando a cualquier otro fuero.
+          <strong>Ciudad de México</strong>, sin perjuicio de los derechos que
+          la ley te reconoce como consumidor.
         </p>
 
         <h3>11. Contacto</h3>

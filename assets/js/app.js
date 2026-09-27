@@ -1899,6 +1899,13 @@ const Asesor = {
                maxlength="180" ${c.opcional ? '' : 'required'}>
         <em class="cd-err" aria-live="polite"></em>
       </label>`).join('') +
+      /* El aviso va AQUÍ, en el punto exacto donde se piden nombre, WhatsApp,
+         correo y domicilio. Un enlace en el pie de la página no informa a
+         nadie en el momento en que importa; este sí. */
+      `<p class="cd-aviso">Usamos estos datos solo para entregarte el pedido y ` +
+      `avisarte de su estado. Los reciben Mercado Pago, la paquetería y ` +
+      `nuestro canal interno de pedidos. <a href="#/privacidad">` +
+      `Aviso de privacidad</a>.</p>` +
       `<button class="chat-act" type="submit">Continuar</button>`;
 
     f.addEventListener('submit', async e => {

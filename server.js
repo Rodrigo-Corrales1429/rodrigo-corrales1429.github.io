@@ -140,7 +140,14 @@ app.use(
 );
 app.use(express.json({ limit: "100kb" }));
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+/* `GEMINI_BASE_URL` existe SOLO para las pruebas, igual que `MP_API_URL`: sin
+   él no hay forma de comprobar el tope global de gasto sin mandarle peticiones
+   de verdad a Google. En producción no se define y el SDK usa su dirección. */
+const ai = new GoogleGenAI({
+  apiKey: process.env.GEMINI_API_KEY,
+  ...(process.env.GEMINI_BASE_URL
+    ? { httpOptions: { baseUrl: process.env.GEMINI_BASE_URL } } : {})
+});
 
 const MODELO = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 const MAX_ITERACIONES_FUNCTION_CALL = 6;
@@ -184,8 +191,40 @@ const DIA_MS = 24 * 60 * 60_000;
  * · Render va detrás de un proxy y `trust proxy` ya está puesto, así que
  *   req.ip es la del visitante y no la del balanceador.
  */
+/* ═══ QUIÉN ES EL VISITANTE DE VERDAD ═══
+   Render sirve detrás de Cloudflare, y con `trust proxy = 1` Express toma
+   como `req.ip` al último salto: la IP de SALIDA de Cloudflare, que rota. Se
+   comprobó en producción el 26-09-2026 —nueve intentos de pago seguidos desde
+   una sola máquina y el limitador de 6/min nunca frenó; con la IP forjada,
+   los 429 salían mezclados con 400 porque las peticiones de una misma persona
+   caían en contadores distintos—.
+
+   Las consecuencias eran tres, y la tercera era la peor:
+     · el rate limit se diluía entre las IPs de Cloudflare;
+     · visitantes que compartían esa IP se repartían el cupo y podían recibir
+       un 429 sin haber hecho nada;
+     · «una reserva viva por visitante» podía REEMPLAZAR la reserva de OTRO
+       cliente que saliera por la misma IP de Cloudflare.
+
+   Cloudflare pone la IP real en `CF-Connecting-IP`, y rechaza con 403 a quien
+   intente mandarla él mismo (también comprobado en producción), así que no se
+   puede falsificar desde fuera. Si algún día el servicio deja de estar detrás
+   de Cloudflare, `IP_CABECERA_CONFIABLE=` vacío vuelve a `req.ip`. */
+const IP_CABECERA_CONFIABLE = (process.env.IP_CABECERA_CONFIABLE ?? "cf-connecting-ip")
+  .trim().toLowerCase();
+const ES_IPV4 = /^(?:\d{1,3}\.){3}\d{1,3}$/;
+const ES_IPV6 = /^[0-9a-f:]{2,45}$/i;
+
+function ipDelVisitante(req) {
+  if (IP_CABECERA_CONFIABLE) {
+    const v = String(req.get(IP_CABECERA_CONFIABLE) || "").trim();
+    if (v && (ES_IPV4.test(v) || (v.includes(":") && ES_IPV6.test(v)))) return v;
+  }
+  return req.ip || "desconocida";
+}
+
 function identidad(req) {
-  const ip = req.ip || "desconocida";
+  const ip = ipDelVisitante(req);
   if (ip.includes(":") && !ip.includes(".")) {
     return ip.split(":").slice(0, 4).join(":") + "::/64";
   }
@@ -287,6 +326,17 @@ const limitarPulso = crearLimitador({
 /* El de pagos es MUCHO más estrecho porque cada llamada crea una preferencia
    real en Mercado Pago. Nadie compra seis veces por minuto; quien lo intenta
    está probando algo, no comprando. */
+/* El panel NO tenía limitador. Detrás hay un solo secreto, y sin tope se
+   podía probar a la velocidad que diera la red. Veinte por minuto sobran para
+   una persona usando el panel; el bloqueo por intentos fallidos va aparte,
+   en `exigirAdmin`. */
+const limitarAdmin = crearLimitador({
+  nombre: "admin",
+  max: parseInt(process.env.RATE_LIMIT_ADMIN_POR_MINUTO || "20", 10),
+  maxDiario: parseInt(process.env.RATE_LIMIT_ADMIN_POR_DIA || "400", 10),
+  mensaje: "No encontrado."
+});
+
 const limitarPagos = crearLimitador({
   nombre: "pago",
   max: parseInt(process.env.RATE_LIMIT_PAGO_POR_MINUTO || "6", 10),
@@ -631,9 +681,46 @@ function conTimeout(promise, ms, msg = "Timeout") {
  * Solo se reintenta lo transitorio (429 y 5xx). Una credencial inválida no se
  * arregla insistiendo, y reintentarla solo suma latencia al mensaje de error.
  */
+/* ═══ TOPE GLOBAL DE LLAMADAS AL MODELO ═══
+   El limitador del chat es por visitante: 30/min y 400/día POR IP. Frena a
+   una persona; no frena a mil. Con suficientes IPs se podían gastar los
+   créditos de Gemini sin romper ninguna regla.
+
+   Esto cuenta TODAS las llamadas al modelo, vengan de quien vengan. Al llegar
+   al tope, /api/chat responde 429 con `motivo: "presupuesto"` y el Asesor
+   contesta en modo local —que ya desglosa el carrito y cierra por WhatsApp—:
+   la tienda sigue vendiendo, solo deja de gastar.
+
+   Vive en memoria, así que un reinicio lo pone a cero. Es un freno, no la
+   contabilidad: el tope de verdad es el presupuesto en Google Cloud. */
+const GEMINI_TOPE_DIARIO = Math.max(1, parseInt(process.env.GEMINI_TOPE_DIARIO || "600", 10) || 600);
+const GEMINI_TOPE_MINUTO = Math.max(1, parseInt(process.env.GEMINI_TOPE_MINUTO || "60", 10) || 60);
+const USO_GEMINI = { dia: "", llamadas: 0, marcas: [], avisado: "" };
+
+function diaDeHoy() { return new Date().toISOString().slice(0, 10); }
+
+function estadoPresupuestoIA() {
+  const hoy = diaDeHoy();
+  if (USO_GEMINI.dia !== hoy) { USO_GEMINI.dia = hoy; USO_GEMINI.llamadas = 0; }
+  const corte = Date.now() - 60_000;
+  while (USO_GEMINI.marcas.length && USO_GEMINI.marcas[0] < corte) USO_GEMINI.marcas.shift();
+  return {
+    agotadoDia: USO_GEMINI.llamadas >= GEMINI_TOPE_DIARIO,
+    agotadoMinuto: USO_GEMINI.marcas.length >= GEMINI_TOPE_MINUTO,
+    llamadas: USO_GEMINI.llamadas
+  };
+}
+
+function contarLlamadaIA() {
+  estadoPresupuestoIA();
+  USO_GEMINI.llamadas++;
+  USO_GEMINI.marcas.push(Date.now());
+}
+
 async function generarConReintento(peticion, intentos = 3) {
   let ultimo;
   for (let i = 0; i < intentos; i++) {
+    contarLlamadaIA();
     try {
       return await conTimeout(
         ai.models.generateContent(peticion),
@@ -1131,6 +1218,30 @@ app.post("/api/chat", limitarTasa, async (req, res) => {
         error:
           "La API Key de Gemini no está configurada en el servidor. " +
           "Contacta al administrador."
+      });
+    }
+
+    /* El freno global va antes de cualquier trabajo: un 429 aquí cuesta cero
+       tokens, y el front lo trata como pasajero —contesta en local con el
+       carrito a la vista y vuelve a intentar en el siguiente mensaje—. */
+    const presupuesto = estadoPresupuestoIA();
+    if (presupuesto.agotadoDia || presupuesto.agotadoMinuto) {
+      if (presupuesto.agotadoDia && USO_GEMINI.avisado !== USO_GEMINI.dia) {
+        USO_GEMINI.avisado = USO_GEMINI.dia;
+        avisos.avisar({
+          tipo: "presupuesto_ia",
+          llamadas: presupuesto.llamadas,
+          tope: GEMINI_TOPE_DIARIO
+        });
+      }
+      console.warn(`[/api/chat] tope global de IA (${presupuesto.agotadoDia ? "día" : "minuto"})`);
+      return res.status(429).json({
+        error:
+          "El Asesor está atendiendo a mucha gente en este momento. Te respondo " +
+          "con lo esencial, y si quieres cerrar ya, escríbenos por WhatsApp al " +
+          "+52 771 795 9131.",
+        motivo: "presupuesto",
+        espera_s: presupuesto.agotadoDia ? 3600 : 60
       });
     }
 
@@ -1654,6 +1765,41 @@ app.post("/api/pago/webhook", async (req, res) => {
        clínica— y no aquel donde el cliente pidió el comprobante. */
     const quien = guardado.comprador || null;
 
+    /* ═══ EL MISMO PEDIDO COBRADO DOS VECES ═══
+       Una preferencia de Checkout Pro se puede pagar más de una vez: quien
+       vuelve atrás desde el banco y paga otra vez, o dos pestañas con el mismo
+       link. La idempotencia de avisos es por `pago + estado`, así que un
+       SEGUNDO pago aprobado —otro id— entraba como venta nueva: otro «PAGO
+       APROBADO», y el cliente con dos cargos sin que nadie lo notara hasta la
+       queja. Ahora se reconoce: no se registra como venta, no toca el
+       inventario, y suena una alarma que dice exactamente qué reembolsar. */
+    const aprobadoAntes = guardado.pago_aprobado_id;
+    if (
+      estado === "approved" && folio && aprobadoAntes &&
+      String(aprobadoAntes) !== String(pago.id)
+    ) {
+      const duplicados = Array.isArray(guardado.pagos_duplicados)
+        ? guardado.pagos_duplicados : [];
+      if (!duplicados.includes(String(pago.id))) {
+        recordarPedido(folio, { pagos_duplicados: [...duplicados, String(pago.id)] });
+      }
+      console.error(
+        `[webhook] PAGO DUPLICADO folio=${identificadorLog(folio)} ` +
+        `original=${identificadorLog(aprobadoAntes)} duplicado=${identificadorLog(pago.id)}`
+      );
+      avisos.avisar({
+        tipo: "pago_duplicado",
+        folio,
+        total_centavos: cobrado,
+        pago_original: String(aprobadoAntes),
+        pago_duplicado: String(pago.id),
+        comprador: contactoEnUnaLinea(quien),
+        whatsapp: quien?.whatsapp || null
+      });
+      marcarEventoProcesado(clave);
+      return res.status(200).json({ recibido: true, duplicado: true });
+    }
+
     if (folio) {
       recordarPedido(folio, {
         /* `revision` no es `approved`. Mientras el importe no cuadre, este
@@ -1662,6 +1808,10 @@ app.post("/api/pago/webhook", async (req, res) => {
         estado: descuadre ? "revision" : estado,
         detalle_estado: pago.status_detail,
         pago_id: pago.id,
+        /* El primer pago aprobado queda anotado: es la referencia con la que
+           se reconoce un segundo cobro del mismo pedido. */
+        ...(estado === "approved" && !descuadre && !guardado.pago_aprobado_id
+          ? { pago_aprobado_id: String(pago.id) } : {}),
         metodo: pago.payment_method_id,
         tipo_metodo: pago.payment_type_id,
         pagado: new Date().toISOString(),
@@ -1822,10 +1972,8 @@ function tokenValido(recibido, esperado) {
   return crypto.timingSafeEqual(a, b);
 }
 
-app.get("/api/leads", (req, res) => {
-  if (!tokenValido(req.get("x-leads-token"), process.env.LEADS_TOKEN)) {
-    return res.status(404).json({ error: "No encontrado." });
-  }
+app.get("/api/leads", limitarAdmin, (req, res) => {
+  if (!exigirAdmin(req, res)) return;
   res.json({ ok: true, leads: obtenerLeads() });
 });
 
@@ -1942,21 +2090,149 @@ app.post("/api/evento", limitarPulso, (req, res) => {
  * se pierde está en Mercado Pago —que es el que cuenta para cobrar— y en el
  * webhook de avisos. Este panel es el mirador rápido, no la contabilidad.
  */
-function exigirAdmin(req, res) {
+/* ═══ EL PANEL: UN SECRETO, BIEN GUARDADO ═══
+   Detrás del panel hay pedidos, correos, teléfonos y domicilios. Tres cosas
+   que faltaban:
+
+   1. UN MÍNIMO DE LONGITUD QUE SE CUMPLE, no que se sugiere. Antes un
+      LEADS_TOKEN corto solo producía una advertencia en el log. Ahora, por
+      debajo de 24 caracteres el panel queda CERRADO: un secreto corto se
+      adivina, y el único remedio contra eso es la longitud.
+
+   2. BLOQUEO POR INTENTOS. Cinco fallos en quince minutos desde un mismo
+      visitante lo dejan fuera quince minutos, y la primera vez suena un aviso
+      de acceso sospechoso. La respuesta sigue siendo 404: a quien prueba no se
+      le confirma ni que el panel existe.
+
+   3. SESIONES QUE CADUCAN. El navegador guardaba el token maestro en
+      localStorage PARA SIEMPRE: quien tocara esa computadora, o un script que
+      se colara en la página, se llevaba acceso permanente. Ahora el token
+      maestro se cambia por una sesión firmada de pocas horas, y es solo eso
+      lo que el navegador guarda —en sessionStorage, que muere con la
+      pestaña—. La firma se deriva del propio LEADS_TOKEN: rotarlo invalida
+      todas las sesiones a la vez. */
+const ADMIN_TOKEN_MINIMO = 24;
+const ADMIN_SESION_HORAS = Math.min(24, Math.max(1,
+  parseInt(process.env.ADMIN_SESION_HORAS || "8", 10) || 8));
+const ADMIN_MAX_FALLOS = 5;
+const ADMIN_VENTANA_MS = 15 * 60_000;
+const ADMIN_BLOQUEO_MS = 15 * 60_000;
+const FALLOS_ADMIN = new Map();   // identidad → { n, desde, hasta, avisado }
+let avisoTokenCorto = false;
+
+function tokenAdminUsable() {
+  const t = process.env.LEADS_TOKEN;
+  const ok = typeof t === "string" && t.length >= ADMIN_TOKEN_MINIMO;
+  if (!ok && t && !avisoTokenCorto) {
+    avisoTokenCorto = true;
+    console.error(
+      `[admin] ⛔ LEADS_TOKEN tiene ${t.length} caracteres: el panel queda CERRADO ` +
+      `hasta que tenga al menos ${ADMIN_TOKEN_MINIMO}. Genera uno con: ` +
+      `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`
+    );
+  }
+  return ok;
+}
+
+function llaveSesionAdmin() {
+  return crypto.createHash("sha256")
+    .update("vq-admin-sesion:" + process.env.LEADS_TOKEN, "utf8").digest();
+}
+
+function emitirSesionAdmin() {
+  const exp = Date.now() + ADMIN_SESION_HORAS * 3600_000;
+  const cuerpo = Buffer.from(JSON.stringify({
+    v: 1, exp, n: crypto.randomBytes(9).toString("hex")
+  })).toString("base64url");
+  const firma = crypto.createHmac("sha256", llaveSesionAdmin())
+    .update(cuerpo).digest("base64url");
+  return { sesion: `${cuerpo}.${firma}`, expira: new Date(exp).toISOString() };
+}
+
+function sesionAdminValida(valor) {
+  if (typeof valor !== "string" || valor.length > 400) return false;
+  const [cuerpo, firma, ...resto] = valor.split(".");
+  if (!cuerpo || !firma || resto.length) return false;
+  const esperada = crypto.createHmac("sha256", llaveSesionAdmin())
+    .update(cuerpo).digest();
+  let recibida;
+  try { recibida = Buffer.from(firma, "base64url"); } catch { return false; }
+  if (recibida.length !== esperada.length ||
+      !crypto.timingSafeEqual(recibida, esperada)) return false;
+  let datos;
+  try { datos = JSON.parse(Buffer.from(cuerpo, "base64url").toString("utf8")); }
+  catch { return false; }
+  const ahora = Date.now();
+  /* Caducada, o con una caducidad imposible: las dos se rechazan. */
+  return datos?.v === 1 && Number.isFinite(datos.exp) &&
+    datos.exp > ahora && datos.exp <= ahora + 24 * 3600_000 + 60_000;
+}
+
+function adminBloqueado(quien) {
+  const f = FALLOS_ADMIN.get(quien);
+  if (!f) return false;
+  if (f.hasta && f.hasta > Date.now()) return true;
+  if (Date.now() - f.desde > ADMIN_VENTANA_MS) FALLOS_ADMIN.delete(quien);
+  return false;
+}
+
+function registrarFalloAdmin(quien, ruta) {
+  const ahora = Date.now();
+  let f = FALLOS_ADMIN.get(quien);
+  if (!f || ahora - f.desde > ADMIN_VENTANA_MS) f = { n: 0, desde: ahora, hasta: 0, avisado: false };
+  f.n++;
+  if (f.n >= ADMIN_MAX_FALLOS) {
+    f.hasta = ahora + ADMIN_BLOQUEO_MS;
+    if (!f.avisado) {
+      f.avisado = true;
+      console.warn(`[admin] bloqueo por ${f.n} intentos fallidos · ruta=${identificadorLog(ruta)}`);
+      avisos.avisar({
+        tipo: "acceso_sospechoso",
+        intentos: f.n,
+        ruta,
+        /* Solo el principio de la dirección: basta para reconocer si es la
+           tuya, y no convierte el aviso en un registro de IPs completas. */
+        origen: String(quien).replace(/(\d+\.\d+)\.\d+\.\d+/, "$1.x.x")
+      });
+    }
+  }
+  FALLOS_ADMIN.set(quien, f);
+  if (FALLOS_ADMIN.size > 2000) FALLOS_ADMIN.delete(FALLOS_ADMIN.keys().next().value);
+}
+
+function exigirAdmin(req, res, { soloTokenMaestro = false } = {}) {
   /* SOLO cabecera. El `?t=` que había aquí por comodidad ponía el token del
      panel —que enseña pedidos, contactos y domicilios— en el historial del
      navegador, en las capturas de pantalla, en los logs del proxy y en el
      Referer de cualquier recurso externo que cargara la página. Un token en
      una URL es un token compartido sin querer. */
-  const token = req.get("x-leads-token");
-  if (!tokenValido(String(token || ""), process.env.LEADS_TOKEN)) {
-    res.status(404).json({ error: "No encontrado." });
-    return false;
+  const quien = identidad(req);
+  const negar = () => { res.status(404).json({ error: "No encontrado." }); return false; };
+
+  if (!tokenAdminUsable()) return negar();
+  if (adminBloqueado(quien)) return negar();
+
+  const bearer = String(req.get("authorization") || "").replace(/^Bearer\s+/i, "");
+  const conSesion = !soloTokenMaestro && bearer && sesionAdminValida(bearer);
+  const conMaestro = tokenValido(String(req.get("x-leads-token") || ""), process.env.LEADS_TOKEN);
+
+  if (!conSesion && !conMaestro) {
+    registrarFalloAdmin(quien, req.path);
+    return negar();
   }
+  FALLOS_ADMIN.delete(quien);
   return true;
 }
 
-app.get("/api/admin/resumen", (req, res) => {
+/* Cambia el token maestro por una sesión de pocas horas. Una sesión NO puede
+   emitir otra: si pudiera, una sesión robada se renovaría para siempre y la
+   caducidad no significaría nada. */
+app.post("/api/admin/sesion", limitarAdmin, (req, res) => {
+  if (!exigirAdmin(req, res, { soloTokenMaestro: true })) return;
+  res.json({ ok: true, ...emitirSesionAdmin() });
+});
+
+app.get("/api/admin/resumen", limitarAdmin, (req, res) => {
   if (!exigirAdmin(req, res)) return;
 
   const pedidos = [...PEDIDOS.values()]
@@ -2020,13 +2296,13 @@ app.get("/api/admin/resumen", (req, res) => {
 });
 
 /** Manda el resumen del día por los canales de aviso, sin esperar la hora. */
-app.post("/api/admin/resumen-ahora", async (req, res) => {
+app.post("/api/admin/resumen-ahora", limitarAdmin, async (req, res) => {
   if (!exigirAdmin(req, res)) return;
   res.json(await avisos.resumenAhora());
 });
 
 /** Mensaje de prueba, para comprobar la plomería sin esperar una venta. */
-app.post("/api/admin/probar-avisos", async (req, res) => {
+app.post("/api/admin/probar-avisos", limitarAdmin, async (req, res) => {
   if (!exigirAdmin(req, res)) return;
   res.json(await avisos.probar());
 });

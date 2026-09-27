@@ -24,6 +24,7 @@
 exclude:
   # Documentación interna de operación
   - AUDITORIA.md
+  - INCIDENTES.md
   - AVISOS.md
   - ENVIOS.md
   - IA_PRO.md
@@ -69,6 +70,7 @@ exclude:
   - test-envios-avisos.js
   - test-asesor-mostrador.js
   - test-blindaje-pago.js
+  - test-seguridad.js
   - test-hardening.js
   - test-persistence.js
 
