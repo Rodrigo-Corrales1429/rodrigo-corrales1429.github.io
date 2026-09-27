@@ -26,6 +26,28 @@ const API = process.env.API || "https://rodrigo-corrales1429-github-io.onrender.
 let ok = 0;
 const mal = [];
 
+/* Los cuatro textos que tiene que contener el aviso de privacidad corregido. */
+const TEXTOS_AVISO = [
+  "artículo 36 de la LFPDPPP",
+  "Telegram",
+  "Render Services",
+  "Secretaría Anticorrupción y Buen Gobierno"
+];
+
+/* El HTML parte las frases largas en varias líneas con sangría —en producción
+   el aviso dice «Buen\n          Gobierno»—, y compararlo en crudo daba un falso
+   negativo con el aviso ya corregido. Se compara con el espacio normalizado:
+   cualquier secuencia de espacios, tabs o saltos de línea cuenta como UN
+   espacio. No es más permisivo: cada palabra tiene que estar, en su orden y
+   contigua a la siguiente. */
+const normalizarEspacios = texto => String(texto).replace(/\s+/g, " ");
+
+/** Los textos del aviso que NO aparecen en el HTML. Vacío = aviso correcto. */
+function faltantesAvisoPrivacidad(html) {
+  const plano = normalizarEspacios(html);
+  return TEXTOS_AVISO.filter(t => !plano.includes(t));
+}
+
 async function comprobar(nombre, fn) {
   try {
     const detalle = await fn();
@@ -58,8 +80,7 @@ async function main() {
   await comprobar("la página ya no ejecuta código de unpkg", () =>
     !/unpkg\.com/.test(inicio) || "index.html todavía carga three.js desde unpkg");
   await comprobar("el aviso de privacidad es la versión corregida", () => {
-    const falta = ["artículo 36 de la LFPDPPP", "Telegram", "Render Services",
-                   "Secretaría Anticorrupción y Buen Gobierno"].filter(t => !inicio.includes(t));
+    const falta = faltantesAvisoPrivacidad(inicio);
     return falta.length ? `falta: ${falta.join(" · ")}` : true;
   });
   await comprobar("los términos reconocen los plazos de la LFPC", () =>
@@ -137,4 +158,10 @@ async function main() {
   console.log(`✓ ${ok}/${ok}: producción tiene los arreglos de seguridad.\n`);
 }
 
-main().catch(e => { console.error("✗ No se pudo verificar:", e.message); process.exit(1); });
+/* Solo se sale a producción cuando se ejecuta el script. Importado desde las
+   pruebas, expone la comprobación del aviso sin hacer ni una petición. */
+if (require.main === module) {
+  main().catch(e => { console.error("✗ No se pudo verificar:", e.message); process.exit(1); });
+}
+
+module.exports = { faltantesAvisoPrivacidad, TEXTOS_AVISO };

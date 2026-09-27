@@ -648,6 +648,44 @@ async function main() {
       "los términos prometen $150 fijos y el checkout cobra según el código postal");
   });
 
+  await prueba("el verificador de producción tolera saltos de línea, no ausencias", () => {
+    /* Falso negativo real: con el aviso ya corregido en producción, el
+       verificador decía que faltaba «Secretaría Anticorrupción y Buen
+       Gobierno» porque el HTML parte la frase en dos líneas. */
+    const { faltantesAvisoPrivacidad, TEXTOS_AVISO } = require("./scripts/verificar-produccion.js");
+    afirmar(JSON.stringify(TEXTOS_AVISO) === JSON.stringify([
+      "artículo 36 de la LFPDPPP", "Telegram", "Render Services",
+      "Secretaría Anticorrupción y Buen Gobierno"
+    ]), "cambió la lista de textos que exige el verificador");
+
+    /* Los cuatro textos partidos con saltos de línea, tabs y sangría. */
+    const partido = t => t.replace(/ /g, () => "\n\t    ");
+    const conSaltos = `<p>${TEXTOS_AVISO.map(partido).join("</p>\n<p>")}</p>`;
+    afirmar(faltantesAvisoPrivacidad(conSaltos).length === 0,
+      `con saltos de línea marca como faltantes: ${faltantesAvisoPrivacidad(conSaltos).join(" · ")}`);
+
+    /* El aviso tal como está en index.html —lo que sirve producción— pasa. */
+    afirmar(faltantesAvisoPrivacidad(html).length === 0,
+      `el index.html real no pasa: ${faltantesAvisoPrivacidad(html).join(" · ")}`);
+
+    /* Si falta cualquiera de los cuatro, se detecta — y solo ese. */
+    for (const quitado of TEXTOS_AVISO) {
+      const sinUno = `<p>${TEXTOS_AVISO.filter(t => t !== quitado).map(partido).join("</p><p>")}</p>`;
+      const falta = faltantesAvisoPrivacidad(sinUno);
+      afirmar(falta.length === 1 && falta[0] === quitado,
+        `sin «${quitado}» reportó: ${JSON.stringify(falta)}`);
+    }
+
+    /* Y no basta con que las palabras estén sueltas: tienen que ir juntas y
+       en orden. */
+    for (const casi of ["Secretaría Anticorrupción y Gobierno", "Render <b>Services</b>",
+                        "artículo 37 de la LFPDPPP", "Buen Gobierno, Secretaría Anticorrupción y"]) {
+      const html2 = `<p>${TEXTOS_AVISO.slice(0, 2).join(" ")} ${casi}</p>`;
+      afirmar(faltantesAvisoPrivacidad(html2).length >= 2,
+        `«${casi}» se dio por bueno`);
+    }
+  });
+
   servidorFalso.close();
   console.log("");
   if (fallos.length) {
