@@ -359,6 +359,31 @@ const REDACCION = {
     `Si es una racha buena, toca reponer; si no, alguien está abriendo links ` +
     `que no completa.`,
 
+  /* Un solo aviso por bloqueo, no uno por intento: un ataque de fuerza bruta
+     no debe convertirse en una ráfaga de mensajes que acabe silenciada. */
+  acceso_sospechoso: e =>
+    `\u{1F6A8} <b>Intentos fallidos al panel</b>\n` +
+    `${e.intentos} intentos desde ${esc(e.origen || "—")} en ${esc(e.ruta || "/api/admin")}. ` +
+    `Ese origen queda bloqueado 15 minutos.\n` +
+    `\u{1F449} Si no fuiste tú, rota LEADS_TOKEN en Render: invalida también ` +
+    `todas las sesiones abiertas del panel.`,
+
+  pago_duplicado: e =>
+    `\u{26A0}\u{FE0F} <b>PAGO DUPLICADO — ${pesos(e.total_centavos)}</b>\n` +
+    `Folio ${esc(e.folio)} ya estaba pagado (pago ${esc(e.pago_original)}) y ` +
+    `entró OTRO cobro aprobado (pago ${esc(e.pago_duplicado)}).\n` +
+    (e.comprador ? `Cliente: ${esc(e.comprador)}\n` : "") +
+    (e.whatsapp ? `WhatsApp: https://wa.me/${esc(e.whatsapp)}\n` : "") +
+    `No se registró como venta ni se tocó el inventario.\n` +
+    `\u{1F449} Reembolsa el pago ${esc(e.pago_duplicado)} desde Mercado Pago ` +
+    `y avísale al cliente.`,
+
+  presupuesto_ia: e =>
+    `\u{1F4B8} Tope diario del Asesor alcanzado: ${e.llamadas}/${e.tope} llamadas.\n` +
+    `El chat sigue en modo local —desglosa el carrito y cierra por WhatsApp— ` +
+    `hasta mañana. Si fue una racha real, sube GEMINI_TOPE_DIARIO; si no, ` +
+    `alguien está gastando tus créditos.`,
+
   cotizacion: e =>
     `🧾 Cotización armada — ${pesos(e.total_centavos)}\n` +
     (e.items ? `${esc(e.items)}\n` : "") +
@@ -377,7 +402,7 @@ const REDACCION = {
 
 const URGENTES = new Set([
   "pago_aprobado", "pago_iniciado", "pago_pendiente", "pago_rechazado",
-  "descuadre", "config"
+  "descuadre", "config", "pago_duplicado", "acceso_sospechoso", "presupuesto_ia"
 ]);
 
 /** Decide el carril. Aquí vive toda la política de "no me hagas spam". */
