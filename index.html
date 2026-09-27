@@ -66,12 +66,12 @@
   base-uri 'self';
   object-src 'none';
   form-action 'self' https://wa.me;
-  script-src 'self' 'wasm-unsafe-eval' https://unpkg.com blob: 'sha256-mYMyfSVAAaoYPNGdAjyFSBHbLiwA60yeK51WkTWKqaQ=' 'sha256-BZkocn+ywLdsBE9hJt20df3bHXZ6Rm5wv/OfIHU0XLA=' 'sha256-QonWuRMXfHaYWzUuNWWKxQzQ+Gv3QgS1/0zkP8qjWHM=' 'sha256-7hcWFuRH46ZK5Prd9T3EEazYTGP1tud+w0zm5l3XAX0=';
+  script-src 'self' 'wasm-unsafe-eval' blob: 'sha256-mYMyfSVAAaoYPNGdAjyFSBHbLiwA60yeK51WkTWKqaQ=' 'sha256-nZUmrawap3d+zvPZb6NpJTpJe7vRO1hgktlomHw8AME=' 'sha256-QonWuRMXfHaYWzUuNWWKxQzQ+Gv3QgS1/0zkP8qjWHM=' 'sha256-7hcWFuRH46ZK5Prd9T3EEazYTGP1tud+w0zm5l3XAX0=';
   worker-src 'self' blob:;
   style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
   font-src 'self' https://fonts.gstatic.com;
   img-src 'self' data: blob: https://res.cloudinary.com;
-  connect-src 'self' blob: https://unpkg.com https://rodrigo-corrales1429-github-io.onrender.com;
+  connect-src 'self' blob: https://rodrigo-corrales1429-github-io.onrender.com;
   upgrade-insecure-requests">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 
@@ -107,10 +107,13 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preconnect" href="https://res.cloudinary.com">
-<!-- unpkg sirve three.js, que es la dependencia más pesada del sitio y la
-     única sin la que no hay nada que ver. Abrir el TLS con antelación ahorra
-     el saludo completo —DNS, TCP, TLS— del camino crítico. -->
-<link rel="preconnect" href="https://unpkg.com" crossorigin>
+<!-- three.js es la dependencia más pesada del sitio y la única sin la que no
+     hay nada que ver. Se sirve desde este mismo dominio (assets/vendor, copia
+     verificada del paquete oficial de npm) y se precarga para que no espere a
+     que lo descubra el módulo que lo importa. Antes venía de unpkg sin ninguna
+     verificación de integridad: un CDN comprometido podía ejecutar código en la
+     tienda. Ver assets/vendor/three-0.170.0/ORIGEN.md. -->
+<link rel="modulepreload" href="/assets/vendor/three-0.170.0/build/three.module.js">
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300&amp;family=Montserrat:wght@200;300;400;500&amp;family=IBM+Plex+Mono:wght@300;400;500&amp;display=swap" rel="stylesheet">
 <link rel="stylesheet" href="assets/css/valquiria.css?v=74">
 
@@ -140,8 +143,8 @@
 <script type="importmap">
 {
   "imports": {
-    "three": "https://unpkg.com/three@0.170.0/build/three.module.js",
-    "three/addons/": "https://unpkg.com/three@0.170.0/examples/jsm/"
+    "three": "/assets/vendor/three-0.170.0/build/three.module.js",
+    "three/addons/": "/assets/vendor/three-0.170.0/examples/jsm/"
   }
 }
 </script>

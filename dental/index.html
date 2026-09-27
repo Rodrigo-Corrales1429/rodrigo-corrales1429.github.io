@@ -8,7 +8,7 @@
 <meta name="robots" content="index,follow,max-image-preview:large">
 <meta name="theme-color" content="#060606">
 <meta name="referrer" content="strict-origin-when-cross-origin">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self' https://wa.me; script-src 'self' 'wasm-unsafe-eval' https://unpkg.com blob: 'sha256-BZkocn+ywLdsBE9hJt20df3bHXZ6Rm5wv/OfIHU0XLA=' 'sha256-rauwGFJacjfNN3V4UcEGzyT1p8K+xZmJpXA8fn9+W7I='; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://res.cloudinary.com; connect-src 'self' blob: https://unpkg.com https://rodrigo-corrales1429-github-io.onrender.com; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self' https://wa.me; script-src 'self' 'wasm-unsafe-eval' blob: 'sha256-nZUmrawap3d+zvPZb6NpJTpJe7vRO1hgktlomHw8AME=' 'sha256-rauwGFJacjfNN3V4UcEGzyT1p8K+xZmJpXA8fn9+W7I='; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://res.cloudinary.com; connect-src 'self' blob: https://rodrigo-corrales1429-github-io.onrender.com; upgrade-insecure-requests">
 <link rel="canonical" href="https://valquiriainc.com/dental/">
 <link rel="alternate" hreflang="es-mx" href="https://valquiriainc.com/dental/">
 <link rel="alternate" hreflang="x-default" href="https://valquiriainc.com/dental/">
@@ -33,7 +33,7 @@
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="preconnect" href="https://unpkg.com" crossorigin>
+<link rel="modulepreload" href="/assets/vendor/three-0.170.0/build/three.module.js">
 <link rel="preconnect" href="https://res.cloudinary.com">
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600&amp;family=Montserrat:wght@300;400;500&amp;family=IBM+Plex+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/assets/css/seo-pages.css?v=74">
@@ -41,8 +41,8 @@
 <script type="importmap">
 {
   "imports": {
-    "three": "https://unpkg.com/three@0.170.0/build/three.module.js",
-    "three/addons/": "https://unpkg.com/three@0.170.0/examples/jsm/"
+    "three": "/assets/vendor/three-0.170.0/build/three.module.js",
+    "three/addons/": "/assets/vendor/three-0.170.0/examples/jsm/"
   }
 }
 </script>

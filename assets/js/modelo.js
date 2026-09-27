@@ -27,7 +27,7 @@ import * as GeoUtils from 'three/addons/utils/BufferGeometryUtils.js';
    El decodificador es un wasm de ~200 kb que solo se descarga si el archivo
    viene comprimido, así que declararlo no cuesta nada cuando no hace falta. */
 const draco = new DRACOLoader().setDecoderPath(
-  'https://unpkg.com/three@0.170.0/examples/jsm/libs/draco/');
+  '/assets/vendor/three-0.170.0/examples/jsm/libs/draco/');
 
 /* ═══════════════════════════════════════════════════════════════════════════
    ANIMACIÓN COMPARTIDA
