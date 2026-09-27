@@ -600,6 +600,54 @@ async function main() {
     }
   }
 
+  // =======================================================================
+  seccion("Legal · el texto dice lo que la ley vigente dice, y lo que el sistema hace");
+  // =======================================================================
+  /* Verificado contra el texto oficial de la Cámara de Diputados: LFPDPPP
+     publicada en el DOF el 20-03-2025 (última reforma 14-11-2025) y LFPC
+     (última reforma 12-12-2025). Estas pruebas no dan por buena la redacción
+     jurídica —eso lo hace un abogado—: impiden que vuelva a entrar lo que ya
+     se sabe que está mal. */
+  const html = leer("index.html");
+  const tramo = id => {
+    const i = html.indexOf(`id="${id}"`);
+    return html.slice(i, html.indexOf("</section>", i)).replace(/\s+/g, " ");
+  };
+  const privacidad = tramo("v-privacidad");
+  const terminos = tramo("v-terminos");
+
+  await prueba("las transferencias sin consentimiento se citan en el art. 36 (el 37 es autorregulación)", () => {
+    afirmar(!/art[íi]culo 37 de la LFPDPPP/.test(privacidad), "el aviso sigue citando el artículo 37");
+    afirmar(/art[íi]culo 36 de la LFPDPPP/.test(privacidad), "el aviso no cita el artículo 36");
+  });
+  await prueba("el aviso nombra a quienes de verdad reciben datos de clientes", () => {
+    for (const quien of ["Telegram", "Render", "Mercado Pago", "Google"]) {
+      afirmar(privacidad.includes(quien), `el aviso no menciona a ${quien}`);
+    }
+    afirmar(!/se conservan solo mientras dura tu sesión en el navegador/.test(privacidad),
+      "el aviso vuelve a afirmar que las conversaciones solo viven en el navegador");
+    afirmar(privacidad.includes("Secretaría Anticorrupción y Buen Gobierno"),
+      "el aviso no nombra a la autoridad vigente");
+  });
+  await prueba("los términos no recortan el plazo de reclamación de la LFPC (art. 93: dos meses)", () => {
+    afirmar(!/repórtalo dentro de los <strong>cinco días naturales<\/strong>/.test(terminos),
+      "los términos vuelven a poner cinco días como límite");
+    afirmar(/dos meses/.test(terminos) && /artículo 93/.test(terminos),
+      "los términos no reconocen el plazo legal de dos meses");
+  });
+  await prueba("los términos no liberan al proveedor de su responsabilidad (LFPC art. 90)", () => {
+    for (const clausula of ["libera a Valquiria de cualquier responsabilidad",
+                            "se limita al importe efectivamente",
+                            "renunciando a cualquier otro fuero",
+                            "no dan lugar a cancelación ni a indemnización"]) {
+      afirmar(!terminos.includes(clausula), `vuelve a estar la cláusula «${clausula}»`);
+    }
+  });
+  await prueba("los términos no prometen un envío fijo que ya no es el que se cobra", () => {
+    afirmar(!/aplica un costo de \$150\.00 MXN/.test(terminos),
+      "los términos prometen $150 fijos y el checkout cobra según el código postal");
+  });
+
   servidorFalso.close();
   console.log("");
   if (fallos.length) {
