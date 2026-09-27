@@ -277,3 +277,33 @@ y las otras 27 documentan defensas que ya existían.
 6. **Revisión legal** del aviso de privacidad y los términos por un abogado.
    Lo corregido aquí es que el aviso diga la verdad sobre lo que hace el
    sistema; no sustituye una revisión profesional.
+
+## Revisión externa de la tercera auditoría (26-09-2026)
+
+Una segunda opinión (ChatGPT) revisó el trabajo. Lo que señaló, verificado
+contra el texto oficial de la Cámara de Diputados antes de tocar nada:
+
+- **Cierto — nada estaba desplegado.** La rama seguía solo en local, a la
+  espera del push. `scripts/verificar-produccion.js` comprueba desde fuera lo
+  que sirve valquiriainc.com: contra la versión actual falla en 7 de 12
+  puntos, que son exactamente los arreglos pendientes.
+- **Cierto — la cita legal estaba desactualizada.** En la LFPDPPP vigente (DOF
+  20-03-2025, última reforma 14-11-2025) las transferencias sin
+  consentimiento están en el artículo 36; el 37 trata de autorregulación.
+  La autoridad competente es la Secretaría Anticorrupción y Buen Gobierno.
+- **Cierto — los términos recortaban derechos del consumidor.** La LFPC da dos
+  meses para reclamar (art. 93) y tiene por no puestas las cláusulas que
+  liberan al proveedor de su responsabilidad o recortan plazos legales
+  (art. 90). Corregidos el plazo de cinco días, la exención de
+  responsabilidad, el tope de responsabilidad al importe pagado, la renuncia a
+  cualquier otro fuero y la exclusión de cancelación por retrasos.
+- **Encontrado al revisar:** los términos prometían envío de $150 fijos, y
+  desde el arreglo B-04 el envío se cobra según el código postal. Corregido.
+- **Cierto — faltaba un procedimiento de incidentes.** El artículo 19 obliga a
+  informar de inmediato a los afectados. Ver INCIDENTES.md.
+- **Pendiente tuyo:** el artículo 15 exige el domicilio del responsable, y el
+  aviso solo dice «Ciudad de México». No se inventa una dirección legal:
+  pon la completa que corresponda, con tu abogado.
+
+Las correcciones legales tienen pruebas en `test-seguridad.js` para que no
+vuelvan a entrar, pero no sustituyen la revisión de un abogado.

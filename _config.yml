@@ -24,6 +24,7 @@
 exclude:
   # Documentación interna de operación
   - AUDITORIA.md
+  - INCIDENTES.md
   - AVISOS.md
   - ENVIOS.md
   - IA_PRO.md
