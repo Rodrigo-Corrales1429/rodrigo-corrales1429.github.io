@@ -1,21 +1,10 @@
 User-agent: *
 Allow: /
 
-# Rutas de administración y post-compra
-Disallow: /admin/
+# Nada que ocultar aquí a propósito. robots.txt es PÚBLICO: listar en él el
+# panel o el nombre de cada documento interno no los esconde, se los enseña a
+# quien busque por dónde entrar. El panel ya lleva `noindex` en su propia
+# página y los documentos internos no se publican (ver _config.yml).
 Disallow: /gracias/
-
-# Documentos internos técnicos y operativos
-Disallow: /*.md$
-Disallow: /AUDITORIA.md
-Disallow: /AVISOS.md
-Disallow: /ENVIOS.md
-Disallow: /IA_PRO.md
-Disallow: /MODELO.md
-Disallow: /PAGOS.md
-Disallow: /PHASE_1_5_ARCHITECTURE.md
-Disallow: /SEGURIDAD.md
-Disallow: /SEO_AUDIT_PHASE1.md
-Disallow: /SEO_PLAN.md
 
 Sitemap: https://valquiriainc.com/sitemap.xml

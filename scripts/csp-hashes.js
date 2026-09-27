@@ -47,6 +47,7 @@ const PAGINAS = [
   "lux/index.html",
   "catalogo/index.html",
   "gracias/index.html",
+  "admin/index.html",
   "404.html"
 ];
 
