@@ -121,7 +121,8 @@ async function main() {
         comprador: {
           nombre: "Nombre Privado", whatsapp: "7717959131", email: "privado@ejemplo.mx",
           cp: "03330", direccion: "Calle Privada 120, Centro, Ciudad de México"
-        }
+        },
+        visitante: "3f1c2a4e-8b7d-4c6a-9e2f-1a2b3c4d5e6f"
       })
     });
     assert.strictEqual(pago.status, 502);

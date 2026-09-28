@@ -16,6 +16,7 @@
     "test:blindaje": "node --no-warnings test-blindaje-pago.js",
     "test:hardening": "node test-hardening.js",
     "test:persistence": "NODE_ENV=test node test-persistence.js",
+    "test:domain": "NODE_ENV=test node test-domain-services.js",
     "db:migrate": "node db/migrate.js",
     "test:seguridad": "node --no-warnings test-seguridad.js",
     "verificar:produccion": "node scripts/verificar-produccion.js",
@@ -23,7 +24,7 @@
     "csp:fix": "node scripts/csp-hashes.js --escribir"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.0.0"
   },
   "keywords": [
     "valquiria",

@@ -51,6 +51,7 @@ exclude:
   - termoformado.js
   - notificaciones.js
   - inventario.js
+  - identidad.js
   - almacen.js
   - pagos.js
   - catalog.js
@@ -60,6 +61,7 @@ exclude:
   - scripts
   - db
   - repositories
+  - services
 
   # Pruebas
   - test-quote-engine.js
@@ -73,6 +75,7 @@ exclude:
   - test-seguridad.js
   - test-hardening.js
   - test-persistence.js
+  - test-domain-services.js
 
   # Plantilla de configuración: no lleva valores reales, pero enumera cada
   # variable de entorno que existe. No hace falta publicarla.

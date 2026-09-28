@@ -288,7 +288,12 @@ pedido sin registrar, sin inventario y sin avisar.
 Ahora el orden es: **firma → consultar el pago → persistir y avisar → 200**. Si
 algo falla, se responde 5xx y Mercado Pago reintenta. Para que reintentar sea
 barato, los avisos son idempotentes por `payment_id + estado`: el mismo aviso
-repetido no vuelve a sonar el teléfono.
+repetido no vuelve a sonar el teléfono. Esa memoria vive en el proceso y se
+pierde al reiniciar; por eso el pedido guarda además QUÉ pago aceptó
+(`pago_aprobado_id`, o el que mandó a revisión o marcó como duplicado) y se
+consulta antes de cualquier efecto: la misma aprobación reenviada después de
+un reinicio no vuelve a avisar, contar ni surtir. Otro `payment_id` del mismo
+pedido sigue siendo un cobro doble.
 
 ### El descuadre no surte
 
@@ -296,6 +301,25 @@ Si el importe cobrado no coincide con el calculado, el pedido queda en estado
 `revision`: **no** se descuenta inventario, **no** sale el aviso de preparar y
 **no** cuenta como venta en el panel. Lo único que sale es la alarma de
 descuadre, que dice explícitamente que no se surta.
+
+### Un pago sin pedido completo tampoco surte
+
+Si llega un pago aprobado y verificado de un folio que el servidor no
+conoce, sin folio, o de un pedido al que le faltan artículos, domicilio o
+importe esperado, sale la alarma **PAGO QUE REQUIERE REVISIÓN** con el id del
+pago, el folio y el importe, y nada más: ni inventario, ni aviso de
+preparar, ni orden al webhook de pedidos. Responde 200 (el pago sí se
+recibió; reintentar no traería el pedido de vuelta).
+
+### Los pedidos en memoria no se expulsan
+
+El servidor recuerda hasta 300 pedidos. Antes, el 301 expulsaba al más
+viejo aunque siguiera esperando su pago. Ahora solo se olvida un pedido sin
+pago en curso, con el link vencido y pasada la gracia (24 h si nunca llegó
+un aviso de pago, 7 días si llegó alguno). Si no hay lugar así, el checkout
+nuevo responde 503 y manda al comprador a WhatsApp con su carrito intacto;
+suena una alarma de configuración (una cada 15 minutos). Es un arreglo
+temporal: la solución de fondo es PostgreSQL con `payment_events` (Fase 2E).
 
 Si cambias `SITIO_URL`, la página `/gracias/` tiene que existir en el dominio
 nuevo o el comprador vuelve a un 404 justo después de pagarte.

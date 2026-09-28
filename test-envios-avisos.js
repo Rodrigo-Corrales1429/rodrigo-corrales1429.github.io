@@ -475,6 +475,23 @@ test("avisar nunca lanza, ni con basura", () => {
   assert.ok(true);
 });
 
+test("una ráfaga de links abiertos no manda un pago aprobado real al resumen", () => {
+  /* Cada /api/pago que alguien abre avisa `pago_iniciado`, urgente. Con un
+     tope ÚNICO de 20 por hora, veinte links bastaban para que el siguiente
+     pago aprobado de verdad no sonara hasta el resumen de las 20:00. */
+  const lineas = [];
+  const logReal = console.log;
+  console.log = (...a) => lineas.push(a.join(" "));
+  try {
+    for (let i = 0; i < 25; i++) avisos.avisar({ tipo: "pago_iniciado", folio: `VQ-RAFAGA-${i}`, total_centavos: 100 });
+    avisos.avisar({ tipo: "pago_aprobado", folio: "VQ-TRASRAFAGA", total_centavos: 100 });
+  } finally { console.log = logReal; }
+  const urgentesIniciados = lineas.filter(l => /tipo=pago_iniciado .*prioridad=urgente/.test(l)).length;
+  assert.ok(urgentesIniciados < 25, "el tope anti-inundación dejó de aplicar a los links abiertos");
+  assert.ok(lineas.some(l => l.includes("tipo=pago_aprobado id=VQ-TRASRAFAGA prioridad=urgente")),
+    "tras la ráfaga, el pago aprobado real no sonó al momento");
+});
+
 test("la bitácora no crece sin límite", () => {
   for (let i = 0; i < 1200; i++) avisos.avisar({ tipo: "visita", pagina: "/" });
   assert.ok(avisos.bitacora({ limite: 5000 }).length <= 1000,

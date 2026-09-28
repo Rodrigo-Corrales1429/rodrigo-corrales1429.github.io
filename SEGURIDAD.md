@@ -84,11 +84,17 @@ cambiar el último grupo para tener otra dirección.
 - No se comparte entre instancias. Hoy da igual —hay una sola—, pero el día
   que escales a dos, cada una permitirá el cupo completo.
 - No distingue a un humano de un bot con IPs rotativas.
+- **No es una garantía durable.** Es fricción contra bucles, no un control
+  en el que se pueda apoyar otra defensa: ningún límite de negocio (cobros,
+  reservas, acceso al panel) debe depender de que este contador siga vivo.
 
 Para lo que sí protege —un bucle de tres líneas apuntando a tu cuota de
-Gemini— es suficiente. Cuando el tráfico lo justifique, el orden de las
-mejoras es: primero un limitador en el borde (Cloudflare), después Redis.
-Meter Redis antes que Cloudflare es pagar por lo que el borde da gratis.
+Gemini— es suficiente hoy, con una sola instancia. **Antes de escalar o de
+tener más de una instancia**, los limitadores críticos (pago, panel, chat)
+deben pasar a un control persistente o en el borde; no es opcional. El
+orden: primero un limitador en el borde (Cloudflare), después Redis o
+PostgreSQL. Meter Redis antes que Cloudflare es pagar por lo que el borde da
+gratis.
 
 ---
 

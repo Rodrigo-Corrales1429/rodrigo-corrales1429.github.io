@@ -384,7 +384,7 @@ const DIVISIONES = {
       "No prometemos porcentajes de precisión antes de medir el proceso del cliente.",
       "No damos precio de proyecto por chat: depende del proceso, del volumen y de los sistemas que ya existan.",
       "No reemplazamos personas por defecto; el diseño estándar escala a una persona lo que requiere criterio humano.",
-      "No trabajamos con datos sensibles de pacientes ni con información personal delicada dentro del chat público."
+      "No trabajamos con datos personales sensibles ni con información privada de terceros dentro del chat público."
     ],
     siguiente_paso:
       "Primero decidir de qué se trata la conversación, porque son dos caminos " +

@@ -48,4 +48,4 @@ async function getOrderByFolio(client, folio) {
   return rows[0] || null;
 }
 
-module.exports = { insertOrder, insertOrderItem, insertPaymentAttempt, getOrderByFolio };
+module.exports = { cents, insertOrder, insertOrderItem, insertPaymentAttempt, getOrderByFolio };

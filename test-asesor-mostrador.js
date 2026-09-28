@@ -67,10 +67,17 @@ const { REDACCION } = require("./notificaciones.js");
 console.log("\n[MOSTRADOR] El Asesor no pierde la memoria");
 // ---------------------------------------------------------------------------
 
+/* Desde v76 son dos hilos —pantalla y modelo— en hilo-asesor.js. Estas
+   pruebas vigilan las mismas propiedades que antes sobre esa arquitectura;
+   el comportamiento se ejecuta en test-seguridad.js. */
+const hilo = leer("assets/js/hilo-asesor.js");
+
 prueba("el hilo se guarda en sessionStorage, no solo en RAM", () => {
-  afirmar(app.includes("LLAVE: 'vq_asesor_v1'"), "falta la clave del hilo");
-  afirmar(/recordar\(\)\s*\{[\s\S]*?Memoria\.escribir\(this\.LLAVE/.test(app),
-    "`recordar` no escribe el hilo");
+  afirmar(/LLAVE_MODELO = 'vq_asesor_modelo_v3'/.test(hilo) && /LLAVE_PANTALLA = 'vq_asesor_pantalla_v3'/.test(hilo),
+    "faltan las claves del hilo");
+  afirmar(/leer: llave => Memoria\.leer\(llave\)/.test(app) && /escribir: \(llave, valor\) => Memoria\.escribir\(llave, valor\)/.test(app),
+    "el hilo no se guarda con Memoria (sessionStorage)");
+  afirmar(/recordar\(\)\s*\{[\s\S]*?this\.hilo\.guardar\(\)/.test(app), "`recordar` no escribe el hilo");
   afirmar(app.includes("restaurar()"), "no hay forma de repintar la conversación");
   afirmar(app.includes("Asesor.restaurar();"), "el arranque no restaura el hilo");
 });
@@ -79,13 +86,22 @@ prueba("el hilo se recorta por turnos Y por caracteres", () => {
   afirmar(app.includes("MAX_TURNOS: 40"), "falta el tope de turnos");
   afirmar(app.includes("MAX_TEXTO: 24000"),
     "falta el tope de caracteres, que es el que aplica el servidor");
-  afirmar(/hiloRecortado\(\)[\s\S]*?MAX_TURNOS[\s\S]*?MAX_TEXTO/.test(app),
+  afirmar(/maxTurnos: this\.MAX_TURNOS, maxTexto: this\.MAX_TEXTO/.test(app) &&
+    /salida\.length >= maxTurnos \|\| chars \+ n > maxTexto/.test(hilo),
     "el recorte no aplica los dos topes");
 });
 
+prueba("un formulario de entrega ya enviado no bloquea el del siguiente comprador", () => {
+  /* Encontrado en la prueba E2E: tras olvidar al comprador en la misma
+     pestaña, el formulario completado seguía contando como «abierto». */
+  afirmar(/const abierto = this\.log\.querySelector\('\.chat-datos:not\(\.listo\)'\);/.test(app),
+    "pedirDatos vuelve a tratar un formulario ya enviado como abierto");
+  afirmar(/f\.classList\.add\('listo'\);/.test(app), "el formulario enviado dejó de marcarse como listo");
+});
+
 prueba("lo que se guarda es texto: ni llaves ni tokens", () => {
-  const bloque = app.slice(app.indexOf("recordar()"), app.indexOf("olvidar()"));
-  afirmar(!/token|api[_-]?key|secret/i.test(bloque),
+  const bloque = hilo.slice(hilo.indexOf("guardar()"), hilo.indexOf("olvidar()"));
+  afirmar(bloque.length > 0 && !/token|api[_-]?key|secret/i.test(bloque),
     "la persistencia toca algo que huele a credencial");
 });
 

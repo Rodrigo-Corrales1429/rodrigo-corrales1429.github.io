@@ -33,6 +33,7 @@ const { resolverSku } = require("./resolver-productos.js");
 const { getProductoPorSku } = require("./catalog.js");
 const { cotizarEnvio } = require("./envios.js");
 const { estimarTermoformado } = require("./termoformado.js");
+const crypto = require("crypto");
 
 // ----------------------------------------------------------------------------
 // 1. Declaraciones (lo que Gemini ve)
@@ -669,7 +670,17 @@ function cotizarConCarrito(args, carritoActual) {
 const LEADS_EN_MEMORIA = [];
 const MAX_LEADS_MEMORIA = 200;
 
-function registrarInteres(args) {
+/* El modelo ve «[teléfono omitido]» o «[correo omitido]» en lugar del dato
+   (ver assets/js/pii-comercial.js). Si eso es lo que manda como contacto, el
+   servidor pone el último teléfono y correo que la persona escribió: el
+   registro conserva su contacto y el modelo nunca lo tuvo. */
+function contactoDelLead(args, retenido = {}) {
+  const dicho = typeof args?.contacto === "string" ? args.contacto.trim() : "";
+  if (dicho && !/omitid[oa]\]/.test(dicho)) return dicho;
+  return [retenido.telefono, retenido.correo].filter(Boolean).join(" · ") || null;
+}
+
+function registrarInteres(args, ctx = {}) {
   const division = normalizarClave(args?.division) || "sin_clasificar";
   const resumen = typeof args?.resumen === "string" ? args.resumen.trim() : "";
 
@@ -684,12 +695,14 @@ function registrarInteres(args) {
   }
 
   const lead = {
-    id: `VQ-${Date.now().toString(36).toUpperCase()}`,
+    /* Con azar, como el folio de un pedido: dos intereses registrados en el
+       mismo milisegundo compartían folio y un aviso podía llevarse el otro. */
+    id: `VQ-${Date.now().toString(36).toUpperCase()}-${crypto.randomBytes(3).toString("hex").toUpperCase()}`,
     fecha: new Date().toISOString(),
     division,
     resumen: resumen.slice(0, 1500),
     nombre: typeof args?.nombre === "string" ? args.nombre.slice(0, 120) : null,
-    contacto: typeof args?.contacto === "string" ? args.contacto.slice(0, 160) : null,
+    contacto: contactoDelLead(args, ctx.contactoRetenido)?.slice(0, 160) ?? null,
     urgencia: ["exploratoria", "definida", "inmediata"].includes(args?.urgencia)
       ? args.urgencia
       : "exploratoria"
@@ -697,6 +710,11 @@ function registrarInteres(args) {
 
   LEADS_EN_MEMORIA.push(lead);
   if (LEADS_EN_MEMORIA.length > MAX_LEADS_MEMORIA) LEADS_EN_MEMORIA.shift();
+  /* La conversación que lo registró se queda con SU lead, por folio exacto:
+     el aviso lo toma de aquí y no del «último lead» del proceso, que con dos
+     conversaciones a la vez era el de la otra. Lo que vuelve al modelo sigue
+     siendo `respuestaLead`, sin contacto ni resumen. */
+  if (ctx.leads instanceof Map) ctx.leads.set(lead.id, lead);
 
   /* Los datos de contacto permanecen en el lead y en el webhook; el log solo
      conserva el identificador necesario para localizarlo. */
@@ -774,15 +792,6 @@ function obtenerLeads() {
   return LEADS_EN_MEMORIA.slice().reverse();
 }
 
-/**
- * El lead completo más reciente, con contacto y resumen.
- *
- * `respuestaLead` deliberadamente NO devuelve esos campos: lo que sale de una
- * herramienta vuelve al contexto del modelo, y ahí solo debe ir lo que el
- * modelo necesita para hablar. El centro de avisos sí los necesita —un aviso
- * sin el teléfono del prospecto no sirve de nada— así que los toma por aquí,
- * del lado del servidor.
- */
 /** Vuelve a meter en memoria los leads de una instantánea. Ver almacen.js. */
 function restaurarLeads(filas) {
   if (!Array.isArray(filas)) return 0;
@@ -796,12 +805,6 @@ function restaurarLeads(filas) {
 /** Los leads en orden natural (antiguo → nuevo), para guardarlos. */
 function leadsCrudos() {
   return LEADS_EN_MEMORIA.slice();
-}
-
-function ultimoLeadRegistrado() {
-  return LEADS_EN_MEMORIA.length
-    ? LEADS_EN_MEMORIA[LEADS_EN_MEMORIA.length - 1]
-    : null;
 }
 
 // ----------------------------------------------------------------------------
@@ -930,7 +933,7 @@ async function ejecutarHerramienta({ name, args }, ctx = {}) {
       }
 
       case "registrar_interes":
-        return registrarInteres(args);
+        return registrarInteres(args, ctx);
 
       default:
         return {
@@ -957,7 +960,6 @@ module.exports = {
   TOOLS,
   ejecutarHerramienta,
   obtenerLeads,
-  ultimoLeadRegistrado,
   restaurarLeads,
   leadsCrudos,
   cotizarDentalOs,

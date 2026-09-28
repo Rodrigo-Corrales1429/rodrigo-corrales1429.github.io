@@ -8,7 +8,8 @@ const os = require("node:os");
 const path = require("node:path");
 const { Pool } = require("pg");
 const { migrate } = require("./db/migrate");
-const { createPool } = require("./db/pool");
+const { createPool, poolConfig } = require("./db/pool");
+const { TEST_MARKER, assertDisposableTestDatabase, testDatabaseUrl } = require("./db/test-target");
 const { withTransaction } = require("./db/transaction");
 const repo = require("./repositories/core");
 
@@ -26,47 +27,56 @@ async function expectPgCode(operation, code) {
   await assert.rejects(operation, error => error && error.code === code);
 }
 
-function checkedTestTarget(rawUrl, productionUrl) {
-  if (!rawUrl) throw new Error("BLOQUEO: falta PostgreSQL real de prueba (TEST_DATABASE_URL)");
-  if (process.env.NODE_ENV !== "test") throw new Error("BLOQUEO: NODE_ENV debe ser test");
-  if (productionUrl) throw new Error("BLOQUEO: DATABASE_URL debe estar ausente durante las pruebas");
-  let target;
-  try { target = new URL(rawUrl); } catch { throw new Error("BLOQUEO: TEST_DATABASE_URL inválida"); }
-  const host = target.hostname.replace(/^\[|\]$/g, "");
-  if (!["localhost", "127.0.0.1", "::1"].includes(host) ||
-      target.pathname !== "/valquiria_test" || target.search || target.hash ||
-      !["postgres:", "postgresql:"].includes(target.protocol)) {
-    throw new Error("BLOQUEO: la suite solo admite PostgreSQL local valquiria_test");
-  }
-  return target;
-}
-
 async function main() {
-  const url = process.env.TEST_DATABASE_URL;
-  const target = checkedTestTarget(url, process.env.DATABASE_URL);
+  const url = testDatabaseUrl();
+  const target = new URL(url);
+  const guard = env => () => testDatabaseUrl({ NODE_ENV: "test", ...env });
   const remote = new URL(url);
   remote.hostname = "db.invalid";
-  assert.throws(() => checkedTestTarget(remote.href), /BLOQUEO/);
+  assert.throws(guard({ TEST_DATABASE_URL: remote.href }), /BLOQUEO/);
   const otherDatabase = new URL(url);
   otherDatabase.pathname = "/otra_base";
-  assert.throws(() => checkedTestTarget(otherDatabase.href), /BLOQUEO/);
+  assert.throws(guard({ TEST_DATABASE_URL: otherDatabase.href }), /BLOQUEO/);
   const productionAlias = new URL(url);
   productionAlias.hostname = target.hostname === "localhost" ? "127.0.0.1" : "localhost";
-  assert.throws(() => checkedTestTarget(url, productionAlias.href), /BLOQUEO/);
+  assert.throws(guard({ TEST_DATABASE_URL: url, DATABASE_URL: productionAlias.href }), /BLOQUEO/);
+  assert.throws(guard({ DATABASE_URL: url }), /BLOQUEO/);
+  assert.throws(() => testDatabaseUrl({ NODE_ENV: "production", TEST_DATABASE_URL: url }), /BLOQUEO/);
   process.stdout.write("✓ Destinos remotos, otras bases y entorno de producción rechazados\n");
+
+  // Aunque DATABASE_URL apareciera a mitad de la ejecución, en test el pool no la toma.
+  assert.throws(() => createPool(), /BLOQUEO/);
+  assert.throws(() => createPool({ url: remote.href }), /BLOQUEO/);
+  process.env.DATABASE_URL = remote.href;
+  try {
+    assert.throws(() => createPool(), /BLOQUEO/);
+    // Ni declarándose producción: el entorno lo fija NODE_ENV, no el llamador.
+    assert.throws(() => createPool({ url: remote.href, environment: "production", tls: "verify-full" }), /BLOQUEO/);
+    assert.throws(() => createPool({ environment: "production" }), /BLOQUEO/);
+  } finally {
+    delete process.env.DATABASE_URL;
+  }
+  const serverSays = row => ({ query: async () => ({ rows: [row] }) });
+  const marked = { name: "valquiria_test", loopback: true, marker: TEST_MARKER };
+  await assertDisposableTestDatabase(serverSays(marked));
+  for (const forged of [{ ...marked, marker: null }, { ...marked, name: "valquiria" }, { ...marked, loopback: null }]) {
+    await assert.rejects(() => assertDisposableTestDatabase(serverSays(forged)), /BLOQUEO/);
+  }
+  process.stdout.write("✓ Sin fallback a DATABASE_URL; base sin marca, con otro nombre o no local rechazada\n");
 
   const tlsTarget = new URL(url);
   tlsTarget.hostname = "db.invalid";
-  assert.throws(() => createPool({ url: tlsTarget.href, tls: "disable", environment: "production" }), /TLS verificado/);
+  // La configuración de producción se prueba con la función pura: sin pool, sin conexión posible.
+  assert.throws(() => poolConfig({ url: tlsTarget.href, tls: "disable", environment: "production" }), /TLS verificado/);
   const unsafeTlsTarget = new URL(tlsTarget);
   unsafeTlsTarget.searchParams.set("sslmode", "no-verify");
-  assert.throws(() => createPool({ url: unsafeTlsTarget.href, tls: "verify-full", environment: "production" }), /Opciones TLS/);
-  assert.throws(() => createPool({ url: tlsTarget.href, poolMax: "0", environment: "production" }), /DB_POOL_MAX/);
-  const productionPool = createPool({ url: tlsTarget.href, tls: "verify-full", environment: "production" });
-  assert.equal(productionPool.options.ssl.rejectUnauthorized, true);
-  assert.equal(productionPool.options.ssl.servername, "db.invalid");
-  await productionPool.end();
-  process.stdout.write("✓ Pool: TLS de producción y límites de configuración\n");
+  assert.throws(() => poolConfig({ url: unsafeTlsTarget.href, tls: "verify-full", environment: "production" }), /Opciones TLS/);
+  assert.throws(() => poolConfig({ url: tlsTarget.href, poolMax: "0", environment: "production" }), /DB_POOL_MAX/);
+  const productionConfig = poolConfig({ url: tlsTarget.href, tls: "verify-full", environment: "production" });
+  assert.equal(productionConfig.ssl.rejectUnauthorized, true);
+  assert.equal(productionConfig.ssl.servername, "db.invalid");
+  assert.equal(poolConfig({ url: tlsTarget.href, environment: "production" }).ssl.rejectUnauthorized, true);
+  process.stdout.write("✓ Pool: TLS de producción y límites de configuración; el llamador no elige entorno\n");
 
   const schema = `phase2a_test_${crypto.randomBytes(8).toString("hex")}`;
   const admin = new Pool({ connectionString: url, max: 2, connectionTimeoutMillis: 5000 });
@@ -74,10 +84,7 @@ async function main() {
   let temporary;
   let schemaCreated = false;
   try {
-    const identity = (await admin.query("SELECT current_database() AS database_name, inet_server_addr() IN (inet '127.0.0.1', inet '::1') AS loopback")).rows[0];
-    if (identity.database_name !== "valquiria_test" || identity.loopback !== true) {
-      throw new Error("Destino PostgreSQL distinto de la base local de pruebas");
-    }
+    await assertDisposableTestDatabase(admin);
     await admin.query(`CREATE SCHEMA ${schema}`);
     schemaCreated = true;
     testPool = new Pool({
@@ -219,6 +226,21 @@ async function main() {
       "INSERT INTO outbox(id,order_id,entity_version,event_type,channel,dedupe_key) VALUES($1,$2,1,'approved','telegram',$3)",
       [uuid(), created.id, duplicateKey]), "23505");
     process.stdout.write("✓ Evento y aviso deduplicados\n");
+
+    const resilient = createPool({ url });
+    try {
+      const pid = (await resilient.query("SELECT pg_backend_pid() AS pid")).rows[0].pid;
+      // Sin listener propio de la prueba: si createPool no manejara 'error', el proceso moriría aquí.
+      await admin.query("SELECT pg_terminate_backend($1)", [pid]);
+      for (let waited = 0; resilient.totalCount > 0; waited += 20) {
+        if (waited > 2000) throw new Error("El pool no descartó la conexión cerrada por el servidor");
+        await new Promise(resolve => setTimeout(resolve, 20));
+      }
+      assert.equal((await resilient.query("SELECT 1 AS ok")).rows[0].ok, 1);
+    } finally {
+      await resilient.end();
+    }
+    process.stdout.write("✓ Pool sobrevive a una conexión cerrada por el servidor y reconecta\n");
     process.stdout.write("✓ Fase 2A: PostgreSQL real; todas las pruebas pasaron\n");
   } finally {
     try {

@@ -342,6 +342,20 @@ const REDACCION = {
     `El pedido queda en REVISIÓN: no se descontó inventario y no se emitió ` +
     `aviso de preparación.\n👉 Revísalo en Mercado Pago antes de mover nada.`,
 
+  /* Un pago aprobado y verificado cuyo pedido el servidor no tiene completo
+     (folio desconocido, sin folio, o sin artículos, domicilio o importe). No
+     es una venta lista para surtir: no se sabe qué empacar ni adónde. */
+  pago_revision: e =>
+    `⚠️ <b>PAGO QUE REQUIERE REVISIÓN — NO SURTAS</b>\n` +
+    `Pago ${esc(e.pago_id)} por ${pesos(e.total_centavos)}` +
+    (e.folio ? `, folio ${esc(e.folio)}` : ", sin folio") + `.\n` +
+    `Motivo: ${esc(e.motivo === "pedido-desconocido" ? "el servidor no conoce ese pedido"
+      : e.motivo === "sin-folio" ? "el pago no trae folio de la tienda"
+      : "al pedido le faltan artículos, domicilio o importe")}.\n` +
+    (e.esperado_centavos != null ? `Importe esperado: ${pesos(e.esperado_centavos)}\n` : "") +
+    `No se descontó inventario ni se emitió aviso de preparación.\n` +
+    `👉 Búscalo en Mercado Pago y confirma el pedido con el cliente antes de mover nada.`,
+
   lead: e =>
     `🔔 <b>Interés nuevo — ${esc(e.division || "sin división")}</b>\n` +
     `Folio ${esc(e.folio || "s/f")}\n` +
@@ -402,7 +416,7 @@ const REDACCION = {
 
 const URGENTES = new Set([
   "pago_aprobado", "pago_iniciado", "pago_pendiente", "pago_rechazado",
-  "descuadre", "config", "pago_duplicado", "acceso_sospechoso", "presupuesto_ia"
+  "descuadre", "config", "pago_duplicado", "pago_revision", "acceso_sospechoso", "presupuesto_ia"
 ]);
 
 /** Decide el carril. Aquí vive toda la política de "no me hagas spam". */
@@ -420,7 +434,15 @@ function esUrgente(evento) {
   return false;
 }
 
-function ritmoPermitido() {
+/* Hechos de dinero que nadie de fuera puede fabricar: exigen un webhook firmado
+   y verificado con Mercado Pago. No gastan ni respetan el tope anti-inundación:
+   si no, veinte links de pago abiertos por un desconocido en una hora (cada
+   uno avisa `pago_iniciado`) mandaban un pago aprobado de verdad al resumen
+   del día. Encontrado al analizar el abuso de reservas. */
+const DINERO_VERIFICADO = new Set(["pago_aprobado", "descuadre", "pago_duplicado", "pago_revision"]);
+
+function ritmoPermitido(tipo) {
+  if (DINERO_VERIFICADO.has(tipo)) return true;
   const corte = Date.now() - 3600_000;
   while (marcasUrgentes.length && marcasUrgentes[0] < corte) marcasUrgentes.shift();
   if (marcasUrgentes.length >= MAX_URGENTES_POR_HORA) return false;
@@ -459,7 +481,7 @@ function avisar(evento) {
     : `• ${esc(tipo)}: ${esc(JSON.stringify(evento).slice(0, 300))}`;
 
   if (esUrgente(registro)) {
-    if (!ritmoPermitido()) {
+    if (!ritmoPermitido(registro.tipo)) {
       /* Se degrada a resumen en vez de tirarse: el hecho no se pierde. */
       PENDIENTES_DE_RESUMEN.push({ ...registro, texto, limitado: true });
       return;

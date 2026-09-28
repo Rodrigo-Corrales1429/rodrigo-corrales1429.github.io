@@ -403,5 +403,6 @@ module.exports = {
   crearPreferencia,
   validarFirmaWebhook,
   consultarPago,
-  MP_API
+  MP_API,
+  VIGENCIA_MIN
 };

@@ -173,6 +173,10 @@
 <link rel="preload" href="assets/valquiria.glb" as="fetch" crossorigin>
 <link rel="modulepreload" href="assets/js/escena.js?v=75">
 <link rel="modulepreload" href="assets/js/veredicto-pago.js?v=74">
+<link rel="modulepreload" href="assets/js/visitante.js?v=76">
+<link rel="modulepreload" href="assets/js/entrega-privada.js?v=76">
+<link rel="modulepreload" href="assets/js/hilo-asesor.js?v=76">
+<link rel="modulepreload" href="assets/js/pii-comercial.js?v=76">
 <link rel="modulepreload" href="assets/js/figuras.js?v=75">
 <link rel="modulepreload" href="assets/js/modelo.js?v=75">
 
@@ -779,8 +783,10 @@
           <li><strong>Técnicos:</strong> dirección IP, tipo de navegador, dispositivo y páginas visitadas.</li>
         </ul>
         <p>
-          <strong>No recabamos datos personales sensibles</strong> ni datos
-          financieros directamente. Los pagos se procesan íntegramente en la
+          <strong>No solicitamos ni pretendemos tratar datos personales
+          sensibles</strong> ni datos financieros directamente. No podemos impedir técnicamente que alguien los escriba
+          en el chat; si ocurre, no los usamos para ninguna finalidad (ver
+          sección 4). Los pagos se procesan íntegramente en la
           plataforma de Mercado Pago: <strong>Valquiria nunca ve, recibe ni
           almacena los números de tu tarjeta</strong>.
         </p>
@@ -815,10 +821,18 @@
           que solicitas y está prevista en el artículo 36 de la LFPDPPP.
         </p>
         <p>
-          Por esa razón te pedimos <strong>no escribir en el chat datos
-          sensibles, contraseñas, números de tarjeta ni información clínica de
-          pacientes identificables</strong>. Si necesitas compartir algo así,
-          hazlo por los canales directos de contacto.
+          Los datos de entrega que escribes en el formulario del pedido
+          —nombre, teléfono, correo, domicilio y referencias— <strong>no se
+          envían al modelo</strong>: se usan solo para generar tu link de pago
+          y entregarte el pedido.
+        </p>
+        <p>
+          Por esa razón te pedimos <strong>no compartir en el chat
+          contraseñas, datos de tarjeta, datos personales sensibles ni
+          información privada de terceros</strong>. El Asesor no te los pedirá. Si aun así escribes
+          alguno, ese texto se procesa como cualquier otro mensaje del chat,
+          pero no lo usamos para ninguna finalidad. Si necesitas compartir algo
+          así, hazlo por los canales directos de contacto.
         </p>
         <p>
           Las respuestas del Asesor se generan automáticamente y pueden contener
@@ -895,7 +909,8 @@
           en un registro interno de actividad y en el resumen diario que recibe
           el equipo por Telegram, para mejorar la atención; ese registro vive
           en la memoria del servidor y se borra al reiniciarse. Por eso te
-          pedimos no escribir en el chat datos sensibles ni de pacientes.
+          pedimos no escribir en el chat datos sensibles ni información
+          privada de terceros.
         </p>
 
         <h3>9. Cambios a este aviso</h3>
@@ -1128,7 +1143,8 @@
     </form>
     <p class="asesor-legal">
       Respuestas generadas por IA; pueden contener errores.
-      No escribas datos de tarjeta ni información de pacientes.
+      No compartas contraseñas, datos de tarjeta, datos personales sensibles
+      ni información privada de terceros.
       <a href="/#privacidad">Aviso de privacidad</a>
     </p>
   </div>
@@ -1138,7 +1154,7 @@
   <div class="who">Asesor Valquiria</div><p id="toast-msg"></p>
 </div>
 
-<script type="module" src="assets/js/app.js?v=75"></script>
+<script type="module" src="assets/js/app.js?v=76"></script>
 
 <script src="/assets/js/pulso.js?v=74" defer></script>
 </body>

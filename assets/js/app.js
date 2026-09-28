@@ -13,6 +13,17 @@ import './escena.js?v=75';
 /* Las reglas de «qué se puede creer al volver de pagar» viven aparte y sin
    DOM, para que las pruebas puedan ejecutarlas contra un ataque real. */
 import { decidirVeredicto, folioDeLaUrl } from './veredicto-pago.js?v=74';
+import { visitanteDeSesion } from './visitante.js?v=76';
+/* Lo que el comprador ve de su entrega y lo que entra al hilo del modelo son
+   dos textos distintos: el segundo no lleva ni un dato suyo. */
+import { TURNO_DATOS_CAPTURADOS, mensajePedirDatos, mensajeConfirmacion, tacharEntrega,
+  purgarCompradorAntiguo } from './entrega-privada.js?v=76';
+/* Lo que se ve y lo que se envía al modelo son dos hilos separados. */
+import { crearHilo } from './hilo-asesor.js?v=76';
+/* Las mismas reglas de identificadores que aplica el servidor (un solo
+   archivo para los dos lados); aquí solo se usan las de tarjeta. */
+import './pii-comercial.js?v=76';
+const { sinTarjetas } = globalThis.VQPiiComercial;
 
 /* Aviso al vigilante del index: los módulos llegaron y se están evaluando.
    A partir de aquí lo que tarde es trabajo, no una carga rota, así que puede
@@ -251,6 +262,27 @@ const Memoria = {
   },
   borrar(llave, persistente) {
     try { (persistente ? localStorage : sessionStorage).removeItem(llave); } catch {}
+  }
+};
+
+/* ── De quién es la reserva ─────────────────────────────────────────────
+   El servidor aparta mercancía «una reserva viva por visitante». Antes el
+   visitante era la IP, y detrás de una misma IP pública —datos móviles,
+   Wi-Fi de universidad, oficina, hospital— hay muchas personas: el pedido de
+   una borraba la reserva de otra. Ahora el dueño es este número aleatorio
+   (UUID v4, 122 bits): no lleva datos personales ni depende de la red, y
+   dura lo que la pestaña, que es lo que dura una compra. No sirve para nada
+   más: los límites anti-abuso del servidor siguen contando por IP. El
+   formato y la generación viven en visitante.js, el mismo contrato que
+   valida el servidor. Con el almacenamiento bloqueado vive en memoria. */
+const Visitante = {
+  LLAVE: 'vq_visitante',
+  enMemoria: null,
+  id() {
+    return visitanteDeSesion({
+      leer: () => Memoria.leer(this.LLAVE, false) ?? this.enMemoria,
+      escribir: v => { this.enMemoria = v; Memoria.escribir(this.LLAVE, v, false); }
+    });
   }
 };
 
@@ -508,11 +540,18 @@ const Comprador = {
   }
 };
 
+/* Lo que puede entrar al hilo del modelo: sin tarjetas y sin los datos de
+   entrega del comprador que haya AHORA. Se aplica al escribir cada turno, no
+   al enviar: así, olvidar al comprador después no devuelve nada al modelo. */
+const paraElModelo = texto => sinTarjetas(tacharEntrega(texto, Comprador.datos));
+
 /* ── Desglose del pedido ──────────────────────────────────────────────
    Lo que el Asesor tiene que saber decir SIEMPRE, con backend o sin él. Un
    asesor que no sabe recitar el pedido que acaba de armar no es un asesor:
    es un buscador con burbujas. */
-function desglosePedido() {
+/* `sinCp` es la versión para el hilo del modelo: el importe sí, el código
+   postal del comprador no. */
+function desglosePedido({ sinCp = false } = {}) {
   const t = Carrito.totales();
   if (!t.lineas.length) return '';
 
@@ -528,12 +567,12 @@ function desglosePedido() {
   txt += '\n\nSubtotal: **' + mxn(t.subtotal) + '**';
   if (t.gratis) txt += '\nEnvío: **gratis**';
   else if (e) {
-    txt += '\nEnvío a CP ' + e.cp + ': **' + mxn(envio) + '**' +
+    txt += '\nEnvío' + (sinCp ? '' : ' a CP ' + e.cp) + ': **' + mxn(envio) + '**' +
            (e.texto ? ' · ' + e.texto : '');
   } else {
     /* Tarifa de referencia, y se dice que lo es. Prometer un número que luego
        cambia cuesta más caro que no darlo. */
-    txt += '\nEnvío estimado' + (cp ? ' a CP ' + cp : '') + ': **' + mxn(envio) + '**';
+    txt += '\nEnvío estimado' + (cp && !sinCp ? ' a CP ' + cp : '') + ': **' + mxn(envio) + '**';
   }
   txt += '\nTotal: **' + mxn(total) + '**';
   if (CFG.ivaIncluido) txt += '\nIVA ' + CFG.ivaTasa + '% incluido: ' + mxn(ivaDe(total));
@@ -982,7 +1021,8 @@ async function irAPagar(boton) {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         items: Carrito.lista(),
-        comprador: Comprador.paraServidor()
+        comprador: Comprador.paraServidor(),
+        visitante: Visitante.id()
       }), signal: ctrl.signal
     });
     clearTimeout(reloj);
@@ -1019,11 +1059,11 @@ async function irAPagar(boton) {
     if (cambio) {
       abrirDrawer(false);
       Asesor.abrir();
-      Asesor.decir(
+      const ajuste = desglose =>
         'Con tu código postal el envío queda en **' + cambio.envio + '**, así que ' +
         'el total es **' + cambio.total + '** y no ' + cambio.totalAntes + '.\n\n' +
-        desglosePedido() +
-        '\n\nEs el importe exacto que vas a ver en Mercado Pago. ¿Lo confirmo?');
+        desglose + '\n\nEs el importe exacto que vas a ver en Mercado Pago. ¿Lo confirmo?';
+      Asesor.decir(ajuste(desglosePedido()), ajuste(desglosePedido({ sinCp: true })));
       Asesor.acciones([
         { tipo:'pago_listo', rotulo:'Confirmar y pagar ' + cambio.total, pago: listo },
         { tipo:'carrito' }
@@ -1572,7 +1612,6 @@ window.VQ.acciones = AccionesAsesor;
 
 const Asesor = {
   log: $('#asesor-log'),
-  historial: [],
   ocupado: false,
   abierto: false,
   saludado: false,
@@ -1590,59 +1629,51 @@ const Asesor = {
 
      El tope es doble a propósito. Cuarenta turnos son los que manda el
      servidor; los 24 000 caracteres son los que el servidor RECORTA, así que
-     guardar más es guardar algo que nunca se va a enviar. */
-  LLAVE: 'vq_asesor_v1',
+     guardar más es guardar algo que nunca se va a enviar.
+
+     Son DOS hilos (ver hilo-asesor.js): el de pantalla, para repintar la
+     conversación, y el del modelo, lo único que sale hacia /api/chat, saneado
+     al escribir cada turno. Cada uno en su llave, con versión explícita. */
   MAX_TURNOS: 40,
   MAX_TEXTO: 24000,
 
-  textoDe(m) {
-    return ((m && m.parts) || []).map(x => (x && x.text) || '').join(' ');
+  get hilo() {
+    if (!this._hilo) {
+      this._hilo = crearHilo({
+        almacen: {
+          leer: llave => Memoria.leer(llave),
+          escribir: (llave, valor) => Memoria.escribir(llave, valor),
+          borrar: llave => Memoria.borrar(llave)
+        },
+        sanear: paraElModelo, maxTurnos: this.MAX_TURNOS, maxTexto: this.MAX_TEXTO
+      });
+    }
+    return this._hilo;
   },
 
-  /* Recorta por los DOS topes y devuelve lo que cabe, de lo más reciente
-     hacia atrás. Cortar por el principio y no por el final no es un detalle:
-     lo último dicho es lo que da contexto al siguiente mensaje. */
-  hiloRecortado() {
-    const salida = [];
-    let chars = 0;
-    for (let i = this.historial.length - 1; i >= 0; i--) {
-      const m = this.historial[i];
-      const n = this.textoDe(m).length;
-      if (salida.length >= this.MAX_TURNOS || chars + n > this.MAX_TEXTO) break;
-      chars += n;
-      salida.unshift(m);
-    }
-    return salida;
-  },
+  /* Lo único que viaja a /api/chat: el hilo del modelo, recortado. */
+  hiloRecortado() { return this.hilo.paraEnviar(); },
 
   recordar() {
-    this.historial = this.hiloRecortado();
-    Memoria.escribir(this.LLAVE, { v: 1, saludado: this.saludado, h: this.historial });
+    this.hilo.saludado = this.saludado;
+    this.hilo.guardar();
   },
 
-  /* Repinta la conversación tal cual quedó. Las tarjetas de producto y los
-     botones NO se reconstruyen: son acciones de un turno que ya pasó, y
-     revivir un botón de pago viejo con un carrito nuevo sería mentir. Lo que
-     sí vuelve —porque es lo que importa— es el hilo y el pedido. */
+  /* Repinta la conversación tal cual quedó, desde el hilo de PANTALLA. Las
+     tarjetas de producto y los botones NO se reconstruyen: son acciones de un
+     turno que ya pasó, y revivir un botón de pago viejo con un carrito nuevo
+     sería mentir. Lo que sí vuelve —porque es lo que importa— es el hilo y
+     el pedido. */
   restaurar() {
-    const d = Memoria.leer(this.LLAVE);
-    if (!d || d.v !== 1 || !Array.isArray(d.h) || !d.h.length) return false;
-
-    const limpio = d.h.filter(m =>
-      m && (m.role === 'user' || m.role === 'model') && this.textoDe(m).trim());
-    if (!limpio.length) return false;
-
-    this.historial = limpio;
+    if (!this.hilo.restaurar()) return false;
     this.saludado = true;
-    limpio.forEach(m => {
-      const t = this.textoDe(m);
-      this.burbuja(m.role === 'user' ? 'yo' : 'bot',
-        m.role === 'user' ? '<p>' + esc(t) + '</p>' : md(t));
+    this.hilo.pantalla().forEach(e => {
+      this.burbuja(e.quien, e.quien === 'yo' ? '<p>' + esc(e.texto) + '</p>' : md(e.texto));
     });
     return true;
   },
 
-  olvidar() { this.historial = []; Memoria.borrar(this.LLAVE); },
+  olvidar() { this.hilo.olvidar(); },
 
   abrir() {
     this.abierto = true;
@@ -1846,9 +1877,11 @@ const Asesor = {
      historial como turnos del modelo. Si no entraran, al recargar la página
      el cliente vería su respuesta sin la pregunta, y el modelo volvería a
      pedirle los datos que ya dio. */
-  decir(texto) {
+  decir(texto, paraModelo = texto) {
     this.burbuja('bot', md(texto));
-    this.historial.push({ role: 'model', parts: [{ text: texto }] });
+    /* Lo que queda en el hilo del modelo puede ser menos que lo que se ve:
+       los datos de entrega se enseñan al comprador, pero no viajan al modelo. */
+    this.hilo.bot(texto, paraModelo);
     this.recordar();
   },
 
@@ -1865,7 +1898,10 @@ const Asesor = {
     /* Si ya hay un formulario abierto no se apila otro: se lleva el foco al
        que hay. Dos formularios pidiendo lo mismo es la forma más rápida de
        que alguien escriba su dirección en el equivocado. */
-    const abierto = this.log.querySelector('.chat-datos');
+    /* Solo cuenta uno SIN completar: el ya enviado queda deshabilitado en el
+       hilo, y tras olvidar al comprador en la misma pestaña bloqueaba al
+       siguiente con el foco en un formulario muerto. */
+    const abierto = this.log.querySelector('.chat-datos:not(.listo)');
     if (abierto) {
       abierto.scrollIntoView({ behavior:'smooth', block:'center' });
       const primero = abierto.querySelector('input');
@@ -1880,12 +1916,9 @@ const Asesor = {
       campos.push(CAMPOS_COMPRADOR.find(c => c.id === 'referencias'));
     }
 
-    const nombre = (Comprador.datos.nombre || '').split(' ')[0];
-    this.decir(
-      (nombre ? nombre + ', para' : 'Para') + ' generar tu link de pago me ' +
-      (campos.filter(c => !c.opcional).length === 1 ? 'falta un dato' : 'faltan estos datos') +
-      '. Es lo mínimo para poder mandarte la caja y para poder escribirte si ' +
-      'algo se atora con el pago.');
+    const pide = mensajePedirDatos(Comprador.datos.nombre,
+      campos.filter(c => !c.opcional).length === 1);
+    this.decir(pide.enPantalla, pide.paraModelo);
 
     const f = document.createElement('form');
     f.className = 'chat-datos';
@@ -1932,12 +1965,13 @@ const Asesor = {
       f.querySelectorAll('input, button').forEach(x => { x.disabled = true; });
       f.classList.add('listo');
 
-      /* Lo que el cliente tecleó entra al hilo como turno SUYO —sin el
-         correo ni el teléfono: el modelo no necesita el dato para razonar y
-         no hay motivo para pasearlo por la red más veces de las debidas. */
-      this.historial.push({ role: 'user', parts: [{ text:
-        'Mis datos de entrega: ' + (Comprador.datos.nombre || '') +
-        ', CP ' + (Comprador.datos.cp || '') + ', ' + (Comprador.datos.direccion || '') }] });
+      /* Al hilo del modelo entra QUE los dio, no cuáles son: el modelo no
+         necesita el dato para razonar, y ese hilo viaja a /api/chat y se
+         guarda. Los datos siguen en el formulario, a la vista del comprador.
+         Y lo que tecleó en el chat ANTES de darlos se vuelve a sanear con
+         ellos: si escribió su domicilio a mano, tampoco se queda. */
+      this.hilo.nota('user', TURNO_DATOS_CAPTURADOS);
+      this.hilo.barrer();
 
       await this.confirmarPedido();
     });
@@ -1965,13 +1999,13 @@ const Asesor = {
       this.pensando(false);
     }
 
-    const nombre = (Comprador.datos.nombre || '').split(' ')[0];
-    this.decir(
-      (nombre ? 'Listo, ' + nombre + '.' : 'Listo.') + ' Va a **' +
-      (Comprador.datos.direccion || 'la dirección que me diste') + '**, CP ' +
-      (cp || '—') + ', y te aviso al **' + Comprador.telefonoBonito() + '**.' +
-      '\n\n' + desglosePedido() +
-      '\n\nSi está bien, te genero el link de pago.');
+    /* El comprador ve adónde va y a qué número se le avisa; el hilo, solo
+       que la entrega quedó capturada y el desglose sin código postal. */
+    const confirma = mensajeConfirmacion({
+      nombre: Comprador.datos.nombre, direccion: Comprador.datos.direccion,
+      cp, telefono: Comprador.telefonoBonito()
+    }, { enPantalla: desglosePedido(), paraModelo: desglosePedido({ sinCp: true }) });
+    this.decir(confirma.enPantalla, confirma.paraModelo);
     this.acciones([{ tipo:'pago' }, { tipo:'whatsapp' }, { tipo:'carrito' }]);
   },
 
@@ -1979,8 +2013,10 @@ const Asesor = {
     texto = String(texto || '').trim();
     if (!texto || this.ocupado) return;
 
-    this.burbuja('yo', '<p>' + esc(texto) + '</p>');
-    this.historial.push({ role: 'user', parts: [{ text: texto }] });
+    /* Una tarjeta no se guarda ni sale de aquí, tampoco en la burbuja. */
+    const visible = sinTarjetas(texto);
+    this.burbuja('yo', '<p>' + esc(visible) + '</p>');
+    this.hilo.usuario(texto, visible);
     /* Se guarda YA, antes de esperar al servidor: si el visitante recarga
        mientras el Asesor piensa, su pregunta no se pierde. */
     this.recordar();
@@ -2024,7 +2060,7 @@ const Asesor = {
     $('#asesor-send').disabled = false;
 
     this.burbuja('bot', md(data.reply));
-    this.historial.push({ role: 'model', parts: [{ text: data.reply }] });
+    this.hilo.bot(data.reply);
     /* `recordar` recorta por turnos Y por caracteres, y deja el hilo escrito.
        Antes solo se recortaba por turnos y no se escribía en ningún sitio. */
     this.recordar();
@@ -2057,6 +2093,9 @@ const Asesor = {
     try {
       const r = await fetch(CFG.backend + '/api/chat', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
+        /* Solo el hilo del modelo, que ya se saneó al escribirse: nada de
+           aquí depende de los datos que el comprador tenga en este momento.
+           Los datos de entrega viajan solo a /api/pago. */
         body: JSON.stringify({ messages: this.hiloRecortado(), carrito: Carrito.lista() }),
         signal: ctrl.signal
       });
@@ -2509,6 +2548,9 @@ const FASES = [[0,'Calibrando plataforma'],[0.18,'Muestreando geometría'],
                [0.62,'Proyectando superficie'],[0.9,'Iniciando impresión']];
 
 function arrancar() {
+  /* Antes de leer al comprador: el cajón viejo de localStorage se vacía y
+     nunca se consulta (ver entrega-privada.js). */
+  try { purgarCompradorAntiguo(localStorage); } catch { /* almacenamiento bloqueado */ }
   $('#anio').textContent = new Date().getFullYear();
   Carrito.cargar();
   Comprador.cargar();
@@ -2539,9 +2581,9 @@ function arrancar() {
   if (pagoPendiente && rutaActual() !== '/gracias' && Carrito.piezas() > 0) {
     Memoria.borrar(PAGO_EN_CURSO);
     Asesor.saludado = true;
-    Asesor.decir(
-      'Volviste sin terminar el pago. **Aquí sigue tu pedido:**\n\n' +
-      desglosePedido() + '\n\n¿Reintento el link o lo cerramos por WhatsApp?');
+    const volviste = desglose => 'Volviste sin terminar el pago. **Aquí sigue tu pedido:**\n\n' +
+      desglose + '\n\n¿Reintento el link o lo cerramos por WhatsApp?';
+    Asesor.decir(volviste(desglosePedido()), volviste(desglosePedido({ sinCp: true })));
     Asesor.acciones([{ tipo:'pago' }, { tipo:'whatsapp' }, { tipo:'carrito' }]);
     Asesor.abrir();
   }
