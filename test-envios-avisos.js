@@ -771,24 +771,44 @@ test("los documentos internos NO se publican en el sitio", () => {
     "así que PAGOS.md, SEGURIDAD.md y AUDITORIA.md vuelven a ser públicos");
 
   const cfg = fs.readFileSync("_config.yml", "utf8");
-  /* Los .md locales ignorados por Git no forman parte del artefacto de Pages.
-     Los documentos versionados sí deben quedar excluidos por Jekyll. */
+  /* Los documentos canónicos forman parte del repositorio, pero no del sitio.
+     Los .md locales ignorados por Git tampoco entran al artefacto de Pages. */
   const { execFileSync } = require("child_process");
+  const canonicos = [
+    "AGENTS.md",
+    "CLAUDE.md",
+    "docs/ASESOR_VALQUIRIA_INTELLIGENCE_V1.3_FINAL.md"
+  ];
+  const canonicosVersionados = execFileSync(
+    "git", ["ls-files", "--", ...canonicos], { encoding: "utf8" }
+  ).split("\n").filter(Boolean);
+  for (const canonico of canonicos) {
+    assert.ok(fs.existsSync(canonico), `${canonico} debe existir`);
+    assert.ok(canonicosVersionados.includes(canonico),
+      `${canonico} debe estar versionado`);
+  }
+
   const versionados = execFileSync("git", ["ls-files", "--", "*.md"], { encoding: "utf8" })
     .split("\n").filter(f => f && !f.includes("/"));
   const deben = versionados
     .concat(["server.js", "conocimiento.js", "quote-engine.js", "productos.json",
-             "envios.js", "notificaciones.js", "pagos.js", ".env.example"]);
+             "envios.js", "notificaciones.js", "pagos.js", ".env.example", "docs"]);
 
   const faltan = deben.filter(f => !cfg.includes(`- ${f}`));
   assert.strictEqual(faltan.length, 0,
     `_config.yml no excluye: ${faltan.join(", ")} — serían públicos en valquiriainc.com`);
 
-  for (const local of ["AGENTS.md", "docs/HARDENING_PLAN.md"]) {
-    if (!fs.existsSync(local)) continue;
-    const ignorado = execFileSync("git", ["check-ignore", "--", local], { encoding: "utf8" });
-    assert.strictEqual(ignorado.trim(), local, `${local} debe permanecer local e ignorado`);
-  }
+  const planLocal = "docs/HARDENING_PLAN.md";
+  assert.ok(fs.existsSync(planLocal), `${planLocal} debe permanecer local`);
+  const planVersionado = execFileSync(
+    "git", ["ls-files", "--", planLocal], { encoding: "utf8" }
+  ).trim();
+  assert.strictEqual(planVersionado, "", `${planLocal} no debe estar versionado`);
+  const planIgnorado = execFileSync(
+    "git", ["check-ignore", "--", planLocal], { encoding: "utf8" }
+  );
+  assert.strictEqual(planIgnorado.trim(), planLocal,
+    `${planLocal} debe permanecer local e ignorado`);
 });
 
 test("el CSP lleva el hash de cada script en línea (y no 'unsafe-inline')", () => {

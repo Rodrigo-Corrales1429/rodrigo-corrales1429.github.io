@@ -37,6 +37,11 @@ exclude:
   - PHASE_1_5_ARCHITECTURE.md
   - README.md
 
+  # Documentación interna de agentes y arquitectura
+  - AGENTS.md
+  - CLAUDE.md
+  - docs
+
   # Backend: se ejecuta en Render, no tiene por qué servirse como texto desde
   # el dominio público. Publicar el código del servidor regala la lógica de
   # precios, los nombres de las variables de entorno y la forma de los
