@@ -221,6 +221,47 @@ async function correrPruebas() {
   let folioBueno = null;
   let totalPreferencia = null;
 
+  await prueba("/api/pago rechaza cantidad string antes de cualquier efecto", async () => {
+    const panelAntes = await pedir("/api/admin/resumen", {
+      headers: { "X-Leads-Token": TOKEN_PANEL }
+    });
+    afirmar(panelAntes.status === 200, "no se pudo observar el estado inicial");
+    const preferenciasAntes = mp.preferencias.length;
+    const surtidosAntes = mp.surtidos.length;
+
+    const pago = await pedir("/api/pago", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        items: [{ sku: "ValEnd", cantidad: "2" }],
+        comprador: COMPRADOR,
+        visitante: crypto.randomUUID()
+      })
+    });
+
+    afirmar(pago.status === 400, `respondió ${pago.status}: ${JSON.stringify(pago.cuerpo)}`);
+    afirmar(/cantidad/i.test(pago.cuerpo?.error || ""), "el rechazo no identifica la cantidad inválida");
+
+    const panelDespues = await pedir("/api/admin/resumen", {
+      headers: { "X-Leads-Token": TOKEN_PANEL }
+    });
+    afirmar(panelDespues.status === 200, "no se pudo observar el estado final");
+    afirmar(
+      JSON.stringify(panelDespues.cuerpo.inventario) === JSON.stringify(panelAntes.cuerpo.inventario),
+      "la petición inválida reservó o modificó inventario"
+    );
+    afirmar(
+      panelDespues.cuerpo.dinero.pedidos_totales === panelAntes.cuerpo.dinero.pedidos_totales,
+      "la petición inválida creó un pedido"
+    );
+    afirmar(
+      JSON.stringify(panelDespues.cuerpo.actividad) === JSON.stringify(panelAntes.cuerpo.actividad),
+      "la petición inválida produjo actividad transaccional"
+    );
+    afirmar(mp.preferencias.length === preferenciasAntes, "la petición inválida inició un pago");
+    afirmar(mp.surtidos.length === surtidosAntes, "la petición inválida pidió surtir mercancía");
+  });
+
   await prueba("/api/pago cobra el MISMO envío que cotiza /api/envio", async () => {
     /* Lo que ve el cliente en la pantalla. */
     const envio = await pedir("/api/envio", {

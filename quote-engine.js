@@ -49,9 +49,28 @@ const COSTO_ENVIO_CENTAVOS = parseInt(
   process.env.COSTO_ENVIO_CENTAVOS || "15000",          // $150.00 MXN
   10
 );
-const CANTIDAD_MAXIMA_POR_LINEA = parseInt(
-  process.env.CANTIDAD_MAXIMA_POR_LINEA || "200",
-  10
+
+/**
+ * Una variable definida no puede degradarse silenciosamente al default ni a
+ * NaN: este valor alimenta tanto la validación runtime como el schema enviado
+ * al proveedor. La ausencia real conserva el contrato histórico de 200.
+ */
+function leerEnteroPositivo(nombre, porDefecto) {
+  const crudo = process.env[nombre];
+  if (crudo === undefined) return porDefecto;
+  if (!/^\d+$/.test(crudo)) {
+    throw new Error(`[quote-engine] ${nombre} debe ser un entero positivo.`);
+  }
+  const valor = Number(crudo);
+  if (!Number.isSafeInteger(valor) || valor <= 0) {
+    throw new Error(`[quote-engine] ${nombre} debe ser un entero positivo.`);
+  }
+  return valor;
+}
+
+const CANTIDAD_MAXIMA_POR_LINEA = leerEnteroPositivo(
+  "CANTIDAD_MAXIMA_POR_LINEA",
+  200
 );
 
 if (
@@ -143,7 +162,7 @@ function levenshtein(a, b) {
   return filaPrev[a.length];
 }
 
-// ------- VALIDACIÓN DE INPUT (sin cambios) -------
+// ------- VALIDACIÓN DE INPUT -------
 
 function validarYNormalizarItems(items) {
   if (!Array.isArray(items)) {
@@ -170,8 +189,9 @@ function validarYNormalizarItems(items) {
 
     const sku = item.sku.trim();
 
-    const cantidadNum = Number(item.cantidad);
+    const cantidadNum = item.cantidad;
     if (
+      typeof cantidadNum !== "number" ||
       !Number.isFinite(cantidadNum) ||
       !Number.isInteger(cantidadNum) ||
       cantidadNum <= 0
@@ -472,6 +492,7 @@ module.exports = {
   calcularCotizacion,
   buscarProductos,
   listarCatalogo,
+  CANTIDAD_MAXIMA_POR_LINEA,
   // Exportados para tests:
   centavosAPesos,
   validarYNormalizarItems,

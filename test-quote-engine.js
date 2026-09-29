@@ -4,6 +4,7 @@
  */
 
 const assert = require("assert");
+const { spawnSync } = require("child_process");
 const {
   calcularCotizacion,
   buscarProductos,
@@ -27,6 +28,46 @@ function test(nombre, fn) {
     console.log(`      ${e.message}`);
     fallados++;
   }
+}
+
+function cargarConfiguracionCantidad(valor) {
+  const env = { ...process.env };
+  if (valor === undefined) delete env.CANTIDAD_MAXIMA_POR_LINEA;
+  else env.CANTIDAD_MAXIMA_POR_LINEA = valor;
+
+  const codigo = `
+    const motor = require("./quote-engine.js");
+    const tools = require("./gemini-tools.js");
+    const inventario = require("./inventario.js");
+    const declaracion = tools.TOOLS[0].functionDeclarations
+      .find(d => d.name === "calcular_cotizacion");
+    const maximosSchema = declaracion.parametersJsonSchema.anyOf
+      .map(r => r.properties?.items?.items?.properties?.cantidad?.maximum)
+      .filter(v => v !== undefined);
+    const runtime = tools.cotizarConCarrito({
+      accion: "agregar",
+      items: [{ producto: "endo", cantidad: motor.CANTIDAD_MAXIMA_POR_LINEA + 1 }]
+    }, []);
+    process.stdout.write("\\n__CONFIG_CANTIDAD__" + JSON.stringify({
+      maximoMotor: motor.CANTIDAD_MAXIMA_POR_LINEA,
+      maximosSchema,
+      maximoReserva: inventario.MAX_POR_SKU,
+      runtimeOk: runtime.ok,
+      runtimeError: runtime.error
+    }));
+  `;
+  const resultado = spawnSync(process.execPath, ["-e", codigo], {
+    cwd: __dirname,
+    env,
+    encoding: "utf8"
+  });
+  const salida = `${resultado.stdout || ""}${resultado.stderr || ""}`;
+  const marca = resultado.stdout?.match(/__CONFIG_CANTIDAD__(\{.*\})/);
+  return {
+    status: resultado.status,
+    salida,
+    datos: marca ? JSON.parse(marca[1]) : null
+  };
 }
 
 // ============================================================================
@@ -73,7 +114,7 @@ test("levenshtein iguales = 0", () => {
 });
 
 // ============================================================================
-console.log("\n[3] Validación de input (sin cambios)");
+console.log("\n[3] Validación de input");
 // ============================================================================
 
 test("Rechaza items no-array", () => {
@@ -95,10 +136,11 @@ test("Rechaza cantidad decimal", () => {
 test("Rechaza cantidad string no-numérica", () => {
   assert.strictEqual(calcularCotizacion([{ sku: "ValEnd", cantidad: "muchos" }]).ok, false);
 });
-test("Acepta cantidad como string numérico", () => {
-  const r = calcularCotizacion([{ sku: "ValEnd", cantidad: "2" }]);
-  assert.strictEqual(r.ok, true);
-  assert.strictEqual(r.lineas[0].cantidad, 2);
+test("Rechaza coerciones implícitas de cantidad", () => {
+  for (const cantidad of ["2", true, [3], null]) {
+    const r = calcularCotizacion([{ sku: "ValEnd", cantidad }]);
+    assert.strictEqual(r.ok, false, `aceptó ${JSON.stringify(cantidad)}`);
+  }
 });
 test("Rechaza cantidad absurda", () => {
   assert.strictEqual(calcularCotizacion([{ sku: "ValEnd", cantidad: 999999 }]).ok, false);
@@ -107,6 +149,37 @@ test("Rechaza SKU inexistente", () => {
   const r = calcularCotizacion([{ sku: "NoExiste123", cantidad: 1 }]);
   assert.strictEqual(r.ok, false);
   assert.ok(r.skus_invalidos.includes("NoExiste123"));
+});
+
+test("CANTIDAD_MAXIMA_POR_LINEA ausente usa el default 200", () => {
+  const r = cargarConfiguracionCantidad(undefined);
+  assert.strictEqual(r.status, 0, r.salida);
+  assert.strictEqual(r.datos.maximoMotor, 200);
+});
+
+test("CANTIDAD_MAXIMA_POR_LINEA acepta un entero positivo explícito", () => {
+  const r = cargarConfiguracionCantidad("37");
+  assert.strictEqual(r.status, 0, r.salida);
+  assert.strictEqual(r.datos.maximoMotor, 37);
+});
+
+for (const valor of ["abc", "0", "-4", "1.5"]) {
+  test(`CANTIDAD_MAXIMA_POR_LINEA=${JSON.stringify(valor)} falla temprano`, () => {
+    const r = cargarConfiguracionCantidad(valor);
+    assert.notStrictEqual(r.status, 0, "la configuración inválida permitió arrancar");
+    assert.match(r.salida, /CANTIDAD_MAXIMA_POR_LINEA/);
+    assert.match(r.salida, /entero positivo/i);
+  });
+}
+
+test("schema, cotización y reserva comparten el mismo máximo configurado", () => {
+  const r = cargarConfiguracionCantidad("2");
+  assert.strictEqual(r.status, 0, r.salida);
+  assert.strictEqual(r.datos.maximoMotor, 2);
+  assert.deepStrictEqual(r.datos.maximosSchema, [2, 2]);
+  assert.strictEqual(r.datos.maximoReserva, 2);
+  assert.strictEqual(r.datos.runtimeOk, false);
+  assert.match(r.datos.runtimeError, /máximo 2/i);
 });
 
 // ============================================================================

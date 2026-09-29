@@ -24,7 +24,8 @@
 const {
   calcularCotizacion,
   buscarProductos,
-  listarCatalogo
+  listarCatalogo,
+  CANTIDAD_MAXIMA_POR_LINEA
 } = require("./quote-engine.js");
 
 const { consultarConocimiento, normalizarClave, DIVISIONES } = require("./conocimiento.js");
@@ -160,6 +161,44 @@ const listarCatalogoDeclaration = {
   }
 };
 
+const propiedadesItemCotizacion = {
+  producto: {
+    type: "string",
+    description:
+      "Cómo lo nombró el usuario, tal cual: 'endo', 'pulpo', " +
+      "'realistas', 'nissin', 'kit completo', 'pediatría'. Se " +
+      "toleran erratas ('nisiin' se entiende como 'nissin'). Esta " +
+      "es la forma preferida."
+  },
+  sku: {
+    type: "string",
+    description:
+      "SKU exacto, si ya lo conoces con certeza: 'ValPulpo', " +
+      "'ValEnd', 'DientesRealistas', 'Endotnissin'. Alternativa a " +
+      "'producto'; basta con uno de los dos."
+  },
+  cantidad: {
+    type: "integer",
+    minimum: 1,
+    maximum: CANTIDAD_MAXIMA_POR_LINEA,
+    description:
+      `Cantidad entera positiva, máximo ${CANTIDAD_MAXIMA_POR_LINEA}. ` +
+      "Sólo con accion='quitar' puede " +
+      "omitirse para retirar la línea completa."
+  }
+};
+
+const esquemaItemsCotizacion = cantidadObligatoria => ({
+  type: "array",
+  minItems: 1,
+  maxItems: 50,
+  items: {
+    type: "object",
+    properties: propiedadesItemCotizacion,
+    ...(cantidadObligatoria ? { required: ["cantidad"] } : {})
+  }
+});
+
 const calcularCotizacionDeclaration = {
   name: "calcular_cotizacion",
   description:
@@ -184,39 +223,18 @@ const calcularCotizacionDeclaration = {
     properties: {
       items: {
         type: "array",
+        maxItems: 50,
         description:
           "TODOS los productos que el usuario mencionó en su mensaje, uno por " +
           "elemento. Con accion='vaciar' se omite o va vacío.",
         items: {
           type: "object",
-          properties: {
-            producto: {
-              type: "string",
-              description:
-                "Cómo lo nombró el usuario, tal cual: 'endo', 'pulpo', " +
-                "'realistas', 'nissin', 'kit completo', 'pediatría'. Se " +
-                "toleran erratas ('nisiin' se entiende como 'nissin'). Esta " +
-                "es la forma preferida."
-            },
-            sku: {
-              type: "string",
-              description:
-                "SKU exacto, si ya lo conoces con certeza: 'ValPulpo', " +
-                "'ValEnd', 'DientesRealistas', 'Endotnissin'. Alternativa a " +
-                "'producto'; basta con uno de los dos."
-            },
-            cantidad: {
-              type: "integer",
-              description:
-                "Cantidad entera positiva. Con accion='quitar' puede " +
-                "omitirse para retirar la línea completa."
-            }
-          },
-          required: ["cantidad"]
+          properties: propiedadesItemCotizacion
         }
       },
       accion: {
         type: "string",
+        enum: ["reemplazar", "agregar", "quitar", "fijar", "vaciar"],
         description:
           "Qué hacer con el carrito actual del cliente (lo ves en el contexto " +
           "de la sesión). Uno de:\n" +
@@ -232,7 +250,36 @@ const calcularCotizacionDeclaration = {
           "· 'vaciar' — deja el carrito vacío. No requiere items."
       }
     },
-    required: ["items"]
+    anyOf: [
+      {
+        description: "Vaciar admite omitir items o enviar un arreglo vacío.",
+        properties: {
+          accion: { enum: ["vaciar"] },
+          items: { type: "array", maxItems: 0 }
+        },
+        required: ["accion"]
+      },
+      {
+        description:
+          "Quitar exige productos, pero permite omitir cantidad para retirar " +
+          "la línea completa.",
+        properties: {
+          accion: { enum: ["quitar"] },
+          items: esquemaItemsCotizacion(false)
+        },
+        required: ["accion", "items"]
+      },
+      {
+        description:
+          "Reemplazar, agregar y fijar exigen una cantidad explícita en cada item. " +
+          "Si accion se omite, la operación es reemplazar.",
+        properties: {
+          accion: { enum: ["reemplazar", "agregar", "fijar"] },
+          items: esquemaItemsCotizacion(true)
+        },
+        required: ["items"]
+      }
+    ]
   }
 };
 
@@ -444,6 +491,69 @@ const TOOLS = [
 // ----------------------------------------------------------------------------
 
 const ACCIONES = ["reemplazar", "agregar", "quitar", "fijar", "vaciar"];
+const tienePropia = (objeto, propiedad) =>
+  objeto !== null && typeof objeto === "object" &&
+  Object.prototype.hasOwnProperty.call(objeto, propiedad);
+
+/** Sólo la ausencia real de `accion` conserva el reemplazo histórico. */
+function resolverAccionCotizacion(args) {
+  if (!tienePropia(args, "accion")) return { ok: true, accion: "reemplazar" };
+  if (typeof args.accion !== "string" || !ACCIONES.includes(args.accion)) {
+    return {
+      ok: false,
+      error:
+        "La acción proporcionada no es válida. Usa exactamente una de: " +
+        `${ACCIONES.join(", ")}.`
+    };
+  }
+  return { ok: true, accion: args.accion };
+}
+
+/** Valida la semántica que el schema declara también en la frontera runtime. */
+function validarContratoCotizacion(args, accion) {
+  const items = args?.items;
+
+  if (accion === "vaciar") {
+    if (items !== undefined && (!Array.isArray(items) || items.length !== 0)) {
+      return (
+        "La acción 'vaciar' no acepta productos en la misma operación. Si el " +
+        "usuario también pidió productos nuevos, conserva esa intención y " +
+        "procésala por separado o usa la operación adecuada, como " +
+        "'reemplazar'; no la descartes silenciosamente."
+      );
+    }
+    return null;
+  }
+
+  if (!Array.isArray(items) || items.length === 0) {
+    return `La acción '${accion}' requiere al menos un producto en 'items'.`;
+  }
+  if (items.length > 50) {
+    return "Demasiadas líneas en la cotización (máximo 50).";
+  }
+
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    if (!item || typeof item !== "object") {
+      return `El item en posición ${i} no es un objeto válido.`;
+    }
+    const traeCantidad = tienePropia(item, "cantidad");
+    if (!traeCantidad) {
+      if (accion === "quitar") continue;
+      return `La acción '${accion}' requiere una cantidad explícita en cada item.`;
+    }
+    const cantidad = item.cantidad;
+    if (typeof cantidad !== "number" || !Number.isFinite(cantidad) ||
+        !Number.isInteger(cantidad) || cantidad <= 0 ||
+        cantidad > CANTIDAD_MAXIMA_POR_LINEA) {
+      return (
+        `El item en posición ${i} tiene cantidad inválida; debe ser un número ` +
+        `entero, finito y positivo, máximo ${CANTIDAD_MAXIMA_POR_LINEA}.`
+      );
+    }
+  }
+  return null;
+}
 
 /** Convierte [{sku,cantidad}] en Map(sku → cantidad). */
 function aMapa(items) {
@@ -488,9 +598,9 @@ function resolverItems(items) {
       dudosos.push({ texto, elegido: r.sku, alternativas: r.alternativas || [] });
     }
 
-    /* La cantidad puede faltar a propósito en 'quitar' (= la línea entera).
-       Se marca con null y cada acción decide qué significa. */
-    const n = it.cantidad == null ? null : Number(it.cantidad);
+    /* Sólo en 'quitar' puede faltar la cantidad (= retirar la línea entera).
+       El contrato runtime ya rechazó tipos y valores no válidos. */
+    const n = tienePropia(it, "cantidad") ? it.cantidad : null;
     resueltos.push({
       sku: r.sku,
       nombre: r.nombre,
@@ -529,9 +639,12 @@ function subtotalDelCarrito(carrito) {
 }
 
 function cotizarConCarrito(args, carritoActual) {
-  const accion = ACCIONES.includes(String(args?.accion || "").toLowerCase())
-    ? String(args.accion).toLowerCase()
-    : "reemplazar";
+  const accionResuelta = resolverAccionCotizacion(args);
+  if (!accionResuelta.ok) return accionResuelta;
+  const accion = accionResuelta.accion;
+
+  const errorContrato = validarContratoCotizacion(args, accion);
+  if (errorContrato) return { ok: false, accion, error: errorContrato };
 
   const carrito = aMapa(carritoActual);
 
@@ -568,34 +681,45 @@ function cotizarConCarrito(args, carritoActual) {
 
   /* — Estado final según la acción — */
   let final;
+  let cambioQuitar;
   if (accion === "reemplazar") {
     final = new Map();
     for (const r of resueltos) {
-      const n = r.cantidad == null ? 1 : r.cantidad;
+      const n = r.cantidad;
       final.set(r.sku, (final.get(r.sku) || 0) + n);
     }
   } else if (accion === "agregar") {
     final = new Map(carrito);
     for (const r of resueltos) {
-      const n = r.cantidad == null ? 1 : r.cantidad;
+      const n = r.cantidad;
       final.set(r.sku, (final.get(r.sku) || 0) + n);
     }
   } else if (accion === "fijar") {
     final = new Map(carrito);
     for (const r of resueltos) {
-      const n = r.cantidad == null ? 1 : r.cantidad;
-      if (n <= 0) final.delete(r.sku);
-      else final.set(r.sku, n);
+      const n = r.cantidad;
+      final.set(r.sku, n);
     }
   } else { // quitar
     final = new Map(carrito);
+    cambioQuitar = false;
     for (const r of resueltos) {
+      const actual = final.get(r.sku);
+      if (actual === undefined) continue;
+      cambioQuitar = true;
       if (r.cantidad == null) { final.delete(r.sku); continue; }
-      const queda = (final.get(r.sku) || 0) - r.cantidad;
+      const queda = actual - r.cantidad;
       if (queda > 0) final.set(r.sku, queda);
       else final.delete(r.sku);
     }
   }
+
+  const estadoQuitar = accion === "quitar"
+    ? { changed: cambioQuitar, sin_efecto: !cambioQuitar }
+    : {};
+  const mensajeQuitarSinEfecto =
+    "No se eliminó nada: el producto solicitado no estaba en el carrito. " +
+    "El carrito se conserva sin cambios; comunícaselo así al usuario.";
 
   /* Quitar puede dejar el carrito en cero, y eso es un éxito, no un error:
      el motor de precios rechaza las listas vacías, así que se responde aquí. */
@@ -607,9 +731,12 @@ function cotizarConCarrito(args, carritoActual) {
       carrito_final: [],
       lineas: [],
       total: "$0.00 MXN",
+      ...estadoQuitar,
       mensaje_para_asesor:
-        "Al aplicar los cambios el carrito quedó vacío. Díselo al usuario y " +
-        "pregúntale si quiere agregar algo más."
+        cambioQuitar === false
+          ? mensajeQuitarSinEfecto
+          : "Al aplicar los cambios el carrito quedó vacío. Díselo al usuario y " +
+            "pregúntale si quiere agregar algo más."
     };
   }
 
@@ -648,6 +775,10 @@ function cotizarConCarrito(args, carritoActual) {
     ...cot,
     accion,
     carrito_final: aLista(final),
+    ...estadoQuitar,
+    ...(cambioQuitar === false
+      ? { mensaje_para_asesor: mensajeQuitarSinEfecto }
+      : {}),
     avisos: avisos.length ? avisos : undefined
   };
 }

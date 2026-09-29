@@ -53,6 +53,7 @@ function afirmar(condicion, mensaje) {
 const sinComentarios = t => t.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/\/\/[^\n]*/g, " ");
 
 const app = leer("assets/js/app.js");
+const server = leer("server.js");
 const figuras = leer("assets/js/figuras.js");
 const config = leer("assets/js/division-config.js");
 
@@ -108,6 +109,22 @@ prueba("lo que se guarda es texto: ni llaves ni tokens", () => {
 // ---------------------------------------------------------------------------
 console.log("\n[MOSTRADOR] Sin backend, el carrito manda");
 // ---------------------------------------------------------------------------
+
+prueba("un carrito_final vacío se envía al frontend y realmente lo vacía", () => {
+  const inicio = server.indexOf("const empaquetar = (texto) =>");
+  const fin = server.indexOf("for (let iter = 0;", inicio);
+  const empaquetado = server.slice(inicio, fin);
+  afirmar(inicio > 0 && fin > inicio, "no se encontró el empaquetado del Asesor");
+  afirmar(empaquetado.includes("Array.isArray(ultimaCotizacion.carrito_final)"),
+    "el backend ignora carrito_final cuando está vacío");
+  afirmar(/tipo:\s*"carrito_set"[\s\S]*?items:\s*ultimaCotizacion\.carrito_final\.map/.test(empaquetado),
+    "el backend no emite carrito_set desde el estado final verificado");
+
+  afirmar(/carrito_set\(a\)\s*\{\s*Carrito\.reemplazar\(AccionesAsesor\.itemsValidos\(a\.items\)\);\s*\}/.test(app),
+    "el frontend no aplica carrito_set mediante reemplazo");
+  afirmar(/reemplazar\(lista\)\s*\{\s*this\.items\.clear\(\);[\s\S]*?this\.cambio\(\);/.test(app),
+    "una lista vacía no limpia y sincroniza el carrito observable");
+});
 
 prueba("con carrito, la última red NO es el catálogo genérico", () => {
   const i = app.indexOf("if (hayCarrito) {\n      return { reply:\n        'No te entendí del todo");

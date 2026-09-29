@@ -35,6 +35,7 @@
 "use strict";
 
 const { getProductoPorSku } = require("./catalog.js");
+const { CANTIDAD_MAXIMA_POR_LINEA } = require("./quote-engine.js");
 
 /* QUINCE MINUTOS, no veinticuatro horas.
    ─────────────────────────────────────────────────────────────────────────
@@ -77,9 +78,8 @@ if (MINUTOS_RESERVA_PEDIDO > TECHO_MINUTOS_RESERVA) {
    limitarlo aquí no cierra ninguna venta real y sí cierra el desabasto por
    diversión. `CANTIDAD_MAXIMA_POR_LINEA` sigue mandando como techo absoluto:
    lo que no puede cotizarse tampoco puede apartarse. */
-const TECHO_LINEA = parseInt(process.env.CANTIDAD_MAXIMA_POR_LINEA || "200", 10) || 200;
 const MAX_POR_SKU = Math.min(
-  TECHO_LINEA,
+  CANTIDAD_MAXIMA_POR_LINEA,
   parseInt(process.env.INVENTARIO_MAX_POR_SKU || "6", 10) || 6
 );
 const MAX_UNIDADES = Math.max(

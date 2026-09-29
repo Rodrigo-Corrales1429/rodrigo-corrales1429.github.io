@@ -2,7 +2,7 @@
  * ============================================================================
  *  PRUEBAS — resolución de productos y acciones de carrito
  * ============================================================================
- *  Cubre exactamente los tres fallos que se reportaron desde el sitio:
+ *  Cubre, entre otras, las tres regresiones reportadas desde el sitio:
  *    1. Listas largas de las que se perdían artículos.
  *    2. Correcciones del carrito («vacía y pon esto», «quita los de endo»).
  *    3. Nombres informales y mal escritos.
@@ -114,6 +114,21 @@ const CARRITO = [{ sku: "ValEnd", cantidad: 2 }, { sku: "ValPulpo", cantidad: 1 
   ok("vaciar responde ok", r.ok);
   ok("vaciar deja el carrito en cero", carrito(r) === "");
   ok("vaciar marca carrito_vacio", r.carrito_vacio === true);
+  ok("vaciar devuelve carrito_final como arreglo vacío",
+     Array.isArray(r.carrito_final) && r.carrito_final.length === 0);
+}
+{
+  const r = cotizarConCarrito({ accion: "vaciar" }, []);
+  ok("vaciar un carrito ya vacío también responde ok", r.ok);
+  ok("vaciar un carrito ya vacío conserva estado final vacío",
+     Array.isArray(r.carrito_final) && r.carrito_final.length === 0);
+  ok("vaciar no devuelve productos ni catálogo", !r.productos && !r.resultados);
+}
+{
+  const r = cotizarConCarrito({ accion: "vaciar", items: [] }, CARRITO);
+  ok("vaciar con items vacío también es válido",
+     r.ok && Array.isArray(r.carrito_final) && r.carrito_final.length === 0,
+     JSON.stringify(r));
 }
 {
   // «vacía el carrito y ponme 3 realistas» = un solo reemplazo.
@@ -158,6 +173,14 @@ const CARRITO = [{ sku: "ValEnd", cantidad: 2 }, { sku: "ValPulpo", cantidad: 1 
      carrito(r) === "ValEnd:1 ValPulpo:1", carrito(r));
 }
 {
+  const r = cotizarConCarrito({
+    accion: "quitar",
+    items: [{ producto: "endo", cantidad: 2 }]
+  }, [{ sku: "ValEnd", cantidad: 3 }, { sku: "ValPulpo", cantidad: 1 }]);
+  ok("quitar 2 resta únicamente 2",
+     carrito(r) === "ValEnd:1 ValPulpo:1", carrito(r));
+}
+{
   // Quitar de más no deja cantidades negativas.
   const r = cotizarConCarrito({
     accion: "quitar",
@@ -165,6 +188,19 @@ const CARRITO = [{ sku: "ValEnd", cantidad: 2 }, { sku: "ValPulpo", cantidad: 1 
   }, CARRITO);
   ok("quitar de más no produce negativos",
      carrito(r) === "ValPulpo:1", carrito(r));
+}
+{
+  const r = cotizarConCarrito({
+    accion: "quitar",
+    items: [{ producto: "nissin" }]
+  }, CARRITO);
+  ok("quitar un ausente conserva el carrito",
+     carrito(r) === "ValEnd:2 ValPulpo:1", carrito(r));
+  ok("quitar un ausente marca changed=false y sin_efecto=true",
+     r.ok && r.changed === false && r.sin_efecto === true, JSON.stringify(r));
+  ok("quitar un ausente no afirma que eliminó algo",
+     /no estaba|no estaban|no se elimin/i.test(r.mensaje_para_asesor || ""),
+     r.mensaje_para_asesor);
 }
 {
   // Quitar TODO es un éxito con carrito vacío, no un error.
@@ -201,12 +237,20 @@ const CARRITO = [{ sku: "ValEnd", cantidad: 2 }, { sku: "ValPulpo", cantidad: 1 
      r.accion === "reemplazar" && carrito(r) === "ValEnd:1", carrito(r));
 }
 {
-  const r = cotizarConCarrito({
-    accion: "ACCION_INVENTADA",
-    items: [{ producto: "endo", cantidad: 1 }]
-  }, CARRITO);
-  ok("una accion desconocida cae en reemplazar y no rompe",
-     r.ok && r.accion === "reemplazar", r.accion);
+  const invalidas = ["eliminar", "añadir", "", null, 7, { tipo: "agregar" }];
+  for (const accion of invalidas) {
+    const entrada = CARRITO.map(item => ({ ...item }));
+    const antes = JSON.stringify(entrada);
+    const r = cotizarConCarrito({
+      accion,
+      items: [{ producto: "endo", cantidad: 1 }]
+    }, entrada);
+    ok(`acción explícita inválida ${JSON.stringify(accion)} se rechaza`,
+       !r.ok && !Object.prototype.hasOwnProperty.call(r, "carrito_final"),
+       JSON.stringify(r));
+    ok(`acción explícita inválida ${JSON.stringify(accion)} no muta la entrada`,
+       JSON.stringify(entrada) === antes, JSON.stringify(entrada));
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -238,6 +282,48 @@ console.log("4 · Blindaje: el carrito del cliente no fija precios");
 {
   const r = cotizarConCarrito({ items: [] }, CARRITO);
   ok("lista vacía no destruye el carrito", !r.ok, "debería pedir corrección");
+}
+for (const accion of ["agregar", "reemplazar", "fijar"]) {
+  const r = cotizarConCarrito({
+    accion,
+    items: [{ producto: "endo" }]
+  }, CARRITO);
+  ok(`${accion} sin cantidad se rechaza`, !r.ok && /cantidad/i.test(r.error || ""),
+     JSON.stringify(r));
+}
+for (const accion of ["agregar", "reemplazar", "fijar", "quitar"]) {
+  for (const cantidad of ["2", true, [3], null, Infinity, 201]) {
+    const r = cotizarConCarrito({
+      accion,
+      items: [{ producto: "endo", cantidad }]
+    }, CARRITO);
+    ok(`${accion} rechaza cantidad no contractual ${JSON.stringify(cantidad)}`,
+       !r.ok && !Object.prototype.hasOwnProperty.call(r, "carrito_final"),
+       JSON.stringify(r));
+  }
+}
+{
+  const r = cotizarConCarrito({
+    accion: "agregar",
+    items: [{ producto: "endo", cantidad: 2 }]
+  }, CARRITO);
+  ok("cantidad JSON numérica válida sigue funcionando",
+     r.ok && carrito(r) === "ValEnd:4 ValPulpo:1", JSON.stringify(r));
+}
+{
+  const entrada = CARRITO.map(item => ({ ...item }));
+  const antes = JSON.stringify(entrada);
+  const r = cotizarConCarrito({
+    accion: "vaciar",
+    items: [{ producto: "nissin", cantidad: 2 }]
+  }, entrada);
+  ok("vaciar con items se rechaza sin carrito_final",
+     !r.ok && !Object.prototype.hasOwnProperty.call(r, "carrito_final"),
+     JSON.stringify(r));
+  ok("vaciar con items preserva la segunda intención en el error",
+     /por separado|operaci[oó]n adecuada|reemplazar/i.test(r.error || ""), r.error);
+  ok("vaciar con items no muta el carrito de entrada",
+     JSON.stringify(entrada) === antes, JSON.stringify(entrada));
 }
 
 // ---------------------------------------------------------------------------
