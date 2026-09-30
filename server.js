@@ -33,7 +33,7 @@ const express = require("express");
 const cors = require("cors");
 const crypto = require("crypto");
 require("dotenv").config();
-const { GoogleGenAI, FunctionCallingConfigMode } = require("@google/genai");
+const { GoogleGenAI } = require("@google/genai");
 
 const {
   TOOLS,
@@ -61,6 +61,10 @@ const inventario = require("./inventario.js");
 const almacen = require("./almacen.js");
 const { crearIdentidad, duenoDeReserva } = require("./identidad.js");
 const { minimizar: minimizarPii, contactoEscrito } = require("./assets/js/pii-comercial.js");
+const {
+  crearEvidenciaMutacion,
+  resolverSalidaAsesor
+} = require("./verifier-asesor.js");
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -1002,6 +1006,8 @@ async function correrConversacion(historialInicial, contextoSesion = "", carrito
   let ultimaCotizacion = null;
   let ultimoLead = null;
   const herramientasUsadas = [];
+  const resultadosHerramientas = [];
+  const evidenciasMutacion = [];
 
   const empaquetar = (texto) => {
     const productosFinales = ultimaCotizacion
@@ -1059,6 +1065,7 @@ async function correrConversacion(historialInicial, contextoSesion = "", carrito
 
       const partesRespuesta = [];
       for (const fc of functionCalls) {
+        const carritoAntes = ctxHerramientas.carrito;
         /* `await`: cotizar_envio puede salir a la API de la paquetería. Las
            demás herramientas siguen siendo síncronas y resuelven de inmediato. */
         const resultado = await ejecutarHerramienta({
@@ -1067,6 +1074,9 @@ async function correrConversacion(historialInicial, contextoSesion = "", carrito
         }, ctxHerramientas);
 
         herramientasUsadas.push(fc.name);
+        resultadosHerramientas.push({ nombre: fc.name, resultado });
+        const evidencia = crearEvidenciaMutacion(fc.name, resultado, carritoAntes);
+        if (evidencia) evidenciasMutacion.push(evidencia);
 
         console.log(`[fn-call] iter=${iter} tool=${TOOLS[0].functionDeclarations.some(d => d.name === fc.name) ? fc.name : "desconocida"} estado=${resultado.ok ? "ok" : "error"}`);
 
@@ -1106,91 +1116,24 @@ async function correrConversacion(historialInicial, contextoSesion = "", carrito
       continue;
     }
 
-    const texto = extraerTexto(response);
-    if (texto && texto.trim() !== "") {
-      return empaquetar(texto);
+    const salida = resolverSalidaAsesor({
+      texto: extraerTexto(response),
+      evidenciasMutacion,
+      resultadosHerramientas
+    });
+    if (salida.reescrita) {
+      console.warn(`[verifier] respuesta reescrita: ${salida.motivo}`);
     }
-
-    // ---- Respuesta vacía: rescate forzando listar_catalogo ----
-    console.warn(`[fallback] iter=${iter}: respuesta vacía. Lanzando rescate.`);
-
-    const ultimoMensajeUsuario =
-      historialInicial[historialInicial.length - 1]?.parts
-        ?.map(p => p.text || "")
-        .join(" ")
-        .trim() || "";
-
-    const responseRescate = await generarConReintento({
-        model: MODELO,
-        contents: [
-          ...contents,
-          {
-            role: "user",
-            parts: [{
-              text:
-                "[Sistema] Tu respuesta anterior vino vacía. Llama listar_catalogo " +
-                "y, con sus resultados, redacta una respuesta proactiva que ofrezca " +
-                "opciones al usuario y haga una pregunta concreta para avanzar. " +
-                `El usuario originalmente escribió: "${ultimoMensajeUsuario}".`
-            }]
-          }
-        ],
-        config: configGemini({
-          toolConfig: {
-            functionCallingConfig: {
-              mode: FunctionCallingConfigMode.ANY,
-              allowedFunctionNames: ["listar_catalogo"]
-            }
-          }
-        }, contextoSesion)
-      });
-
-    const rescateFcs = extraerFunctionCalls(responseRescate);
-    if (rescateFcs.length > 0) {
-      const partesRescateResp = [];
-      for (const fc of rescateFcs) {
-        const resultado = await ejecutarHerramienta({ name: fc.name, args: fc.args || {} }, ctxHerramientas);
-        herramientasUsadas.push(fc.name);
-        if (resultado.ok && fc.name === "listar_catalogo" && Array.isArray(resultado.productos)) {
-          skusParaTarjetas = resultado.productos.map(p => p.sku);
-        }
-        partesRescateResp.push({
-          functionResponse: { name: fc.name, response: resultado }
-        });
-      }
-
-      const responseFinal = await generarConReintento({
-          model: MODELO,
-          contents: [
-            ...contents,
-            { role: "model", parts: rescateFcs.map(fc => ({ functionCall: fc })) },
-            { role: "user", parts: partesRescateResp }
-          ],
-          config: configGemini({}, contextoSesion)
-        });
-
-      const textoFinal = extraerTexto(responseFinal);
-      if (textoFinal && textoFinal.trim() !== "") {
-        console.log("[fallback] Rescate exitoso.");
-        return empaquetar(textoFinal);
-      }
-    }
-
-    console.warn("[fallback] Rescate también vino vacío. Usando mensaje fijo.");
-    return empaquetar(
-      "Cuéntame un poco más sobre lo que necesitas. Puedo ayudarte con el " +
-      "catálogo de **Valquiria Dental** (endodoncia, pulpotomía, kits " +
-      "completos, tipo Nissin), o si traes un proyecto de impresión 3D, " +
-      "empaque, iluminación o automatización con IA, cuéntamelo y lo vemos."
-    );
+    return empaquetar(salida.texto);
   }
 
   console.warn(`[loop] Tope de ${MAX_ITERACIONES_FUNCTION_CALL} iteraciones.`);
-  return empaquetar(
-    "Estoy teniendo dificultad para procesar esta solicitud. ¿Podrías " +
-    "escribirla de otra forma, o prefieres que un especialista te atienda " +
-    "directamente por WhatsApp (+52 771 795 9131)?"
-  );
+  const salida = resolverSalidaAsesor({
+    texto: "",
+    evidenciasMutacion,
+    resultadosHerramientas
+  });
+  return empaquetar(salida.texto);
 }
 
 // ----------------------------------------------------------------------------

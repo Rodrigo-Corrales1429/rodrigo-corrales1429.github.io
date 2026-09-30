@@ -104,6 +104,32 @@ function sinPlural(t) {
   return t;
 }
 
+/* Vocabulario contextual compartido con el verifier. Su única fuente son los
+   alias curados y el catálogo activo: no replica nombres de producto en otro
+   módulo ni aplica la resolución difusa a una frase completa. El plegado
+   singular permite variaciones directas como «kit completo»/«kits completos»
+   manteniendo una coincidencia exacta por palabras. */
+function normalizarReferenciaProducto(texto) {
+  return normalizarTexto(texto)
+    .split(/\s+/)
+    .filter(Boolean)
+    .map(sinPlural)
+    .join(" ");
+}
+
+const REFERENCIAS_CONTEXTO_PRODUCTO = Object.freeze([...new Set([
+  ...Object.entries(ALIAS).flatMap(([sku, alias]) => [sku, ...alias]),
+  ...getCatalogoActivo().flatMap(producto => [producto.sku, producto.nombre])
+].map(normalizarReferenciaProducto).filter(Boolean))]);
+
+function tieneReferenciaProductoCatalogo(texto) {
+  const contexto = normalizarReferenciaProducto(texto);
+  if (!contexto) return false;
+  const acotado = ` ${contexto} `;
+  return REFERENCIAS_CONTEXTO_PRODUCTO.some(referencia =>
+    acotado.includes(` ${referencia} `));
+}
+
 /* Cuánta distancia de edición se tolera según lo larga que sea la palabra.
    Una palabra corta con un error es otra palabra distinta; una larga sigue
    siendo reconocible. Sin esta escala, "endo" casaría con "endos" y también
@@ -268,4 +294,9 @@ function resolverSku(texto) {
   };
 }
 
-module.exports = { resolverSku, ALIAS, INDICE };
+module.exports = {
+  resolverSku,
+  tieneReferenciaProductoCatalogo,
+  ALIAS,
+  INDICE
+};
