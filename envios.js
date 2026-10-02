@@ -17,8 +17,8 @@
  *                  Estafeta, DHL, FedEx, Redpack, Paquetexpress y más.
  *  3. `skydropx` → Skydropx. El otro agregador grande en México.
  *
- *  Los tres devuelven EXACTAMENTE la misma forma de objeto. El Asesor, el
- *  carrito y el checkout no saben —ni les importa— cuál está activo.
+ *  `auto` consulta en paralelo los agregadores configurados, aísla sus fallos
+ *  y usa `tabla` solamente si ninguno devuelve una tarifa utilizable.
  *
  *  REGLA DE HONESTIDAD (la más importante de este archivo):
  *  Toda cotización lleva un campo `fuente`. Si dice "referencia", el número
@@ -28,7 +28,7 @@
  *  firme es una reclamación esperando a ocurrir.
  *
  *  CÓMO ENCENDER LAS TARIFAS EN VIVO (sin tocar código):
- *    ENVIOS_PROVEEDOR=envia
+ *    ENVIOS_PROVEEDOR=auto
  *    ENVIA_API_KEY=...            (Envia.com → Configuración → API)
  *  o bien:
  *    ENVIOS_PROVEEDOR=skydropx
@@ -44,14 +44,40 @@
 
 const PROVEEDOR = (process.env.ENVIOS_PROVEEDOR || "tabla").toLowerCase().trim();
 
+if (!["auto", "tabla", "envia", "skydropx"].includes(PROVEEDOR)) {
+  throw new Error("[envios] ENVIOS_PROVEEDOR debe ser auto, tabla, envia o skydropx.");
+}
+
+function leerEnteroNoNegativo(nombre, porDefecto) {
+  const crudo = process.env[nombre];
+  if (crudo === undefined || crudo === "") return porDefecto;
+  if (!/^\d+$/.test(crudo)) {
+    throw new Error(`[envios] ${nombre} debe ser un entero >= 0 en centavos.`);
+  }
+  const valor = Number(crudo);
+  if (!Number.isSafeInteger(valor) || valor < 0) {
+    throw new Error(`[envios] ${nombre} debe ser un entero >= 0 en centavos.`);
+  }
+  return valor;
+}
+
 /* Código postal de origen: de dónde salen las cajas. Pachuca, Hidalgo. */
 const CP_ORIGEN = (process.env.ENVIOS_CP_ORIGEN || "42000").trim();
 
 /* Umbral de envío gratis. Se reutiliza el mismo que ya usa el carrito para
    que la promesa del sitio y la del Asesor no se contradigan nunca. */
-const ENVIO_GRATIS_DESDE_CENTAVOS = parseInt(
-  process.env.ENVIO_GRATIS_DESDE_CENTAVOS || "99900",
-  10
+const ENVIO_GRATIS_DESDE_CENTAVOS = leerEnteroNoNegativo(
+  "ENVIO_GRATIS_DESDE_CENTAVOS", 100000
+);
+
+/* La maniobra es costo interno de operación. Cuando el cliente paga envío se
+   incorpora al precio final, pero nunca se presenta como una línea separada. */
+const MANIOBRA_CENTAVOS = leerEnteroNoNegativo("ENVIOS_MANIOBRA_CENTAVOS", 3500);
+const PREMIO_RAPIDEZ_CENTAVOS = leerEnteroNoNegativo(
+  "ENVIOS_PREMIO_RAPIDEZ_CENTAVOS", 6000
+);
+const UPGRADE_GRATIS_CENTAVOS = leerEnteroNoNegativo(
+  "ENVIOS_UPGRADE_GRATIS_CENTAVOS", 4000
 );
 
 /* Divisor volumétrico. Las paqueterías cobran por el MAYOR entre peso real y
@@ -421,113 +447,427 @@ function costoPorTabla(zona, servicio, kg) {
 // 6. Proveedores en vivo
 // ----------------------------------------------------------------------------
 
-async function pedirConTimeout(url, opciones) {
+/** Un plazo por proveedor, incluyendo headers, body, JSON y polling. */
+async function conDeadlineProveedor(tarea, { timeoutMs = TIMEOUT_API_MS, alVencer = () => null } = {}) {
+  const limite = Number.isSafeInteger(timeoutMs) && timeoutMs > 0 ? timeoutMs : 8000;
   const ctrl = new AbortController();
-  const reloj = setTimeout(() => ctrl.abort(), TIMEOUT_API_MS);
+  let reloj;
+  const trabajo = Promise.resolve().then(() => tarea(ctrl.signal));
+  const vencimiento = new Promise(resolve => {
+    reloj = setTimeout(() => {
+      let parcial = null;
+      try { parcial = alVencer(); } catch { /* El fallback sigue siendo seguro. */ }
+      resolve(parcial);
+      ctrl.abort();
+    }, limite);
+  });
   try {
-    return await fetch(url, { ...opciones, signal: ctrl.signal });
+    /* Promise.race observa también cualquier rechazo tardío del trabajo. */
+    return await Promise.race([trabajo, vencimiento]);
   } finally {
     clearTimeout(reloj);
+    ctrl.abort();
   }
+}
+
+function esperarConSignal(ms, signal) {
+  if (signal.aborted) return Promise.reject(new Error("Plazo de proveedor agotado"));
+  return new Promise((resolve, reject) => {
+    const cancelar = () => {
+      clearTimeout(reloj);
+      reject(new Error("Plazo de proveedor agotado"));
+    };
+    const reloj = setTimeout(() => {
+      signal.removeEventListener("abort", cancelar);
+      resolve();
+    }, ms);
+    signal.addEventListener("abort", cancelar, { once: true });
+  });
+}
+
+function etiqueta(v, porDefecto) {
+  const limpia = String(v == null ? "" : v)
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u001F\u007F]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 100);
+  return limpia || porDefecto;
+}
+
+const MAX_DIAS_TRANSITO = 60;
+
+function rangoDias(valor) {
+  if (Number.isInteger(valor)) {
+    return valor > 0 && valor <= MAX_DIAS_TRANSITO ? [valor, valor] : null;
+  }
+  if (typeof valor !== "string") return null;
+  const texto = valor.trim().toLowerCase();
+  if (/^(?:same day|mismo d[ií]a)$/.test(texto)) return [0, 0];
+  if (/^(?:next day|d[ií]a siguiente)$/.test(texto)) return [1, 1];
+  const dias = /^(\d+)(?:\s*(?:-|–|to|a)\s*(\d+))?\s*(?:days?|d[ií]as?)?$/.exec(texto);
+  const horas = /^(\d+)(?:\s*(?:-|–|to|a)\s*(\d+))?\s*(?:hours?|horas?)$/.exec(texto);
+  const minutos = /^(\d+)(?:\s*(?:-|–|to|a)\s*(\d+))?\s*(?:minutes?|minutos?)$/.exec(texto);
+  const partes = dias || horas || minutos;
+  if (!partes) return null;
+  const divisor = horas ? 24 : minutos ? 1440 : 1;
+  const min = Math.ceil(Number(partes[1]) / divisor);
+  const max = Math.ceil(Number(partes[2] ?? partes[1]) / divisor);
+  return min > 0 && min <= max && max <= MAX_DIAS_TRANSITO ? [min, max] : null;
+}
+
+function centavosProveedor(valor) {
+  if (typeof valor !== "number" &&
+      !(typeof valor === "string" && /^\d+(?:\.\d{1,2})?$/.test(valor.trim()))) return null;
+  const numero = Number(valor);
+  const centavos = Math.round(numero * 100);
+  return Number.isFinite(numero) && numero > 0 && Number.isSafeInteger(centavos) &&
+    Math.abs(numero * 100 - centavos) < 1e-7 ? centavos : null;
+}
+
+function normalizarTarifa({
+  agregador, rate_id = null, quotation_id = null, paqueteria, servicio,
+  tarifa_centavos, dias_min, dias_max
+}) {
+  const costo = Number(tarifa_centavos);
+  const min = Number(dias_min);
+  const max = Number(dias_max);
+  if (!["envia", "skydropx", "tabla"].includes(agregador) ||
+      !Number.isSafeInteger(costo) || costo <= 0 ||
+      !Number.isInteger(min) || min < 0 ||
+      !Number.isInteger(max) || max < min || max > MAX_DIAS_TRANSITO) return null;
+  const transportista = etiqueta(paqueteria, "");
+  const nivel = etiqueta(servicio, "");
+  if (!transportista || !nivel) return null;
+  const entrega = ventanaDeEntrega(min, max);
+  return {
+    agregador,
+    rate_id: rate_id == null ? null : etiqueta(rate_id, null),
+    quotation_id: quotation_id == null ? null : etiqueta(quotation_id, null),
+    paqueteria: transportista,
+    servicio: nivel,
+    tarifa_centavos: costo,
+    dias_min: min,
+    dias_max: max,
+    entrega_desde: entrega.entrega_desde,
+    entrega_hasta: entrega.entrega_hasta,
+    fuente: agregador === "tabla" ? "referencia" : agregador
+  };
+}
+
+function normalizarTarifasEnvia(filas) {
+  return (Array.isArray(filas) ? filas : []).map(f => {
+    const monedas = [f?.currency, f?.currencyCode, f?.currency_code]
+      .filter(v => v !== undefined && v !== null);
+    if (monedas.some(v => typeof v !== "string" || v.toUpperCase() !== "MXN")) return null;
+    /* La fecha absoluta del carrier no incluye la preparación de Valquiria.
+       Sólo su estimación de tránsito participa en la promesa V1. */
+    const dias = rangoDias(f?.deliveryEstimate);
+    if (!dias) return null;
+    const costo = centavosProveedor(f?.totalPrice);
+    if (costo === null) return null;
+    const normalizada = normalizarTarifa({
+      agregador: "envia",
+      rate_id: f?.id ?? null,
+      quotation_id: null,
+      paqueteria: f?.carrierDescription || f?.carrier,
+      servicio: f?.serviceDescription || f?.service,
+      tarifa_centavos: costo,
+      dias_min: dias[0], dias_max: dias[1]
+    });
+    return normalizada;
+  }).filter(Boolean);
 }
 
 /**
  * Envia.com — POST /ship/rate/. Un solo contrato cotiza varias paqueterías.
  * Devuelve `null` (no lanza) si algo falla: quien llama cae a la tabla.
  */
-async function cotizarConEnvia(origen, destino, paquete) {
-  const key = process.env.ENVIA_API_KEY;
+async function cotizarConEnvia(origen, destino, paquete, opciones = {}) {
+  const key = opciones.apiKey || process.env.ENVIA_API_KEY;
   if (!key) return null;
-  const base = process.env.ENVIA_API_URL || "https://api.envia.com";
+  const base = (opciones.baseUrl || process.env.ENVIA_API_URL || "https://api.envia.com")
+    .replace(/\/+$/, "");
   try {
-    const r = await pedirConTimeout(`${base}/ship/rate/`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
-      body: JSON.stringify({
-        origin: { postalCode: origen.cp, country: "MX" },
-        destination: { postalCode: destino.cp, country: "MX" },
-        packages: [{
-          content: "Material didáctico",
-          amount: 1,
-          type: "box",
-          weight: paquete.facturable_kg,
-          weightUnit: "KG",
-          lengthUnit: "CM",
-          dimensions: {
-            length: paquete.largo_cm, width: paquete.ancho_cm, height: paquete.alto_cm
-          }
-        }],
-        shipment: { type: 1 },
-        settings: { currency: "MXN" }
-      })
-    });
-    if (!r.ok) {
-      console.error(`[envios] Envia.com respondió ${r.status}`);
-      return null;
-    }
-    const json = await r.json();
-    const filas = Array.isArray(json?.data) ? json.data : [];
-    return filas
-      .filter(f => Number(f?.totalPrice) > 0)
-      .map(f => ({
-        paqueteria: String(f.carrierDescription || f.carrier || "Paquetería"),
-        servicio: String(f.serviceDescription || f.service || "Estándar"),
-        costo_centavos: Math.round(Number(f.totalPrice) * 100),
-        dias_min: Math.max(1, parseInt(f.deliveryEstimate, 10) || 3),
-        dias_max: Math.max(1, parseInt(f.deliveryEstimate, 10) || 5)
-      }));
+    const consultar = async signal => {
+      const r = await (opciones.fetchFn || fetch)(`${base}/ship/rate/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+        signal,
+        body: JSON.stringify({
+          origin: { postalCode: origen.cp, country: "MX" },
+          destination: { postalCode: destino.cp, country: "MX" },
+          packages: [{
+            content: "Material didáctico",
+            amount: 1,
+            type: "box",
+            weight: paquete.facturable_kg,
+            weightUnit: "KG",
+            lengthUnit: "CM",
+            dimensions: {
+              length: paquete.largo_cm, width: paquete.ancho_cm, height: paquete.alto_cm
+            }
+          }],
+          shipment: { type: 1 },
+          settings: { currency: "MXN" }
+        })
+      });
+      if (!r.ok) {
+        console.error(`[envios] Envia.com respondió ${r.status}`);
+        return null;
+      }
+      return normalizarTarifasEnvia((await r.json())?.data);
+    };
+    return opciones.signal
+      ? await consultar(opciones.signal)
+      : await conDeadlineProveedor(consultar, { timeoutMs: opciones.timeoutMs ?? TIMEOUT_API_MS });
   } catch (e) {
     console.error("[envios] Envia.com falló:", String(e?.message || e).slice(0, 160));
     return null;
   }
 }
 
-/** Skydropx — POST /v1/quotations. Misma forma de salida que Envia. */
-async function cotizarConSkydropx(origen, destino, paquete) {
-  const key = process.env.SKYDROPX_API_KEY;
-  if (!key) return null;
-  const base = process.env.SKYDROPX_API_URL || "https://api.skydropx.com";
-  try {
-    const r = await pedirConTimeout(`${base}/v1/quotations`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Token token=${key}` },
-      body: JSON.stringify({
-        zip_from: origen.cp,
-        zip_to: destino.cp,
-        parcel: {
-          weight: paquete.facturable_kg,
-          length: paquete.largo_cm,
-          width: paquete.ancho_cm,
-          height: paquete.alto_cm
-        }
-      })
+function normalizarTarifasSkydropx(filas, quotationId) {
+  return (Array.isArray(filas) ? filas : []).map(f => {
+    const a = f?.attributes || f || {};
+    if (a.success === false || (a.currency_code && a.currency_code !== "MXN")) return null;
+    const dias = rangoDias(a.days ?? a.delivery_days ?? a.estimated_delivery_days);
+    if (!dias) return null;
+    const total = a.total ?? a.amount ?? a.total_pricing;
+    const costo = centavosProveedor(total);
+    if (costo === null) return null;
+    return normalizarTarifa({
+      agregador: "skydropx",
+      rate_id: f?.id ?? a.id ?? null,
+      quotation_id: quotationId,
+      paqueteria: a.provider_display_name || a.provider_name || a.provider,
+      servicio: a.provider_service_name || a.service_level_name || a.service,
+      tarifa_centavos: costo,
+      dias_min: dias[0], dias_max: dias[1]
     });
-    if (!r.ok) {
-      console.error(`[envios] Skydropx respondió ${r.status}`);
-      return null;
-    }
-    const json = await r.json();
-    const filas = Array.isArray(json?.rates) ? json.rates : [];
-    return filas
-      .filter(f => Number(f?.total_pricing) > 0)
-      .map(f => ({
-        paqueteria: String(f.provider || "Paquetería"),
-        servicio: String(f.service_level_name || "Estándar"),
-        costo_centavos: Math.round(Number(f.total_pricing) * 100),
-        dias_min: Math.max(1, parseInt(f.days, 10) || 3),
-        dias_max: Math.max(1, parseInt(f.days, 10) || 5)
-      }));
+  }).filter(Boolean);
+}
+
+function leerCotizacionSkydropx(json) {
+  const datos = json?.data?.attributes || json || {};
+  const id = json?.id || json?.data?.id || null;
+  const directas = Array.isArray(datos.rates) ? datos.rates : [];
+  const incluidas = Array.isArray(json?.included)
+    ? json.included.filter(x => x?.type === "rate")
+    : [];
+  const explicita = datos.is_completed;
+  return {
+    id,
+    completada: explicita === undefined ? true : explicita === true,
+    rates: normalizarTarifasSkydropx([...directas, ...incluidas], id)
+  };
+}
+
+function direccionOrigenSkydropx(origen, opciones) {
+  if (opciones?.origen?.address_template_id) {
+    return { address_template_id: etiqueta(opciones.origen.address_template_id, "") };
+  }
+  const template = process.env.SKYDROPX_ORIGEN_TEMPLATE_ID;
+  if (template) return { address_template_id: etiqueta(template, "") };
+  const area2 = process.env.SKYDROPX_ORIGEN_AREA_LEVEL2;
+  const area3 = process.env.SKYDROPX_ORIGEN_AREA_LEVEL3;
+  if (!area2 || !area3) return null;
+  return {
+    country_code: "MX", postal_code: origen.cp,
+    area_level1: origen.estado,
+    area_level2: etiqueta(area2, ""), area_level3: etiqueta(area3, "")
+  };
+}
+
+function direccionDestinoSkydropx(destino, direccion) {
+  const limpia = etiqueta(direccion, "");
+  const partes = limpia.split(",").map(x => x.trim()).filter(Boolean);
+  if (partes.length < 3) return null;
+  const areaLevel2 = partes[partes.length - 1];
+  const areaLevel3 = partes[partes.length - 2];
+  const calle = partes.slice(0, -2).join(", ");
+  return {
+    country_code: "MX", postal_code: destino.cp,
+    area_level1: destino.estado, area_level2: areaLevel2, area_level3: areaLevel3,
+    street1: calle
+  };
+}
+
+function urlCotizacionesSkydropx(base) {
+  const limpia = String(base).replace(/\/+$/, "");
+  return /\/(?:api\/)?v1$/.test(limpia)
+    ? `${limpia}/quotations`
+    : `${limpia}/api/v1/quotations`;
+}
+
+/** Skydropx: crea una cotización y consulta sus tasas hasta `is_completed`.
+ *  Deliberadamente no existe ninguna llamada al recurso `shipments`. */
+async function cotizarConSkydropx(origen, destino, paquete, opciones = {}) {
+  const key = opciones.apiKey || process.env.SKYDROPX_API_KEY;
+  if (!key) return null;
+  const base = opciones.baseUrl || process.env.SKYDROPX_API_URL || "https://api-pro.skydropx.com";
+  const endpoint = urlCotizacionesSkydropx(base);
+  const addressFrom = direccionOrigenSkydropx(origen, opciones);
+  const addressTo = direccionDestinoSkydropx(destino, paquete.direccion_destino);
+  if (!addressFrom || !addressTo) return null;
+  const fetchFn = opciones.fetchFn || fetch;
+  const esperarFn = opciones.esperarFn || esperarConSignal;
+  const maxIntentos = Math.max(1, Math.min(Number(opciones.maxIntentos ||
+    process.env.SKYDROPX_MAX_INTENTOS || 4), 10));
+  const pollMs = Math.max(0, Math.min(Number(opciones.pollMs ??
+    process.env.SKYDROPX_POLL_MS ?? 350), 2000));
+  const acumuladas = new Map();
+  const agregar = filas => {
+    filas.forEach(f => {
+      const clave = f.rate_id || `${f.paqueteria}|${f.servicio}|${f.tarifa_centavos}`;
+      acumuladas.set(clave, f);
+    });
+    if (typeof opciones.onRates === "function") opciones.onRates([...acumuladas.values()]);
+  };
+  try {
+    const consultar = async signal => {
+      const r = await fetchFn(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+        signal,
+        body: JSON.stringify({
+          quotation: {
+            address_from: addressFrom,
+            address_to: addressTo,
+            parcels: [{
+              weight: paquete.facturable_kg,
+              length: paquete.largo_cm,
+              width: paquete.ancho_cm,
+              height: paquete.alto_cm
+            }]
+          }
+        })
+      });
+      if (!r.ok) {
+        console.error(`[envios] Skydropx respondió ${r.status}`);
+        return null;
+      }
+      let cotizacion = leerCotizacionSkydropx(await r.json());
+      agregar(cotizacion.rates);
+
+      for (let intento = 1;
+        !cotizacion.completada && cotizacion.id && intento < maxIntentos;
+        intento++) {
+        if (pollMs) await esperarFn(pollMs, signal);
+        const consulta = await fetchFn(`${endpoint}/${encodeURIComponent(cotizacion.id)}`, {
+          method: "GET",
+          headers: { Authorization: `Bearer ${key}` },
+          signal
+        });
+        if (!consulta.ok) {
+          console.error(`[envios] Skydropx consulta respondió ${consulta.status}`);
+          break;
+        }
+        cotizacion = leerCotizacionSkydropx(await consulta.json());
+        agregar(cotizacion.rates);
+      }
+      return [...acumuladas.values()];
+    };
+    return opciones.signal
+      ? await consultar(opciones.signal)
+      : await conDeadlineProveedor(consultar, {
+        timeoutMs: opciones.timeoutMs ?? TIMEOUT_API_MS,
+        alVencer: () => acumuladas.size ? [...acumuladas.values()] : null
+      });
   } catch (e) {
     console.error("[envios] Skydropx falló:", String(e?.message || e).slice(0, 160));
-    return null;
+    return acumuladas.size ? [...acumuladas.values()] : null;
   }
+}
+
+function tarifaValida(t) {
+  return t && ["envia", "skydropx", "tabla"].includes(t.agregador) &&
+    t.fuente === (t.agregador === "tabla" ? "referencia" : t.agregador) &&
+    Number.isSafeInteger(t.tarifa_centavos) && t.tarifa_centavos > 0 &&
+    Number.isInteger(t.dias_min) && t.dias_min >= 0 &&
+    Number.isInteger(t.dias_max) && t.dias_max >= t.dias_min &&
+    t.dias_max <= MAX_DIAS_TRANSITO &&
+    typeof t.paqueteria === "string" && t.paqueteria.trim() &&
+    typeof t.servicio === "string" && t.servicio.trim();
+}
+
+function porCosto(a, b) {
+  return a.tarifa_centavos - b.tarifa_centavos ||
+    a.dias_max - b.dias_max || a.dias_min - b.dias_min ||
+    a.paqueteria.localeCompare(b.paqueteria) || a.servicio.localeCompare(b.servicio);
+}
+
+function porRapidez(a, b) {
+  return a.dias_max - b.dias_max || a.dias_min - b.dias_min || porCosto(a, b);
+}
+
+/** Política pura y determinista. No depende del orden del proveedor ni del LLM. */
+function seleccionarMejorEnvio(rates, contexto = {}) {
+  const validas = (Array.isArray(rates) ? rates : []).filter(tarifaValida);
+  if (!validas.length) return null;
+  const barata = validas.slice().sort(porCosto)[0];
+  const rapida = validas.slice().sort(porRapidez)[0];
+  const gratis = contexto.envio_gratis === true;
+
+  if (gratis) {
+    const hastaTres = validas.filter(r => r.dias_max <= 3).sort(porCosto);
+    const base = hastaTres[0] || barata;
+    const unDia = validas.filter(r => r.dias_max <= 1).sort(porCosto)[0];
+    const upgrade = Number.isSafeInteger(contexto.upgrade_gratis_centavos)
+      ? contexto.upgrade_gratis_centavos : UPGRADE_GRATIS_CENTAVOS;
+    return unDia && unDia.tarifa_centavos <= base.tarifa_centavos + upgrade ? unDia : base;
+  }
+
+  const premio = Number.isSafeInteger(contexto.premio_rapidez_centavos)
+    ? contexto.premio_rapidez_centavos : PREMIO_RAPIDEZ_CENTAVOS;
+  if (rapida.tarifa_centavos <= barata.tarifa_centavos + premio) return rapida;
+  const hastaTres = validas.filter(r => r.dias_max <= 3).sort(porCosto);
+  return hastaTres[0] || barata;
+}
+
+async function consultarProveedores(origen, destino, paquete, dependencias = {}) {
+  const modo = dependencias.proveedor || PROVEEDOR;
+  const configurados = {
+    envia: dependencias.enviaConfigurado ?? Boolean(process.env.ENVIA_API_KEY),
+    skydropx: dependencias.skydropxConfigurado ?? Boolean(process.env.SKYDROPX_API_KEY)
+  };
+  const cotizadores = {
+    envia: dependencias.cotizarConEnvia || cotizarConEnvia,
+    skydropx: dependencias.cotizarConSkydropx || cotizarConSkydropx
+  };
+  const nombres = modo === "auto"
+    ? ["envia", "skydropx"].filter(n => configurados[n])
+    : (["envia", "skydropx"].includes(modo) && configurados[modo] ? [modo] : []);
+  const timeoutMs = dependencias.timeoutMs ?? TIMEOUT_API_MS;
+  const resultados = await Promise.all(nombres.map(async nombre => {
+    try {
+      let parciales = null;
+      const filas = await conDeadlineProveedor(
+        signal => cotizadores[nombre](origen, destino, paquete, {
+          signal, timeoutMs,
+          onRates: rates => { parciales = rates; }
+        }),
+        { timeoutMs, alVencer: () => parciales }
+      );
+      return { nombre, filas: Array.isArray(filas) ? filas.filter(tarifaValida) : [] };
+    } catch {
+      return { nombre, filas: [] };
+    }
+  }));
+  return {
+    tarifas: resultados.flatMap(r => r.filas),
+    consultados: nombres,
+    fallidos: resultados.filter(r => !r.filas.length).map(r => r.nombre)
+  };
 }
 
 // ----------------------------------------------------------------------------
 // 7. La función pública
 // ----------------------------------------------------------------------------
 
-const pesos = c => `$${(c / 100).toFixed(2)} MXN`;
+const pesos = c => `$${(c / 100).toLocaleString("en-US", {
+  minimumFractionDigits: 2, maximumFractionDigits: 2
+})} MXN`;
 
 /**
  * Cotiza el envío a un código postal.
@@ -540,7 +880,7 @@ const pesos = c => `$${(c / 100).toFixed(2)} MXN`;
  * @param {number} [p.subtotal_centavos] Para aplicar el envío gratis.
  * @returns {Promise<object>} { ok, opciones[], ... } — nunca lanza.
  */
-async function cotizarEnvio(p = {}) {
+async function cotizarEnvio(p = {}, dependencias = {}) {
   const destino = ubicar(p.cp_destino);
   if (!destino) {
     return {
@@ -571,57 +911,54 @@ async function cotizarEnvio(p = {}) {
     alto_cm: p.alto_cm ?? delPedido?.alto_cm ?? 12
   };
 
-  // --- Tarifas: primero en vivo, luego la red de seguridad ---
-  let crudas = null;
-  let fuente = "referencia";
+  // --- Tarifas: agregadores en paralelo y tabla como red de seguridad ---
+  const consulta = await consultarProveedores(origen, destino, {
+    ...paquete, ...caja, direccion_destino: p.direccion_destino
+  }, dependencias);
+  let crudas = consulta.tarifas;
 
-  if (PROVEEDOR === "envia") {
-    crudas = await cotizarConEnvia(origen, destino, { ...paquete, ...caja });
-    if (crudas?.length) fuente = "Envia.com";
-  } else if (PROVEEDOR === "skydropx") {
-    crudas = await cotizarConSkydropx(origen, destino, { ...paquete, ...caja });
-    if (crudas?.length) fuente = "Skydropx";
-  }
-
-  if (!crudas || !crudas.length) {
+  if (!crudas.length) {
     crudas = ["terrestre", "express"]
       .map(servicio => {
         const t = costoPorTabla(destino.zona, servicio, paquete.facturable_kg);
         if (!t) return null;
-        return {
+        return normalizarTarifa({
+          agregador: "tabla",
+          rate_id: null,
+          quotation_id: null,
           paqueteria: "Paquetería nacional",
           servicio: servicio === "terrestre" ? "Terrestre (estándar)" : "Express",
-          costo_centavos: t.centavos,
+          tarifa_centavos: t.centavos,
           dias_min: t.dias[0],
           dias_max: t.dias[1]
-        };
+        });
       })
       .filter(Boolean);
-    fuente = "referencia";
   }
 
-  /* Envío gratis: NO se le regala al cliente el express, solo el más barato.
-     Regalar el servicio caro convierte una promoción en una fuga. */
   const subtotal = Number.isInteger(p.subtotal_centavos) ? p.subtotal_centavos : 0;
   const aplicaGratis = subtotal >= ENVIO_GRATIS_DESDE_CENTAVOS;
-
-  const ordenadas = crudas.slice().sort((a, b) => a.costo_centavos - b.costo_centavos);
-
-  const opciones = ordenadas.map((o, i) => {
-    const gratis = aplicaGratis && i === 0;
-    const cobro = gratis ? 0 : o.costo_centavos;
-    const entrega = ventanaDeEntrega(o.dias_min, o.dias_max);
-    return {
-      paqueteria: o.paqueteria,
-      servicio: o.servicio,
-      costo_centavos: cobro,
-      costo: gratis ? "Gratis" : pesos(cobro),
-      costo_lista: pesos(o.costo_centavos),
-      envio_gratis: gratis,
-      ...entrega,
-      recomendada: i === 0
-    };
-  });
+  const elegida = seleccionarMejorEnvio(crudas, { envio_gratis: aplicaGratis });
+  if (!elegida) {
+    return { ok: false, error: "No hay una tarifa de envío utilizable para ese destino." };
+  }
+  const costoLogistico = elegida.tarifa_centavos + MANIOBRA_CENTAVOS;
+  const cobroCliente = aplicaGratis ? 0 : costoLogistico;
+  /* La promesa visible siempre incluye la preparación propia; nunca usa una
+     fecha absoluta del proveedor ni campos de una tarifa inyectada. */
+  const entrega = ventanaDeEntrega(elegida.dias_min, elegida.dias_max);
+  const opcion = {
+    paqueteria: elegida.paqueteria,
+    servicio: elegida.servicio,
+    costo_centavos: cobroCliente,
+    costo: aplicaGratis ? "Gratis" : pesos(cobroCliente),
+    costo_lista: pesos(costoLogistico),
+    envio_gratis: aplicaGratis,
+    ...entrega,
+    recomendada: true
+  };
+  const opciones = [opcion];
+  const fuente = elegida.fuente;
 
   const falta = aplicaGratis ? 0 : ENVIO_GRATIS_DESDE_CENTAVOS - subtotal;
 
@@ -645,27 +982,80 @@ async function cotizarEnvio(p = {}) {
        cuando el número salió de la tabla y no de una paquetería. */
     resumen:
       opciones.length
-        ? `${opciones[0].servicio} a ${destino.estado} (CP ${destino.cp}): ` +
-          `${opciones[0].costo}. ${opciones[0].texto}.` +
+        ? `Envío recomendado con ${opcion.paqueteria}, ${opcion.servicio}, ` +
+          `a ${destino.estado} (CP ${destino.cp}): ${opcion.costo}. ${opcion.texto}.` +
           (fuente === "referencia"
             ? " Tarifa de referencia; la guía definitiva se confirma al generar el envío."
-            : ` Cotización en vivo vía ${fuente}.`)
+            : ` Cotización en vivo vía ${fuente}; es el precio total de envío de Valquiria.`)
         : "No hay servicio disponible a ese código postal.",
     aviso_para_el_asesor:
       fuente === "referencia"
         ? "ESTIMACIÓN de tabla interna, NO cotización de paquetería. Preséntala " +
           "siempre como estimado y aclara que la guía definitiva se confirma al " +
           "generar el envío."
-        : `Cotización real de ${fuente}. Puedes darla como firme para hoy; ` +
-          `las tarifas de paquetería cambian sin aviso.`
+        : `Cotización real obtenida vía ${fuente}. El importe mostrado es el ` +
+          `precio total de envío de Valquiria; no lo atribuyas como cobro directo ` +
+          `de la paquetería. Las tarifas cambian sin aviso.`,
+    /* Este bloque nunca sale por /api/envio ni llega al LLM. Permite operar,
+       auditar margen y reutilizar exactamente la tasa elegida en checkout. */
+    logistica: {
+      agregador: elegida.agregador,
+      fuente: elegida.fuente,
+      rate_id: elegida.rate_id,
+      quotation_id: elegida.quotation_id,
+      paqueteria: elegida.paqueteria,
+      servicio: elegida.servicio,
+      transportista_centavos: elegida.tarifa_centavos,
+      manejo_interno_centavos: MANIOBRA_CENTAVOS,
+      costo_logistico_centavos: costoLogistico,
+      cobrado_cliente_centavos: cobroCliente,
+      dias_min: elegida.dias_min,
+      dias_max: elegida.dias_max,
+      entrega_desde: entrega.entrega_desde,
+      entrega_hasta: entrega.entrega_hasta,
+      proveedores_consultados: consulta.consultados,
+      proveedores_fallidos: consulta.fallidos
+    }
+  };
+}
+
+/** Contrato deliberadamente estrecho para navegador y LLM. */
+function respuestaPublicaEnvio(cotizacion) {
+  if (!cotizacion || cotizacion.ok !== true) return cotizacion;
+  return {
+    ok: true,
+    fuente: cotizacion.fuente,
+    es_estimacion: cotizacion.es_estimacion,
+    origen: cotizacion.origen,
+    destino: cotizacion.destino,
+    envio_gratis_desde: cotizacion.envio_gratis_desde,
+    falta_para_envio_gratis: cotizacion.falta_para_envio_gratis,
+    falta_para_envio_gratis_centavos: cotizacion.falta_para_envio_gratis_centavos,
+    opciones: cotizacion.opciones.map(o => ({
+      paqueteria: o.paqueteria,
+      servicio: o.servicio,
+      costo_centavos: o.costo_centavos,
+      costo: o.costo,
+      costo_lista: o.costo_lista,
+      envio_gratis: o.envio_gratis,
+      dias_preparacion: o.dias_preparacion,
+      dias_transito: o.dias_transito,
+      sale_de_taller: o.sale_de_taller,
+      entrega_desde: o.entrega_desde,
+      entrega_hasta: o.entrega_hasta,
+      texto: o.texto,
+      recomendada: o.recomendada
+    })),
+    resumen: cotizacion.resumen,
+    aviso_para_el_asesor: cotizacion.aviso_para_el_asesor
   };
 }
 
 /** Estado del módulo, para /health y para la auditoría de arranque. */
 function estadoEnvios() {
   const vivo =
-    (PROVEEDOR === "envia" && !!process.env.ENVIA_API_KEY) ||
-    (PROVEEDOR === "skydropx" && !!process.env.SKYDROPX_API_KEY);
+    ((PROVEEDOR === "envia" || PROVEEDOR === "auto") && !!process.env.ENVIA_API_KEY) ||
+    ((PROVEEDOR === "skydropx" || PROVEEDOR === "auto") && !!process.env.SKYDROPX_API_KEY);
   /* Se avisa con seis meses de margen, que es tiempo de sobra para añadir el
      año siguiente sin prisas. */
   const margen = new Date(Date.now() + 180 * 86400_000).toISOString().slice(0, 10);
@@ -677,12 +1067,22 @@ function estadoEnvios() {
     cp_origen: CP_ORIGEN,
     dias_preparacion: DIAS_PREPARACION,
     hora_corte: HORA_CORTE,
-    envio_gratis_desde: pesos(ENVIO_GRATIS_DESDE_CENTAVOS)
+    envio_gratis_desde: pesos(ENVIO_GRATIS_DESDE_CENTAVOS),
+    proveedores_configurados: [
+      process.env.ENVIA_API_KEY ? "envia" : null,
+      process.env.SKYDROPX_API_KEY ? "skydropx" : null
+    ].filter(Boolean)
   };
 }
 
 module.exports = {
   cotizarEnvio,
+  respuestaPublicaEnvio,
+  seleccionarMejorEnvio,
+  normalizarTarifasEnvia,
+  normalizarTarifasSkydropx,
+  cotizarConEnvia,
+  cotizarConSkydropx,
   estadoEnvios,
   FERIADOS_HASTA,
   // Exportados para pruebas y para reutilizar desde el carrito:

@@ -204,14 +204,10 @@ test("más lejos nunca cuesta menos", () => {
 console.log("\n[ENVÍOS] Cotización completa");
 // ══════════════════════════════════════════════════════════════════════
 
-await testAsync("cotiza con opciones ordenadas de más barata a más cara", async () => {
+await testAsync("expone una sola opción recomendada por la política", async () => {
   const r = await envios.cotizarEnvio({ cp_destino: "64000", lineas: [{ sku: "ValEnd", cantidad: 1 }] });
   assert.ok(r.ok);
-  assert.ok(r.opciones.length >= 2);
-  for (let i = 1; i < r.opciones.length; i++) {
-    assert.ok(r.opciones[i].costo_centavos >= r.opciones[i - 1].costo_centavos,
-      "las opciones no vienen ordenadas por precio");
-  }
+  assert.strictEqual(r.opciones.length, 1);
   assert.strictEqual(r.opciones[0].recomendada, true);
 });
 
@@ -221,17 +217,18 @@ await testAsync("un CP inválido devuelve error legible, no una excepción", asy
   assert.ok(/código postal/i.test(r.error));
 });
 
-await testAsync("el envío gratis se aplica SOLO al servicio más barato", async () => {
+await testAsync("el envío gratis conserva internamente el costo logístico", async () => {
   const r = await envios.cotizarEnvio({
     cp_destino: "64000",
     lineas: [{ sku: "DientesRealistas", cantidad: 2 }],
     subtotal_centavos: 201422
   });
-  assert.strictEqual(r.opciones[0].envio_gratis, true, "el estándar debería ir gratis");
+  assert.strictEqual(r.opciones[0].envio_gratis, true);
   assert.strictEqual(r.opciones[0].costo_centavos, 0);
-  /* Regalar el express convierte una promoción en una fuga. */
-  assert.strictEqual(r.opciones[1].envio_gratis, false, "el express NO debe regalarse");
-  assert.ok(r.opciones[1].costo_centavos > 0);
+  assert.ok(r.logistica.transportista_centavos > 0);
+  assert.strictEqual(r.logistica.manejo_interno_centavos, 3500);
+  assert.ok(r.logistica.costo_logistico_centavos > r.logistica.transportista_centavos);
+  assert.strictEqual(r.logistica.cobrado_cliente_centavos, 0);
 });
 
 await testAsync("por debajo del umbral se dice cuánto falta para el envío gratis", async () => {
@@ -240,7 +237,7 @@ await testAsync("por debajo del umbral se dice cuánto falta para el envío grat
     lineas: [{ sku: "ValEnd", cantidad: 1 }],
     subtotal_centavos: 40183
   });
-  assert.strictEqual(r.falta_para_envio_gratis_centavos, 99900 - 40183);
+  assert.strictEqual(r.falta_para_envio_gratis_centavos, 100000 - 40183);
 });
 
 await testAsync("sin paquetería conectada se declara que es estimación", async () => {
@@ -411,7 +408,9 @@ await testAsync("cotizar_envio usa el carrito real para el peso", async () => {
   const grande = await ejecutarHerramienta(
     { name: "cotizar_envio", args: { cp_destino: "64000" } },
     { carrito: [{ sku: "DientesRealistas", cantidad: 8 }] });
-  assert.ok(grande.paquete.facturable_kg > chico.paquete.facturable_kg);
+  const aCentavos = v => Math.round(Number(String(v).replace(/[^0-9.]/g, "")) * 100);
+  assert.ok(aCentavos(grande.opciones[0].costo_lista) > aCentavos(chico.opciones[0].costo_lista),
+    "un pedido pesado debe conservar un precio público mayor aunque sea gratis");
 });
 
 await testAsync("el envío gratis se decide con el catálogo, no con lo que diga el cliente", async () => {
@@ -848,9 +847,11 @@ test("el umbral de envío gratis es el mismo en los CINCO lugares donde vive", (
      los otros, `npm test` lo dice antes de que un cliente vea dos promesas
      distintas en la misma pantalla. */
   const fs = require("fs");
-  const enElMotor = parseInt(process.env.ENVIO_GRATIS_DESDE_CENTAVOS || "99900", 10);
-  const enPesos = (enElMotor / 100).toFixed(2);          // "999.00"
-  const enPesosCorto = String(Math.round(enElMotor / 100)); // "999"
+  const enElMotor = parseInt(process.env.ENVIO_GRATIS_DESDE_CENTAVOS || "100000", 10);
+  const enPesos = (enElMotor / 100).toLocaleString("en-US", {
+    minimumFractionDigits: 2, maximumFractionDigits: 2
+  });                                                     // "1,000.00"
+  const enPesosCorto = Math.round(enElMotor / 100).toLocaleString("en-US"); // "1,000"
 
   const app = fs.readFileSync("assets/js/app.js", "utf8");
   const m = app.match(/envioGratisDesde:\s*(\d+)/);

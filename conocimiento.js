@@ -47,11 +47,11 @@ const EMPRESA = {
   ],
   comercial: {
     moneda: "MXN (pesos mexicanos)",
-    envio_gratis_desde: "$999.00 MXN",
+    envio_gratis_desde: "$1,000.00 MXN",
     envio:
       "Se cotiza por código postal con la herramienta cotizar_envio: da costo, " +
-      "paquetería y fecha estimada de entrega. Envío gratis a partir de $999 " +
-      "en el servicio estándar.",
+      "paquetería y fecha estimada de entrega. Envío gratis a partir de $1,000 " +
+      "con la opción recomendada por costo y tiempo.",
     venta_en_linea: "Valquiria Dental (catálogo con pago en línea)",
     con_cotizacion_automatica:
       "Dental (precio firme), 3D (estimación por peso/hora), Pack (rango por " +

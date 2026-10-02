@@ -270,6 +270,12 @@ async function correrPruebas() {
       body: JSON.stringify({ cp_destino: "03330", items: [{ sku: "ValEnd", cantidad: 1 }] })
     });
     afirmar(envio.status === 200 && envio.cuerpo.ok, "no se pudo cotizar el envío");
+    afirmar(envio.cuerpo.opciones.length === 1, "la API pública expuso más de una opción");
+    const jsonPublico = JSON.stringify(envio.cuerpo);
+    for (const campo of ["logistica", "manejo_interno", "transportista_centavos",
+      "costo_logistico", "rate_id", "quotation_id"]) {
+      afirmar(!jsonPublico.includes(campo), `/api/envio filtró ${campo}`);
+    }
     const recomendada = envio.cuerpo.opciones.find(o => o.recomendada);
     afirmar(recomendada, "la cotización no trae opción recomendada");
 
@@ -296,6 +302,15 @@ async function correrPruebas() {
     );
     afirmar(enMP === pago.cuerpo.desglose.total_centavos,
       `la preferencia cobra ${enMP} y la página enseña ${pago.cuerpo.desglose.total_centavos}`);
+
+    const panel = await pedir("/api/admin/resumen", {
+      headers: { "X-Leads-Token": TOKEN_PANEL }
+    });
+    const orden = panel.cuerpo.pedidos.find(p => p.folio === pago.cuerpo.folio);
+    afirmar(orden?.logistica?.manejo_interno_centavos === 3500,
+      "el dashboard no conservó la maniobra interna");
+    afirmar(orden.logistica.costo_logistico_centavos === recomendada.costo_centavos,
+      "la telemetría interna no coincide con lo cobrado");
 
     folioBueno = pago.cuerpo.folio;
     totalPreferencia = pago.cuerpo.desglose.total_centavos;

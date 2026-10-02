@@ -32,7 +32,7 @@ const { consultarConocimiento, normalizarClave, DIVISIONES } = require("./conoci
 const { estimarImpresion3D } = require("./impresion3d.js");
 const { resolverSku } = require("./resolver-productos.js");
 const { getProductoPorSku } = require("./catalog.js");
-const { cotizarEnvio } = require("./envios.js");
+const { cotizarEnvio, respuestaPublicaEnvio } = require("./envios.js");
 const { estimarTermoformado } = require("./termoformado.js");
 const crypto = require("crypto");
 
@@ -1055,12 +1055,13 @@ async function ejecutarHerramienta({ name, args }, ctx = {}) {
            se cobraría sobre un pedido imaginario. */
         const usarCarrito = args?.usar_carrito !== false;
         const lineas = usarCarrito ? (ctx.carrito || []) : [];
-        return await cotizarEnvio({
+        const cotizacion = await cotizarEnvio({
           cp_destino: args?.cp_destino,
           lineas,
           peso_kg: args?.peso_kg,
           subtotal_centavos: usarCarrito ? subtotalDelCarrito(ctx.carrito) : 0
         });
+        return respuestaPublicaEnvio(cotizacion);
       }
 
       case "registrar_interes":

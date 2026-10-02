@@ -298,6 +298,11 @@ const REDACCION = {
     (e.direccion ? `Envío a: ${esc(e.direccion)}${e.cp ? ` (CP ${esc(e.cp)})` : ""}\n` : "") +
     (e.items ? `Pedido: ${esc(e.items)}\n` : "") +
     (e.envio ? `Paquetería: ${esc(e.envio)}\n` : "") +
+    (e.logistica ?
+      `Costo logístico: ${pesos(e.logistica.costo_logistico_centavos)} ` +
+      `(transportista ${pesos(e.logistica.transportista_centavos)} + operación ` +
+      `${pesos(e.logistica.manejo_interno_centavos)}; cliente ` +
+      `${pesos(e.logistica.cobrado_cliente_centavos)})\n` : "") +
     `Método: ${esc(e.metodo || "Mercado Pago")}\n` +
     (e.reserva_caducada
       ? `⚠️ La reserva de stock ya había caducado cuando entró el pago. ` +

@@ -46,7 +46,7 @@ const CFG = {
      antes de que responda el backend.
      Si cambias ENVIO_GRATIS_DESDE_CENTAVOS en Render, cambia también esta
      línea — hay una prueba (`npm test`) que falla si se desincronizan. */
-  envioGratisDesde: 99900,   // centavos
+  envioGratisDesde: 100000,  // centavos
   costoEnvio: 15000,         // centavos
   /* Debe coincidir con PRECIOS_LLEVAN_IVA / IVA_TASA del servidor. Es una
      afirmación fiscal: si el régimen no traslada IVA, pon ivaIncluido:false. */
@@ -353,7 +353,11 @@ async function cotizarEnvio(cp) {
   try {
     const r = await fetch(CFG.backend + '/api/envio', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ cp_destino: String(cp), items: Carrito.lista() }),
+      body: JSON.stringify({
+        cp_destino: String(cp),
+        items: Carrito.lista(),
+        direccion_destino: Comprador.datos.direccion || undefined
+      }),
       signal: ctrl.signal
     });
     const d = await r.json();
@@ -679,7 +683,8 @@ function montarCalculadorEnvio() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           cp_destino: cp,
-          items: Carrito.totales().lineas.map(l => ({ sku: l.p.sku, cantidad: l.cantidad }))
+          items: Carrito.totales().lineas.map(l => ({ sku: l.p.sku, cantidad: l.cantidad })),
+          direccion_destino: Comprador.datos.direccion || undefined
         })
       });
       const d = await r.json();
@@ -694,7 +699,7 @@ function montarCalculadorEnvio() {
         d.opciones.map(o => `
           <div class="env-op${o.recomendada ? ' rec' : ''}">
             <div class="env-op-l">
-              <b>${esc(o.servicio)}</b>
+              <b>${esc(o.paqueteria)} · ${esc(o.servicio)}</b>
               <span>${esc(o.texto)}</span>
             </div>
             <span class="env-op-p">${esc(o.costo)}</span>
@@ -702,11 +707,11 @@ function montarCalculadorEnvio() {
         /* Si el número es de la tabla interna y no de una paquetería, se dice.
            Prometer una tarifa que luego cambia cuesta más que no darla. */
         (d.es_estimacion
-          ? '<p class="env-nota">Tarifas estimadas. La guía definitiva se confirma al preparar tu envío.</p>'
-          : `<p class="env-nota">Cotización en vivo vía ${esc(d.fuente)}.</p>`);
+          ? '<p class="env-nota">Precio total estimado de envío de Valquiria. La guía definitiva se confirma al prepararlo.</p>'
+          : `<p class="env-nota">Precio total de envío de Valquiria, cotizado vía ${esc(d.fuente)}.</p>`);
 
-      /* El total del carrito se actualiza con la opción recomendada, que es
-         la más barata. Enseñar un total que ignora el envío ya calculado es
+      /* El total del carrito se actualiza con la opción recomendada por la
+         política determinista. Enseñar un total que ignora el envío ya calculado es
          la forma más rápida de que alguien abandone en el checkout. */
       const rec = d.opciones.find(o => o.recomendada);
       if (rec) {

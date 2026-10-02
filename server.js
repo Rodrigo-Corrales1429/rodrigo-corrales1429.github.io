@@ -52,10 +52,11 @@ const {
   consultarPago,
   sanearComprador,
   contactoEnUnaLinea,
+  limpiarTexto,
   VIGENCIA_MIN
 } = require("./pagos.js");
 const { hacerLugar } = require("./pedidos-retencion.js");
-const { estadoEnvios, cotizarEnvio, ubicar } = require("./envios.js");
+const { estadoEnvios, cotizarEnvio, respuestaPublicaEnvio, ubicar } = require("./envios.js");
 const avisos = require("./notificaciones.js");
 const inventario = require("./inventario.js");
 const almacen = require("./almacen.js");
@@ -1426,6 +1427,7 @@ app.post("/api/pago", limitarPagos, async (req, res) => {
        mismo motor y su resultado es lo que se cobra. */
     const envioReal = await cotizarEnvio({
       cp_destino: comprador.datos.cp,
+      direccion_destino: comprador.datos.direccion,
       lineas: cot.lineas.map(l => ({ sku: l.sku, cantidad: l.cantidad })),
       subtotal_centavos: cot._raw.subtotal_centavos
     });
@@ -1560,8 +1562,9 @@ app.post("/api/pago", limitarPagos, async (req, res) => {
       total: centavosAPesos(totalCentavos),
       total_centavos: totalCentavos,
       envio_centavos: envioCentavos,
-      envio: `${opcionEnvio.servicio} · ${opcionEnvio.costo}` +
+      envio: `${opcionEnvio.paqueteria} · ${opcionEnvio.servicio} · ${opcionEnvio.costo}` +
              (opcionEnvio.texto ? ` · ${opcionEnvio.texto}` : ""),
+      logistica: envioReal.logistica,
       items: cot.lineas.map(l => ({
         sku: l.sku, cantidad: l.cantidad, titulo: l.titulo || l.nombre || l.sku
       })),
@@ -1583,7 +1586,8 @@ app.post("/api/pago", limitarPagos, async (req, res) => {
          ser un número de WhatsApp al que se le puede escribir. */
       comprador: contactoEnUnaLinea(comprador.datos),
       whatsapp: comprador.datos.whatsapp,
-      cp: comprador.datos.cp
+      cp: comprador.datos.cp,
+      logistica: envioReal.logistica
     });
 
     console.log(
@@ -1613,12 +1617,14 @@ app.post("/api/pago", limitarPagos, async (req, res) => {
         total_centavos: totalCentavos,
         envio: {
           cp: envioReal.destino.cp,
+          paqueteria: opcionEnvio.paqueteria,
           servicio: opcionEnvio.servicio,
           costo: opcionEnvio.costo,
           costo_centavos: envioCentavos,
           gratis: !!opcionEnvio.envio_gratis,
           texto: opcionEnvio.texto || "",
-          es_estimacion: !!envioReal.es_estimacion
+          es_estimacion: !!envioReal.es_estimacion,
+          fuente: envioReal.fuente
         }
       },
       /* El link de sandbox solo aparece con credenciales de prueba; sirve
@@ -1937,7 +1943,9 @@ app.post("/api/pago/webhook", async (req, res) => {
         metodo: pago.payment_type_id,
         email: quien?.email || pago.payer?.email || null,
         comprador: quien,
-        items: guardado.items || []
+        items: guardado.items || [],
+        envio: guardado.envio || null,
+        logistica: guardado.logistica || null
       });
       /* ESTE es el aviso que evita que "solo caiga dinero": suena el teléfono
          con el folio, el importe, qué hay que empacar y A QUIÉN. */
@@ -1951,6 +1959,7 @@ app.post("/api/pago/webhook", async (req, res) => {
         cp: quien?.cp || null,
         items: descripcionItems,
         envio: guardado.envio || null,
+        logistica: guardado.logistica || null,
         metodo: `${pago.payment_type_id || "—"}/${pago.payment_method_id || "—"}`,
         reserva_caducada: reservaCaducada,
         pago_id: pago.id
@@ -2085,10 +2094,11 @@ app.post("/api/envio", limitarPulso, async (req, res) => {
 
     const cot = await cotizarEnvio({
       cp_destino: req.body?.cp_destino,
+      direccion_destino: limpiarTexto(req.body?.direccion_destino, 180),
       lineas,
       subtotal_centavos: subtotal
     });
-    return res.status(cot.ok ? 200 : 400).json(cot);
+    return res.status(cot.ok ? 200 : 400).json(respuestaPublicaEnvio(cot));
   } catch (e) {
     console.error("[/api/envio] fallo de cotización");
     return res.status(500).json({
@@ -2324,6 +2334,8 @@ app.get("/api/admin/resumen", limitarAdmin, (req, res) => {
       email: p.email || null,
       metodo: p.metodo || null,
       items: p.items || [],
+      envio: p.envio || null,
+      logistica: p.logistica || null,
       destino: p.comprador ? {
         cp: p.comprador.cp || null,
         estado: (p.comprador.cp && ubicar(p.comprador.cp)?.estado) || null,

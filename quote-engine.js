@@ -42,7 +42,7 @@ function ivaContenido(centavosConIva) {
 }
 
 const ENVIO_GRATIS_DESDE_CENTAVOS = parseInt(
-  process.env.ENVIO_GRATIS_DESDE_CENTAVOS || "99900",  // $999.00 MXN
+  process.env.ENVIO_GRATIS_DESDE_CENTAVOS || "100000", // $1,000.00 MXN
   10
 );
 const COSTO_ENVIO_CENTAVOS = parseInt(

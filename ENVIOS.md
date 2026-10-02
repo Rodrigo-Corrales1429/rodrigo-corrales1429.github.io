@@ -1,4 +1,4 @@
-# ENVÍOS — costo, paquetería y fecha de entrega
+# ENVÍOS — Shipping Brain V1
 
 ## Qué cambió
 
@@ -12,9 +12,10 @@ Ahora, con un código postal:
 - el **Asesor** contesta "¿cuándo me llega?" con una fecha real;
 - las dos cosas usan **el mismo motor**, así que nunca se contradicen.
 
-Funciona **desde hoy y sin cuenta de paquetería**, con tarifas de referencia.
-Conectar una paquetería real cambia los números por cotizaciones en vivo sin
-tocar código.
+Funciona sin cuenta de paquetería con tarifas de referencia. Con
+`ENVIOS_PROVEEDOR=auto`, consulta en paralelo Envia y Skydropx cuando sus
+credenciales existen, aísla la caída de uno y usa la tabla sólo si ninguno
+devuelve una tarifa utilizable.
 
 ---
 
@@ -47,34 +48,37 @@ reclamación esperando a ocurrir.
   hábil. Nadie recoge a las 11 de la noche.
 - **Día de taller**: suma 1 día hábil de preparación antes del tránsito, y lo
   muestra por separado.
-- **Envío gratis** desde $999 — pero solo en el servicio más barato. Regalar el
-  express convierte una promoción en una fuga.
+- **Envío gratis** desde $1,000.00. La tienda sigue eligiendo una opción real
+  y conserva su costo logístico, aunque el cliente pague $0.
+- **Una recomendación**: el cliente no recibe una lista confusa. Una política
+  determinista equilibra costo y tránsito.
 
 ---
 
 ## 2. Conectar una paquetería real
 
-### Opción recomendada: Envia.com
+### Modo recomendado: ambos agregadores
 
-Una sola cuenta cotiza Estafeta, DHL, FedEx, Redpack y Paquetexpress a la vez,
-y el cliente elige. Es lo que más conviene cuando todavía no tienes volumen
-para negociar contrato directo con una.
+Envia puede cotizar Estafeta, DHL, FedEx, Redpack y Paquetexpress. Skydropx
+aporta un segundo mercado de tarifas. Shipping Brain combina los resultados y
+elige; ni Gemini ni el navegador participan en esa decisión.
 
 1. Regístrate en <https://envia.com> y verifica la cuenta.
 2. Panel → **Configuración → API** → genera tu API key.
 3. En Render → Environment:
 
 ```
-ENVIOS_PROVEEDOR=envia
+ENVIOS_PROVEEDOR=auto
 ENVIA_API_KEY=tu_api_key
-```
-
-### Alternativa: Skydropx
-
-```
-ENVIOS_PROVEEDOR=skydropx
 SKYDROPX_API_KEY=tu_api_key
+SKYDROPX_ORIGEN_TEMPLATE_ID=id_de_la_direccion_de_origen
 ```
+
+Skydropx crea una **cotización**, recupera sus tarifas progresivas hasta
+`is_completed` y conserva `quotation_id`/`rate_id`. Shipping Brain V1 no crea
+embarques, no compra etiquetas y no genera rastreo. La dirección de origen
+debe existir como plantilla de Skydropx o declararse con municipio y colonia;
+la dirección de destino proviene de los datos validados del checkout.
 
 ### Qué pasa al encenderlo
 
@@ -93,7 +97,10 @@ caído es un checkout que pierde ventas por algo que no controlas.
 | `ENVIOS_CP_ORIGEN` | `42000` | De dónde salen las cajas. |
 | `ENVIOS_DIAS_PREPARACION` | `1` | Días hábiles de taller antes de despachar. |
 | `ENVIOS_HORA_CORTE` | `14` | Después de esta hora, sale al día siguiente. |
-| `ENVIO_GRATIS_DESDE_CENTAVOS` | `99900` | Umbral de envío gratis ($999). |
+| `ENVIO_GRATIS_DESDE_CENTAVOS` | `100000` | Umbral de envío gratis ($1,000). |
+| `ENVIOS_MANIOBRA_CENTAVOS` | `3500` | Operación interna incluida en el precio de envío pagado. |
+| `ENVIOS_PREMIO_RAPIDEZ_CENTAVOS` | `6000` | Diferencia máxima para preferir la opción más rápida. |
+| `ENVIOS_UPGRADE_GRATIS_CENTAVOS` | `4000` | Diferencia máxima para subir a entrega de un día en envío gratis. |
 | `ENVIOS_DIVISOR_VOLUMETRICO` | `6000` | 6000 terrestre, 5000 aéreo. |
 | `ENVIOS_PESOS_JSON` | — | Peso real por SKU en gramos. |
 | `ENVIOS_TARIFAS_JSON` | — | Reemplaza tarifas por zona. |
@@ -133,6 +140,16 @@ En el sitio: mete algo al carrito, ábrelo, escribe tu código postal y pulsa
 
 Los dos números deben coincidir. Si no coinciden, algo se rompió — son el mismo
 código.
+
+### Política de selección
+
+- En envío pagado, se compara la tarifa más barata con la más rápida. La
+  rápida gana si queda dentro del premio configurado; si no, se prefiere la
+  más barata cuyo tránsito máximo sea de tres días.
+- En envío gratis, se toma la alternativa más barata de hasta tres días y se
+  permite subir a un día sólo dentro del margen configurado.
+- El costo interno guarda transportista + maniobra. Al público sólo sale el
+  total de envío de Valquiria, nunca el desglose operativo.
 
 ---
 
