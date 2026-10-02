@@ -7,6 +7,8 @@
     "start": "node server.js",
     "test": "node test-quote-engine.js && node test-tools-dispatcher.js && node test-verifier-asesor.js && node test-impresion3d.js && node test-carrito.js && node test-phase-1-5.js && node test-envios-avisos.js && node test-shipping-brain.js && node test-asesor-mostrador.js && node --no-warnings test-blindaje-pago.js && node test-hardening.js && node --no-warnings test-seguridad.js",
     "test:carrito": "node test-carrito.js",
+    "test:e2e": "playwright test",
+    "test:e2e:install": "playwright install chromium",
     "test:engine": "node test-quote-engine.js",
     "test:tools": "node test-tools-dispatcher.js",
     "test:verifier": "node test-verifier-asesor.js",
@@ -42,5 +44,8 @@
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
     "pg": "^8.23.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0"
   }
 }

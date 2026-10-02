@@ -791,7 +791,8 @@ test("los documentos internos NO se publican en el sitio", () => {
     .split("\n").filter(f => f && !f.includes("/"));
   const deben = versionados
     .concat(["server.js", "conocimiento.js", "quote-engine.js", "productos.json",
-             "envios.js", "notificaciones.js", "pagos.js", ".env.example", "docs"]);
+             "envios.js", "notificaciones.js", "pagos.js", ".env.example", "docs",
+             "e2e", "playwright.config.js", "test-results", "playwright-report"]);
 
   const faltan = deben.filter(f => !cfg.includes(`- ${f}`));
   assert.strictEqual(faltan.length, 0,

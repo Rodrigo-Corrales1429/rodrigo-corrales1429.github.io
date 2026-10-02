@@ -968,6 +968,28 @@ function guardarAntesDeSaltar(datos) {
   Memoria.escribir(PAGO_EN_CURSO, { ...datos, cuando: Date.now() });
 }
 
+/* Snapshot común para Asesor y checkout: sólo SKU/cantidad, copia separada
+   y orden determinista. Un carrito vacío también es un snapshot válido. */
+function snapshotCarrito(items) {
+  if (!Array.isArray(items) || !items.every(it => it && typeof it.sku === 'string' &&
+      Number.isInteger(it.cantidad) && it.cantidad > 0)) return null;
+  return items.map(({ sku, cantidad }) => ({ sku, cantidad }))
+    .sort((a, b) => a.sku < b.sku ? -1 : a.sku > b.sku ? 1 : 0);
+}
+
+function carritoCoincideConSnapshot(items) {
+  const enviado = snapshotCarrito(items);
+  const actual = snapshotCarrito(Carrito.lista());
+  return enviado !== null && actual !== null && enviado.length === actual.length &&
+    enviado.every((it, i) => it.sku === actual[i].sku && it.cantidad === actual[i].cantidad);
+}
+
+/* Un enlace generado pertenece a las líneas enviadas a /api/pago.
+   A diferencia del Asesor, un enlace nunca corresponde a un carrito vacío. */
+function carritoCoincideConPago(items) {
+  return Array.isArray(items) && items.length > 0 && carritoCoincideConSnapshot(items);
+}
+
 /**
  * Guarda el desglose que devolvió el servidor y responde si el total que el
  * cliente tenía delante cambió. Devolver `null` significa «lo que se enseñaba
@@ -999,7 +1021,11 @@ function adoptarDesgloseDelServidor(d) {
   };
 }
 
+// Compartida por TODOS los botones; desactivar sólo uno permite dos POST.
+let pagoEnVuelo = false;
+
 async function irAPagar(boton) {
+  if (pagoEnVuelo) return;
   const t = Carrito.totales();
   if (!t.lineas.length) return;
 
@@ -1017,21 +1043,27 @@ async function irAPagar(boton) {
   }
 
   const original = boton ? boton.innerHTML : '';
-  if (boton) { boton.innerHTML = '<span>Generando link…</span>'; boton.disabled = true; }
+  let reloj;
+  pagoEnVuelo = true;
 
   try {
+    if (boton) { boton.innerHTML = '<span>Generando link…</span>'; boton.disabled = true; }
+    const itemsSolicitados = Carrito.lista();
     const ctrl = new AbortController();
-    const reloj = setTimeout(() => ctrl.abort(), CFG.timeoutMs);
+    reloj = setTimeout(() => ctrl.abort(), CFG.timeoutMs);
     const r = await fetch(CFG.backend + '/api/pago', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        items: Carrito.lista(),
+        items: itemsSolicitados,
         comprador: Comprador.paraServidor(),
         visitante: Visitante.id()
       }), signal: ctrl.signal
     });
-    clearTimeout(reloj);
     const data = await r.json();
+
+    // Una mutación mientras la petición estaba en vuelo invalida el enlace.
+    // No se recotiza automáticamente: eso crearía otra reserva/preferencia.
+    if (!carritoCoincideConPago(itemsSolicitados)) throw new Error('El carrito cambió durante el checkout');
 
     /* El servidor dice QUÉ dato le falta. Se convierte en la siguiente
        pregunta del Asesor, no en un error rojo sin salida. */
@@ -1058,7 +1090,7 @@ async function irAPagar(boton) {
        Ahora el desglose del servidor entra al mismo sitio del que sale el que
        se enseña, y si el total cambió se enseña el bueno y se espera un
        segundo toque. El link ya está creado: confirmar no genera otro. */
-    const listo = { url: data.url, folio: data.folio || '', total: data.total || '' };
+    const listo = { url: data.url, folio: data.folio || '', total: data.total || '', items: itemsSolicitados };
     const cambio = adoptarDesgloseDelServidor(data.desglose);
 
     if (cambio) {
@@ -1098,6 +1130,9 @@ async function irAPagar(boton) {
       { tipo:'pago' }
     ]);
     Asesor.recordar();
+  } finally {
+    clearTimeout(reloj);
+    pagoEnVuelo = false;
   }
 }
 
@@ -1378,6 +1413,16 @@ function navegar(primera) {
   rutaViva = clave;
   const R = RUTAS[clave];
 
+  /* `ir` distingue la SPA activa de una entrada histórica que debe ir a SEO.
+     Se sustituye la entrada actual, sin añadir pasos al historial. El hash
+     sigue gobernando la vista; no se tocan los parámetros de retorno de MP. */
+  if (clave !== '/gracias') {
+    const entrada = new URL(location.href);
+    if (clave === '/') entrada.searchParams.delete('ir');
+    else entrada.searchParams.set('ir', clave.slice(1));
+    if (entrada.href !== location.href) history.replaceState(history.state, '', entrada.href);
+  }
+
   $$('.vista').forEach(v => v.classList.toggle('on', v.id === R.vista));
   document.title = R.titulo;
 
@@ -1435,6 +1480,9 @@ function navegar(primera) {
 }
 
 addEventListener('hashchange', () => navegar(false));
+// Las entradas SPA también difieren en query (`ir`): al recorrerlas puede
+// emitirse popstate sin hashchange. Ambos pasan por el mismo router idempotente.
+addEventListener('popstate', () => navegar(false));
 
 /* ── Menú móvil ──────────────────────────────────────────────────────────── */
 function cerrarMenu() {
@@ -1857,6 +1905,12 @@ const Asesor = {
            el total corregido. */
         const listo = (lista.find(x => x.tipo === 'pago_listo') || {}).pago;
         if (!listo || !esLinkDeMercadoPago(listo.url)) return;
+        if (!carritoCoincideConPago(listo.items)) {
+          b.disabled = true;
+          this.decir('Tu carrito cambió. Este enlace de pago ya no corresponde al pedido actual.');
+          this.trasCarrito();
+          return;
+        }
         b.disabled = true;
         guardarAntesDeSaltar({ folio: listo.folio, total: listo.total, items: Carrito.lista() });
         location.href = listo.url;
@@ -2031,6 +2085,9 @@ const Asesor = {
 
     let data = null;
     let avisoServidor = '';
+    // Se captura antes del primer await: pedirAlServidor serializa el mismo
+    // carrito sin que una edición manual pueda intercalarse entre ambos.
+    const carritoSolicitado = snapshotCarrito(Carrito.lista());
     if (!this.modoLocal) {
       try { data = await this.pedirAlServidor(); }
       catch (e) {
@@ -2055,7 +2112,12 @@ const Asesor = {
         }
       }
     }
-    if (!data) data = await this.responderLocal(texto);
+    if (!carritoCoincideConSnapshot(carritoSolicitado)) {
+      // Descartar TODO el payload derivado antes de texto, mutaciones,
+      // cotización o botones. Tampoco repetir la intención en fallback local.
+      data = { reply: 'Tu carrito cambió mientras respondía; no apliqué ese cambio.', acciones: [] };
+      avisoServidor = '';
+    } else if (!data) data = await this.responderLocal(texto);
     /* Si el servidor explicó por qué no pudo, se dice UNA vez y arriba del
        todo: el visitante merece saber que está hablando con el suplente. */
     if (avisoServidor) data = { ...data, reply: avisoServidor + '\n\n' + data.reply };
@@ -2601,7 +2663,9 @@ function arrancar() {
      le pide. `?asesor=1` abre el Asesor, que es la tienda. */
   const entrada = parametrosVisita();
   const irA = '/' + (entrada.get('ir') || '');
-  if (irA !== '/' && RUTAS[irA]) location.hash = '#' + irA;
+  // En refresh/back/forward el hash válido es más reciente que el punto de
+  // entrada `ir`; éste sólo inicializa una visita sin ruta interactiva.
+  if (!RUTAS[hashPartido().ruta] && irA !== '/' && RUTAS[irA]) location.hash = '#' + irA;
   if (entrada.get('asesor')) Asesor.abrir();
 
   const R = RUTAS[rutaActual()];

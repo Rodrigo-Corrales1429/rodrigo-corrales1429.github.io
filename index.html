@@ -22,7 +22,13 @@
     '#/filosofia': '/#filosofia', '#/contacto': '/#contacto',
     '#/privacidad': '/#privacidad', '#/terminos': '/#terminos'
   };
-  if (limpias[location.hash]) location.replace(limpias[location.hash]);
+  /* `ir` identifica una entrada SPA, aunque el usuario haya cambiado de
+     hash. La SPA lo mantiene al navegar; las URLs SEO directas y los hashes
+     históricos sin esta marca conservan sus destinos canónicos. */
+  var ir = new URLSearchParams(location.search).get('ir');
+  if (limpias[location.hash] && !limpias['#/' + ir]) {
+    location.replace(limpias[location.hash]);
+  }
 })();
 </script>
 
@@ -66,7 +72,7 @@
   base-uri 'self';
   object-src 'none';
   form-action 'self' https://wa.me;
-  script-src 'self' 'wasm-unsafe-eval' blob: 'sha256-mYMyfSVAAaoYPNGdAjyFSBHbLiwA60yeK51WkTWKqaQ=' 'sha256-nZUmrawap3d+zvPZb6NpJTpJe7vRO1hgktlomHw8AME=' 'sha256-QonWuRMXfHaYWzUuNWWKxQzQ+Gv3QgS1/0zkP8qjWHM=' 'sha256-7hcWFuRH46ZK5Prd9T3EEazYTGP1tud+w0zm5l3XAX0=';
+  script-src 'self' 'wasm-unsafe-eval' blob: 'sha256-6eChEzmrQy7MmnROLbTt73lUOlB78N7x5mEkYuABJJM=' 'sha256-nZUmrawap3d+zvPZb6NpJTpJe7vRO1hgktlomHw8AME=' 'sha256-QonWuRMXfHaYWzUuNWWKxQzQ+Gv3QgS1/0zkP8qjWHM=' 'sha256-7hcWFuRH46ZK5Prd9T3EEazYTGP1tud+w0zm5l3XAX0=';
   worker-src 'self' blob:;
   style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
   font-src 'self' https://fonts.gstatic.com;
@@ -1154,7 +1160,7 @@
   <div class="who">Asesor Valquiria</div><p id="toast-msg"></p>
 </div>
 
-<script type="module" src="assets/js/app.js?v=76"></script>
+<script type="module" src="assets/js/app.js?v=78"></script>
 
 <script src="/assets/js/pulso.js?v=74" defer></script>
 </body>

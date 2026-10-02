@@ -69,6 +69,10 @@ exclude:
   - services
 
   # Pruebas
+  - e2e
+  - playwright.config.js
+  - test-results
+  - playwright-report
   - test-quote-engine.js
   - test-tools-dispatcher.js
   - test-impresion3d.js

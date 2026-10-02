@@ -24,6 +24,8 @@ npm-debug.log*
 
 # Salidas locales
 coverage/
+test-results/
+playwright-report/
 *.tgz
 
 # Los .glb que entrega el generador, en la raíz: pesan ~57 MB cada uno y son
