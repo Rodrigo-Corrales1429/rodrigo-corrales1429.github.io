@@ -51,12 +51,12 @@ Este documento es la especificación maestra del Asesor Valquiria para valquiria
 
 La especificación cambia poco; este bloque cambia cada sesión de desarrollo. Actualizarlo es obligatorio al cerrar cualquier sesión de trabajo: unas líneas evitan que el documento envejezca y que nadie sepa qué partes siguen pendientes cuando el código avanza diez commits.
 
-- **Último commit reconciliado:** `feca4cd6`
-- **Fase actual:** 0 — correcciones críticas del Asesor
-- **Último hito cerrado:** PostgreSQL Fase 2B aislada (services/orders, inventory, payments + pruebas de dominio)
-- **Siguiente objetivo:** corregir schema de carrito, fallback contextual y verifier (checklist 2-6)
-- **Bloqueadores conocidos:** endpoints productivos aún no conectados a services/*
-- **Actualizado:** 28-sep-2026
+Último commit reconciliado: 6699473
+Fase actual: 0 — correcciones críticas del Asesor
+Último hito cerrado: Fase 0.2 — verifier mínimo + fallback contextual
+Siguiente objetivo: E2E observable de carrito (badge/drawer/storage) + cierre G-02
+Bloqueadores conocidos: endpoints productivos aún no conectados a services/*
+Actualizado: 29-sep-2026
 
 *Derivado posible a futuro: generar desde este archivo un `VALQUIRIA_CONTEXT_SHORT.md` de 10-15 KB para tareas pequeñas; este documento sigue siendo siempre la fuente canónica completa.*
 
