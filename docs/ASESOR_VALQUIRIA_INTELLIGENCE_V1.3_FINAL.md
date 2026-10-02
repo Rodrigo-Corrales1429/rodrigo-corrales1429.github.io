@@ -51,12 +51,12 @@ Este documento es la especificación maestra del Asesor Valquiria para valquiria
 
 La especificación cambia poco; este bloque cambia cada sesión de desarrollo. Actualizarlo es obligatorio al cerrar cualquier sesión de trabajo: unas líneas evitan que el documento envejezca y que nadie sepa qué partes siguen pendientes cuando el código avanza diez commits.
 
-Último commit reconciliado: 6699473
+Último commit reconciliado: 8eb9b22
 Fase actual: 0 — correcciones críticas del Asesor
-Último hito cerrado: Fase 0.2 — verifier mínimo + fallback contextual
-Siguiente objetivo: E2E observable de carrito (badge/drawer/storage) + cierre G-02
-Bloqueadores conocidos: endpoints productivos aún no conectados a services/*
-Actualizado: 29-sep-2026
+Último hito cerrado: Shipping Brain V1 — multi-provider Envia/Skydropx + política determinista + checkout consistente
+Siguiente objetivo: Fase 0.3 — E2E observable de carrito (badge/drawer/storage/refresh/checkout) + cierre G-02
+Bloqueadores conocidos: endpoints productivos aún no conectados a services/*; proveedores reales de envío aún pendientes de smoke test con credenciales
+Actualizado: 01-oct-2026
 
 *Derivado posible a futuro: generar desde este archivo un `VALQUIRIA_CONTEXT_SHORT.md` de 10-15 KB para tareas pequeñas; este documento sigue siendo siempre la fuente canónica completa.*
 
