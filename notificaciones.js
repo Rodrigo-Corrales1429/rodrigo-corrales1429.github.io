@@ -356,9 +356,15 @@ const REDACCION = {
     (e.folio ? `, folio ${esc(e.folio)}` : ", sin folio") + `.\n` +
     `Motivo: ${esc(e.motivo === "pedido-desconocido" ? "el servidor no conoce ese pedido"
       : e.motivo === "sin-folio" ? "el pago no trae folio de la tienda"
-      : "al pedido le faltan artículos, domicilio o importe")}.\n` +
+      : ({ association: "el pago no se puede asociar a un pedido e intento SQL",
+        currency: "moneda distinta de la esperada", amount: "importe distinto del pedido",
+        account: "cuenta cobradora distinta de la esperada", environment: "entorno de pago distinto del esperado",
+        stock_unavailable: "pago aprobado sin inventario asignable", stock_write_conflict: "pago aprobado sin asignación íntegra",
+        financial_reversal: "reversión financiera; revisar manualmente", association_conflict: "identificador de pago asociado a otro pedido"
+      }[e.motivo] || "al pedido le faltan artículos, domicilio o importe"))}.\n` +
     (e.esperado_centavos != null ? `Importe esperado: ${pesos(e.esperado_centavos)}\n` : "") +
-    `No se descontó inventario ni se emitió aviso de preparación.\n` +
+    (e.motivo === "financial_reversal" ? `No se repuso inventario automáticamente.\n` :
+      `Este evento no descontó inventario ni autoriza preparación.\n`) +
     `👉 Búscalo en Mercado Pago y confirma el pedido con el cliente antes de mover nada.`,
 
   lead: e =>
@@ -653,6 +659,13 @@ async function probar() {
 
 module.exports = {
   avisar,
+  // Sólo el adaptador SQL: la outbox espera el resultado real del canal. No es
+  // autoridad financiera; una entrega fallida conserva el evento para retry.
+  entregarDurable: async evento => {
+    const redactar = REDACCION[evento.tipo];
+    const texto = redactar ? redactar(evento) : "Pedido que requiere revisión operacional.";
+    return repartir({ ...evento, prioridad: "urgente" }, texto);
+  },
   /* Se exporta para poder AFIRMAR en las pruebas qué lleva cada aviso. El
      canal silenciado recorta el texto a 120 caracteres, así que sin esto no
      hay forma de comprobar que el WhatsApp del comprador viaja en el aviso

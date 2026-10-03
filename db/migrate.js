@@ -56,11 +56,16 @@ async function migrate(pool, directory = DEFAULT_DIRECTORY) {
 }
 
 if (require.main === module) {
-  const pool = createPool();
-  migrate(pool)
+  let pool;
+  Promise.resolve().then(async () => {
+    const { testDatabaseUrl, assertDisposableTestDatabase } = require("./test-target");
+    pool = createPool(process.env.NODE_ENV === "test" ? { url: testDatabaseUrl() } : {});
+    if (process.env.NODE_ENV === "test") await assertDisposableTestDatabase(pool);
+    return migrate(pool);
+  })
     .then(result => process.stdout.write(`Migraciones aplicadas: ${result.applied}; verificadas: ${result.total}\n`))
     .catch(() => { process.stderr.write("Migración fallida; comprueba el esquema y la configuración de PostgreSQL.\n"); process.exitCode = 1; })
-    .finally(() => pool.end());
+    .finally(() => pool?.end());
 }
 
 module.exports = { migrate };

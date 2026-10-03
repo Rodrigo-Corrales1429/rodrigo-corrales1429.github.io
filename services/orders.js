@@ -45,12 +45,17 @@ function digest(value, key) {
 }
 
 // identity es el dueño de la reserva: el UUID del visitante, nunca la IP (la comparten personas distintas).
-async function prepareCheckout(pool, { quote, identity, hashKey, folio, buyer = {}, idempotencyKey, limits }) {
+async function prepareCheckout(pool, options) {
+  return withTransaction(pool, client => prepareCheckoutTx(client, options));
+}
+
+// Permite al adaptador asociar snapshot/intent en TX1, sin duplicar reservas ni lógica SQL.
+async function prepareCheckoutTx(client, { quote, identity, hashKey, folio, buyer = {}, idempotencyKey, limits, reuseActive = false }) {
   const priced = validateQuote(quote);
   if (typeof folio !== "string" || folio.length < 3 || folio.length > 120) throw new Error("Folio inválido");
-  const fingerprint = digest(JSON.stringify({ version: 1, folio, priced, buyer }), hashKey);
+  const identityHash = inventory.hashIdentity(identity, hashKey);
+  const fingerprint = digest(JSON.stringify({ version: 2, identityHash, priced, buyer }), hashKey);
   const idempotencyHash = idempotencyKey ? digest(idempotencyKey, hashKey) : null;
-  return withTransaction(pool, async client => {
     await inventory.lockInventory(client);
     if (idempotencyHash) {
       const existing = (await client.query(`SELECT a.id AS attempt_id, a.request_fingerprint, a.provider_key,
@@ -61,6 +66,17 @@ async function prepareCheckout(pool, { quote, identity, hashKey, folio, buyer = 
         return { ok: true, repeated: true, orderId: existing.order_id, attemptId: existing.attempt_id,
           folio: existing.folio, providerKey: existing.provider_key };
       }
+    }
+    if (!idempotencyHash && reuseActive) {
+      const existing = (await client.query(`SELECT a.id AS attempt_id, a.provider_key, o.id AS order_id, o.folio
+        FROM payment_attempts a JOIN orders o ON o.id=a.order_id
+        WHERE a.request_fingerprint=$1 AND a.state<>'failed' AND a.expires_at>clock_timestamp()
+        AND o.payment_state IN ('pending','in_process','authorized')
+        AND EXISTS (SELECT 1 FROM inventory_reservations r WHERE r.order_id=o.id
+          AND r.identity_hash=$2 AND r.state='active')
+        ORDER BY a.created_at DESC LIMIT 1`, [fingerprint, identityHash])).rows[0];
+      if (existing) return { ok: true, repeated: true, orderId: existing.order_id,
+        attemptId: existing.attempt_id, folio: existing.folio, providerKey: existing.provider_key };
     }
     if (await repo.getOrderByFolio(client, folio)) return { ok: false, reason: "folio_conflict" };
     const reservation = await inventory.prepareReservationTx(client, {
@@ -83,7 +99,6 @@ async function prepareCheckout(pool, { quote, identity, hashKey, folio, buyer = 
       updated_at=clock_timestamp() WHERE id=$1`, [orderId]);
     return { ok: true, orderId, attemptId, folio, providerKey,
       expiresAt: reservation.expiresAt, releasedOrderIds: reservation.releasedOrderIds };
-  });
 }
 
 async function getOrder(pool, folio) {
@@ -95,4 +110,4 @@ async function getOrder(pool, folio) {
   });
 }
 
-module.exports = { prepareCheckout, getOrder };
+module.exports = { prepareCheckout, prepareCheckoutTx, getOrder };

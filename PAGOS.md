@@ -73,7 +73,7 @@ el repositorio ni en los logs.
 | `BACKEND_URL` | La URL pública del backend | Solo si Render no la publica sola |
 | `MP_MAX_CUOTAS` | Tope de mensualidades, por defecto `12` | No |
 | `MP_EXCLUIR_TIPOS` | Medios a apagar, ej. `ticket` para quitar efectivo | No |
-| `MP_VIGENCIA_MINUTOS` | Cuánto vive un link, por defecto `1440` (24 h) | No |
+| `MP_VIGENCIA_MINUTOS` | Cuánto vive un link, por defecto `60` minutos | No |
 | `PEDIDOS_WEBHOOK_URL` | A dónde avisar de cada pago aprobado | No, pero conviene |
 
 Render publica `RENDER_EXTERNAL_URL` por su cuenta, así que `BACKEND_URL`
@@ -102,10 +102,10 @@ que te entera de que alguien pagó aunque cierre la pestaña al salir del banco.
    aparecer una línea `[webhook] pago ... estado=...`. Si aparece
    `Rechazado por firma`, el secreto no coincide.
 
-El backend hace dos comprobaciones, y la segunda es la importante: valida la
+El backend hace dos comprobaciones obligatorias: valida la
 firma, y **aun así no se cree el estado que viene en el aviso** — vuelve a
-preguntarle a Mercado Pago por ese pago. Una notificación falsificada solo
-consigue que consultemos un pago que no existe.
+preguntarle a Mercado Pago por ese pago. Una notificación sin firma válida se
+rechaza antes de la consulta; sin secreto configurado devuelve 503.
 
 También cuadra el importe: si lo cobrado no coincide con lo que el servidor
 calculó al crear el link, escribe `⚠️ DESCUADRE` en el log y te dice que no
@@ -319,7 +319,9 @@ pago en curso, con el link vencido y pasada la gracia (24 h si nunca llegó
 un aviso de pago, 7 días si llegó alguno). Si no hay lugar así, el checkout
 nuevo responde 503 y manda al comprador a WhatsApp con su carrito intacto;
 suena una alarma de configuración (una cada 15 minutos). Es un arreglo
-temporal: la solución de fondo es PostgreSQL con `payment_events` (Fase 2E).
+temporal del modo legacy. Con `PERSISTENCIA=postgres`, pedidos, reservas, pagos y
+eventos vienen de SQL, no de ese Map. La activación requiere el cutover de
+`docs/POSTGRES_PRODUCTION.md`; no está configurada en producción por este cambio.
 
 Si cambias `SITIO_URL`, la página `/gracias/` tiene que existir en el dominio
 nuevo o el comprador vuelve a un 404 justo después de pagarte.

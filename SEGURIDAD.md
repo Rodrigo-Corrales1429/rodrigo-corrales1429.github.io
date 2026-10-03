@@ -192,9 +192,11 @@ degradado en silencio.
 
 1. **Cloudflare delante del dominio.** Cierra clickjacking, da rate limiting
    de borde y WAF. Gratis.
-2. **`MP_WEBHOOK_SECRET` y `LEADS_WEBHOOK_URL`** en Render. Sin el primero no
-   se valida quién avisa de un pago; sin el segundo se pierden prospectos en
+2. **`MP_WEBHOOK_SECRET` y `LEADS_WEBHOOK_URL`** en Render. Sin el primero el
+   webhook rechaza pagos con 503; sin el segundo se pierden prospectos en
    cada reinicio.
-3. **Persistencia real de pedidos y leads.** Hoy viven en memoria y en los
-   logs. Una hoja de cálculo por webhook ya es infinitamente mejor que nada.
+3. **Configurar y aprobar el cutover PostgreSQL.** La integración de pedidos,
+   pagos e inventario está implementada en código, no verificada en producción.
+   Leads siguen en memoria/snapshot/webhook; no se improvisó un repositorio SQL.
+   Ver `docs/POSTGRES_PRODUCTION.md` para roles, TLS, respaldos y recuperación.
 4. **Redis para el rate limiting**, solo si algún día hay más de una instancia.

@@ -30,8 +30,12 @@ function validateObservation(observation, expected) {
 }
 
 async function applyVerifiedPayment(pool, observation, expected, { onStep } = {}) {
+  return withTransaction(pool, client => applyVerifiedPaymentTx(client, observation, expected, { onStep }));
+}
+
+// El adaptador usa la MISMA transacción para evento/outbox y la transición de dominio.
+async function applyVerifiedPaymentTx(client, observation, expected, { onStep } = {}) {
   const amount = validateObservation(observation, expected);
-  return withTransaction(pool, async client => {
     await lockInventory(client);
     const order = (await client.query("SELECT * FROM orders WHERE folio=$1 FOR UPDATE", [observation.folio])).rows[0];
     const attempt = order && (await client.query(`SELECT id FROM payment_attempts
@@ -159,7 +163,6 @@ async function applyVerifiedPayment(pool, observation, expected, { onStep } = {}
       review_reason=NULL, version=version+1, updated_at=clock_timestamp() WHERE id=$1`, [order.id]);
     step(onStep, "before_commit");
     return { outcome: "allocated" };
-  });
 }
 
-module.exports = { applyVerifiedPayment };
+module.exports = { applyVerifiedPayment, applyVerifiedPaymentTx };

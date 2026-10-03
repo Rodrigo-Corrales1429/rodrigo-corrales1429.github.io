@@ -6,7 +6,7 @@ const crypto = require("node:crypto");
 const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
-const { Pool } = require("pg");
+const { Pool, Client } = require("pg");
 const { migrate } = require("./db/migrate");
 const { createPool, poolConfig } = require("./db/pool");
 const { TEST_MARKER, assertDisposableTestDatabase, testDatabaseUrl } = require("./db/test-target");
@@ -77,6 +77,61 @@ async function main() {
   assert.equal(productionConfig.ssl.servername, "db.invalid");
   assert.equal(poolConfig({ url: tlsTarget.href, environment: "production" }).ssl.rejectUnauthorized, true);
   process.stdout.write("✓ Pool: TLS de producción y límites de configuración; el llamador no elige entorno\n");
+
+  // Sólo configuración pura: la matriz remota nunca crea pools ni abre sockets.
+  const tlsMatrix = [
+    ["localhost/development", "localhost", "development", undefined, true],
+    ["127.0.0.1/test", "127.0.0.1", "test", "disable", true],
+    ["::1/test", "[::1]", "test", "disable", true],
+    ["remoto/development/sin TLS", "db.invalid", "development", undefined, false],
+    ["remoto/test/sin TLS", "db.invalid", "test", undefined, false],
+    ["remoto/NODE_ENV ausente/sin TLS", "db.invalid", undefined, undefined, false],
+    ["remoto/production/disable", "db.invalid", "production", "disable", false],
+    ["remoto/sslmode=disable", "db.invalid", "development", "verify-full", false, "sslmode=disable"],
+    ["remoto/rejectUnauthorized=false", "db.invalid", "development", "verify-full", false, "rejectUnauthorized=false"]
+  ];
+  for (const [name, host, environment, tls, allowed, query] of tlsMatrix) {
+    const options = { url: `postgresql://synthetic@${host}/valquiria_test${query ? `?${query}` : ""}`, environment, tls };
+    if (allowed) assert.equal(poolConfig(options).ssl, false, name);
+    else assert.throws(() => poolConfig(options), /TLS|BLOQUEO/, name);
+  }
+  process.stdout.write(`✓ TLS downgrade matrix: ${tlsMatrix.length}/${tlsMatrix.length}; loopback permitido, remoto sin TLS rechazado\n`);
+
+  for (const environment of [undefined, "", "development", "staging", "production"]) {
+    assert.throws(() => poolConfig({ url: tlsTarget.href, environment, tls: "disable" }), /TLS verificado/);
+    const secure = poolConfig({ url: tlsTarget.href, environment, tls: "verify-full" });
+    assert.equal(secure.ssl.rejectUnauthorized, true);
+    assert.equal(secure.ssl.servername, "db.invalid");
+    const driver = new Client(secure); // constructor únicamente; nunca connect().
+    assert.equal(driver.host, "db.invalid");
+    assert.deepEqual(driver.ssl, secure.ssl);
+    assert.equal(driver.connectionParameters.isDomainSocket, false);
+  }
+  for (const environment of [undefined, "", "staging", "qa", "production"]) {
+    assert.throws(() => poolConfig({ url: "postgresql://synthetic@localhost/valquiria_test",
+      environment, tls: "disable" }), /TLS verificado/);
+  }
+  const injectedQueries = ["host=db.invalid", "%68ost=db.invalid", "host=localhost&host=db.invalid",
+    "host=%2Ftmp", "hostaddr=198.51.100.2", "port=5433", "sslnegotiation=direct", "uselibpqcompat=true",
+    "ssl=false", "ssl=0", "ssl=no-verify", "sslmode=no-verify", "%73slmode=disable",
+    "SSLMode=disable", "rejectUnauthorized=false", "sslcert=%2Ftmp%2Fprivate", "sslkey=%2Ftmp%2Fprivate", "sslrootcert=%2Ftmp%2Fprivate"];
+  for (const query of injectedQueries) {
+    assert.throws(() => poolConfig({ url: `postgresql://synthetic@localhost/valquiria_test?${query}`,
+      environment: "development", tls: "verify-full" }), /TLS|destino/, query);
+  }
+  for (const host of ["%2Ftmp", "%252Ftmp", "%6cocalhost"]) {
+    assert.throws(() => poolConfig({ url: `postgresql://synthetic@${host}/valquiria_test`,
+      environment: "development", tls: "verify-full" }), /DATABASE_URL/);
+  }
+  for (const host of ["localhost.", "127.1", "127.0.0.2", "2130706433", "0x7f000001", "[::ffff:127.0.0.1]", "localhost.db.invalid"]) {
+    assert.throws(() => poolConfig({ url: `postgresql://synthetic@${host}/valquiria_test`,
+      environment: "development", tls: "disable" }), /TLS verificado/);
+  }
+  for (const tls of ["no-verify", "require", false, { rejectUnauthorized: false }]) {
+    assert.throws(() => poolConfig({ url: tlsTarget.href, environment: "development", tls }), /DATABASE_TLS/);
+  }
+  assert.throws(() => createPool({ url, rejectUnauthorized: false }), /BLOQUEO/);
+  process.stdout.write("✓ TLS: entornos, aliases, overrides percent-encoded/repetidos, sockets y opciones no verificadas rechazados\n");
 
   const schema = `phase2a_test_${crypto.randomBytes(8).toString("hex")}`;
   const admin = new Pool({ connectionString: url, max: 2, connectionTimeoutMillis: 5000 });

@@ -5,6 +5,10 @@ async function withTransaction(pool, work) {
   let begun = false;
   let committing = false;
   let discard = false;
+  // pg también emite 'error' en clientes prestados al cortarse el socket. El
+  // listener del pool sólo protege los inactivos; no tumbar el proceso durante TX.
+  const disconnected = () => { discard = true; };
+  client.on("error", disconnected);
   try {
     await client.query("BEGIN");
     begun = true;
@@ -22,6 +26,7 @@ async function withTransaction(pool, work) {
     throw error;
   } finally {
     client.release(discard);
+    client.removeListener("error", disconnected);
   }
 }
 

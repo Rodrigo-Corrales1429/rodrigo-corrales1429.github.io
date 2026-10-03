@@ -85,6 +85,7 @@ exclude:
   - test-hardening.js
   - test-persistence.js
   - test-domain-services.js
+  - test-postgres-commerce.js
 
   # Plantilla de configuración: no lleva valores reales, pero enumera cada
   # variable de entorno que existe. No hace falta publicarla.

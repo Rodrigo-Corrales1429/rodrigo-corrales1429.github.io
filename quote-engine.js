@@ -221,7 +221,7 @@ function validarYNormalizarItems(items) {
 
 // ------- COTIZACIÓN (sin cambios estructurales) -------
 
-function calcularCotizacion(items) {
+function calcularCotizacion(items, { stockPorSku } = {}) {
   let itemsNormalizados;
   try {
     itemsNormalizados = validarYNormalizarItems(items);
@@ -242,12 +242,13 @@ function calcularCotizacion(items) {
       continue;
     }
 
-    if (item.cantidad > producto.stock) {
+    const stock = stockPorSku instanceof Map ? (stockPorSku.get(item.sku) || 0) : producto.stock;
+    if (item.cantidad > stock) {
       sinStock.push({
         sku: producto.sku,
         nombre: producto.nombre,
         solicitado: item.cantidad,
-        disponible: producto.stock
+        disponible: stock
       });
       continue;
     }

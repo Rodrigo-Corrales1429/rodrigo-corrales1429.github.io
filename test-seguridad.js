@@ -1019,12 +1019,10 @@ async function main() {
     });
 
     // =====================================================================
-    seccion("2B · Servicios SQL aislados — nada del API público los alcanza hasta 2E");
+    seccion("SQL productivo · adaptador confiable; herramientas del modelo aisladas");
     // =====================================================================
-    /* 2B es un checkpoint de dominio, no un sistema financiero: `verified:true`
-       lo pone el llamador, payment_events no se escribe y no hay conciliación.
-       Hasta que exista el adaptador de 2E, ningún módulo que sirva al público
-       puede llegar a ellos, ni directa ni indirectamente. */
+    /* El adaptador productivo verifica al proveedor y escribe evento/estado/outbox
+       juntos. Las herramientas del modelo NO adquieren capacidad SQL directa. */
     const PROHIBIDOS_2B = ["services/payments.js", "services/orders.js", "services/inventory.js",
       "db/pool.js", "repositories/core.js"];
     const { dependenciasDe, grafoDesde } = require("./scripts/grafo-dependencias.js");
@@ -1037,25 +1035,26 @@ async function main() {
     };
     const real = f => JSON.stringify(path.join(RAIZ, f));
 
-    await prueba("server.js y todo su grafo no alcanzan ningún servicio 2B, ni el pool, ni los repositorios", () => {
+    await prueba("server alcanza SQL por el adaptador; gemini-tools y frontend no adquieren capacidad SQL", () => {
       const g = grafoDesde(path.join(RAIZ, "server.js"));
       const modulos = relativos(g);
       afirmar(modulos.length > 10, `el recorrido solo vio ${modulos.length} módulos: la prueba no mira nada`);
       afirmar(!g.dudosos.length, `hay cargas que el análisis no puede seguir (falla cerrado): ${g.dudosos.join(" | ")}`);
       const conectados = modulos.filter(m => PROHIBIDOS_2B.includes(m));
-      afirmar(!conectados.length, `2B quedó conectado al API público: ${conectados.join(", ")}`);
-      afirmar(!g.externos.includes("pg"), "el backend productivo carga el driver de PostgreSQL");
-      /* Y ni siquiera se nombran: ni en comentarios ni en cadenas del grafo. */
-      const nombrados = g.modulos.filter(m => /services\/(payments|orders|inventory)|db\/pool|repositories\/core/
-        .test(fs.readFileSync(m, "utf8"))).map(m => path.relative(RAIZ, m));
-      afirmar(!nombrados.length, `el grafo productivo nombra rutas 2B: ${nombrados.join(", ")}`);
+      afirmar(conectados.length === PROHIBIDOS_2B.length && modulos.includes("services/postgres-runtime.js"), "falta la integración SQL confiable");
+      afirmar(g.externos.includes("pg"), "falta el driver del adaptador SQL");
+      for (const entry of ["gemini-tools.js", "assets/js/app.js"]) {
+        const isolated = grafoDesde(path.join(RAIZ, entry));
+        afirmar(!relativos(isolated).some(m => PROHIBIDOS_2B.includes(m) || m === "services/postgres-runtime.js"), `${entry} adquiere autoridad SQL`);
+        afirmar(!isolated.externos.includes("pg"), `${entry} carga pg`);
+      }
     });
-    await prueba("al arrancar de verdad, server.js no carga 2B ni el driver pg", async () => {
+    await prueba("modo legacy explícito no carga servicios SQL ni driver pg", async () => {
       const hijo = spawn(process.execPath, ["-e",
         "require(process.argv[1]); setTimeout(() => { process.stdout.write(\"\\n@@MODULOS@@\" + JSON.stringify(Object.keys(require.cache)), () => process.exit(0)); }, 1500);",
         path.join(RAIZ, "server.js")], {
         env: { ...process.env, PORT: "0", NODE_ENV: "test", AVISOS_SILENCIO: "1", GEMINI_API_KEY: "clave-falsa-de-pruebas",
-          ALMACEN_RUTA: "", DATABASE_URL: undefined, TEST_DATABASE_URL: undefined, RENDER: undefined },
+          PERSISTENCIA: "legacy", ALMACEN_RUTA: "", DATABASE_URL: undefined, TEST_DATABASE_URL: undefined, RENDER: undefined },
         stdio: ["ignore", "pipe", "ignore"] });
       let salida = "";
       hijo.stdout.on("data", d => (salida += d));

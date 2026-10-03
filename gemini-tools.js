@@ -638,7 +638,7 @@ function subtotalDelCarrito(carrito) {
   return centavos;
 }
 
-function cotizarConCarrito(args, carritoActual) {
+function cotizarConCarrito(args, carritoActual, opciones = {}) {
   const accionResuelta = resolverAccionCotizacion(args);
   if (!accionResuelta.ok) return accionResuelta;
   const accion = accionResuelta.accion;
@@ -740,7 +740,7 @@ function cotizarConCarrito(args, carritoActual) {
     };
   }
 
-  const cot = calcularCotizacion(aLista(final));
+  const cot = calcularCotizacion(aLista(final), opciones);
   if (!cot.ok) return { ...cot, accion };
 
   /* Avisos para que el asesor confirme en su respuesta, sin inventarlos. */
@@ -1024,21 +1024,40 @@ function cotizarDentalOs(args = {}) {
  */
 async function ejecutarHerramienta({ name, args }, ctx = {}) {
   try {
+    // Sólo el servidor inyecta la lectura de disponibilidad. No SQL/driver ni
+    // capacidad transaccional en las herramientas; tampoco viene de args/modelo.
+    let stock;
+    if (typeof ctx.obtenerStock === "function" && ["buscar_productos", "listar_catalogo", "calcular_cotizacion"].includes(name) &&
+        !(name === "calcular_cotizacion" && args?.accion === "vaciar")) {
+      try {
+        stock = await ctx.obtenerStock();
+        if (!(stock instanceof Map)) throw new Error("stock_contract");
+      } catch {
+        return { ok: false, error: "No pude confirmar inventario en este momento. Tu carrito se conserva; intenta de nuevo o contacta por WhatsApp." };
+      }
+    }
+    const availability = result => {
+      if (!stock) return result;
+      for (const list of [result.resultados, result.productos]) if (Array.isArray(list)) {
+        for (const product of list) product.stock_disponible = stock.get(product.sku) || 0;
+      }
+      return result;
+    };
     switch (name) {
       case "consultar_division":
         return consultarConocimiento(args?.tema);
 
       case "buscar_productos":
-        return buscarProductos(args?.query);
+        return availability(buscarProductos(args?.query));
 
       case "listar_catalogo":
-        return listarCatalogo();
+        return availability(listarCatalogo());
 
       case "calcular_cotizacion":
         /* `ctx.carrito` es el carrito REAL del cliente, saneado en server.js.
            No se toma del historial ni de lo que crea el modelo: si él pierde
            el hilo del estado, la cuenta sigue saliendo bien. */
-        return cotizarConCarrito(args, ctx.carrito || []);
+        return cotizarConCarrito(args, ctx.carrito || [], stock ? { stockPorSku: stock } : {});
 
       case "estimar_impresion_3d":
         return estimarImpresion3D(args);

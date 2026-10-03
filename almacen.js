@@ -89,8 +89,10 @@ function restaurar() {
     /* Un archivo corrupto NO puede impedir que el servidor arranque: se
        ignora, se avisa, y se sigue con el estado vacío. Perder el mirador es
        recuperable; no poder vender, no. */
-    ultimoError = String(e?.message || e).slice(0, 200);
-    console.error(`[almacen] No se pudo leer ${RUTA}: ${ultimoError}. Se arranca vacío.`);
+    // JSON.parse puede incluir fragmentos del snapshot (PII) en su mensaje.
+    // Tampoco publicar rutas ni mensajes crudos de errores del filesystem.
+    ultimoError = e instanceof SyntaxError ? "snapshot_json_invalid" : "snapshot_read_failed";
+    console.error(`[almacen] No se pudo leer la instantánea (${ultimoError}). Se arranca vacío.`);
     return { restaurado: false, motivo: ultimoError };
   }
 }
@@ -125,8 +127,8 @@ function guardarYa() {
     pendiente = false;
     return true;
   } catch (e) {
-    ultimoError = String(e?.message || e).slice(0, 200);
-    console.error(`[almacen] No se pudo guardar en ${RUTA}: ${ultimoError}`);
+    ultimoError = "snapshot_write_failed";
+    console.error(`[almacen] No se pudo guardar la instantánea (${ultimoError}).`);
     return false;
   }
 }

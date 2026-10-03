@@ -46,6 +46,23 @@ await test("Lista los 4 productos", async () => {
 });
 
 console.log("\n[C] Dispatcher: calcular_cotizacion");
+await test("Lectura inyectada de stock prevalece sobre catálogo sin autoridad SQL del modelo", async () => {
+  const ctx = { obtenerStock: async () => new Map([["ValEnd", 0]]) };
+  const quote = await ejecutarHerramienta({ name: "calcular_cotizacion", args: { items: [{ sku: "ValEnd", cantidad: 1 }] } }, ctx);
+  if (quote.ok || quote.sin_stock?.[0]?.disponible !== 0) throw new Error("Cotización usó stock del catálogo");
+  for (const name of ["listar_catalogo", "buscar_productos"]) {
+    const r = await ejecutarHerramienta({ name, args: { query: "endo" } }, ctx);
+    const endo = (r.productos || r.resultados).find(p => p.sku === "ValEnd");
+    if (endo.stock_disponible !== 0) throw new Error("Ficha usó stock del catálogo");
+  }
+});
+await test("DB caída no inventa stock; vaciar sigue sin requerir inventario", async () => {
+  const ctx = { obtenerStock: async () => { throw new Error("secreto-sintetico"); }, carrito: [{ sku: "ValEnd", cantidad: 1 }] };
+  const r = await ejecutarHerramienta({ name: "calcular_cotizacion", args: { items: [{ sku: "ValEnd", cantidad: 1 }] } }, ctx);
+  if (r.ok || /secreto/.test(r.error)) throw new Error("Fallo de inventario no cerrado/minimizado");
+  const empty = await ejecutarHerramienta({ name: "calcular_cotizacion", args: { accion: "vaciar" } }, ctx);
+  if (!empty.ok || empty.carrito_final.length) throw new Error("Vaciar perdió su contrato");
+});
 await test("Schema distingue vaciar, quitar y acciones con cantidad obligatoria", async () => {
   const declaracion = TOOLS[0].functionDeclarations
     .find(d => d.name === "calcular_cotizacion");

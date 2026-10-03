@@ -23,6 +23,7 @@ function poolConfig({ url, tls, caFile, poolMax, connectTimeoutMs, statementTime
     assertLocalTestUrl(url);
   }
   if (!url) throw new Error("DATABASE_URL no configurada");
+  if (typeof url !== "string" || /\s/.test(url)) throw new Error("DATABASE_URL inválida");
 
   let parsed;
   try {
@@ -33,17 +34,29 @@ function poolConfig({ url, tls, caFile, poolMax, connectTimeoutMs, statementTime
   if (!(["postgres:", "postgresql:"].includes(parsed.protocol) && parsed.hostname && parsed.pathname.length > 1)) {
     throw new Error("DATABASE_URL inválida");
   }
-  // pg-connection-string puede sobrescribir la opción ssl si la URL contiene estos parámetros.
-  for (const key of ["sslmode", "sslcert", "sslkey", "sslrootcert", "ssl"]) {
-    if (parsed.searchParams.has(key)) throw new Error("Opciones TLS en DATABASE_URL no admitidas");
+  const hostname = parsed.hostname.replace(/^\[|\]$/g, "");
+  // pg decodifica el host después: no admitir authorities codificadas como rutas
+  // Unix ni otra representación distinta del destino que validamos aquí.
+  if (parsed.hash || (!net.isIP(hostname) && !/^[a-z0-9.-]+$/i.test(hostname))) {
+    throw new Error("DATABASE_URL inválida");
+  }
+  // pg reparsea connectionString y da prioridad a los parámetros sobre nuestras
+  // opciones. Ningún parámetro puede sustituir destino, transporte o verificación.
+  const forbidden = new Set(["host", "hostaddr", "port", "path", "socket", "socketpath",
+    "sslmode", "sslcert", "sslkey", "sslrootcert", "ssl", "sslnegotiation", "uselibpqcompat",
+    "rejectunauthorized", "servername", "checkserveridentity"]);
+  for (const key of parsed.searchParams.keys()) {
+    if (forbidden.has(key.toLowerCase())) throw new Error("Opciones TLS/destino en DATABASE_URL no admitidas");
   }
 
-  const mode = tls || (environment === "production" ? "verify-full" : "disable");
+  const mode = tls === undefined ? (environment === "production" ? "verify-full" : "disable") : tls;
   if (mode !== "verify-full" && mode !== "disable") throw new Error("DATABASE_TLS inválida");
-  if (environment === "production" && mode !== "verify-full") {
-    throw new Error("PostgreSQL requiere TLS verificado en producción");
+  const loopback = ["localhost", "127.0.0.1", "::1"].includes(hostname.toLowerCase());
+  const localDevelopment = loopback && ["development", "test"].includes(environment);
+  if (!localDevelopment && mode !== "verify-full") {
+    throw new Error("PostgreSQL requiere TLS verificado para este destino");
   }
-  if (mode === "verify-full" && net.isIP(parsed.hostname.replace(/^\[|\]$/g, ""))) {
+  if (mode === "verify-full" && net.isIP(hostname)) {
     throw new Error("TLS verificado requiere un hostname PostgreSQL");
   }
   if (caFile && mode !== "verify-full") throw new Error("DATABASE_CA_FILE requiere TLS verificado");
@@ -87,7 +100,8 @@ function createPool({
   // ya descarta ese cliente y la siguiente consulta abre otro. Solo el código: el
   // mensaje puede traer host o usuario.
   pool.on("error", error => {
-    process.stderr.write(`PostgreSQL: conexión inactiva descartada (${error.code || "sin código"}).\n`);
+    const code = typeof error.code === "string" && /^[A-Z0-9]{5}$/.test(error.code) ? error.code : "desconocido";
+    process.stderr.write(`PostgreSQL: conexión inactiva descartada (${code}).\n`);
   });
   return pool;
 }

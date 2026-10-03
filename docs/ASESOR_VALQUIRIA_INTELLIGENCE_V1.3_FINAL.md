@@ -51,13 +51,13 @@ Este documento es la especificación maestra del Asesor Valquiria para valquiria
 
 La especificación cambia poco; este bloque cambia cada sesión de desarrollo. Actualizarlo es obligatorio al cerrar cualquier sesión de trabajo: unas líneas evitan que el documento envejezca y que nadie sepa qué partes siguen pendientes cuando el código avanza diez commits.
 
-Último commit reconciliado: 12557ac
-Fase actual: 0 — correcciones críticas del Asesor
+Último commit reconciliado: 5a6b8a2
+Fase actual: integración productiva PostgreSQL — incremento expresamente autorizado; no se declara completada Fase 0 ni toda Fase 2
 Último hito cerrado: Shipping Brain V1 — multi-provider Envia/Skydropx + política determinista + checkout consistente
-Incremento actual: Fase 0.3 — E2E Chromium con backend real y proveedores simulados; respuesta obsoleta del Asesor descartada por snapshot canónico, guardia global de checkout y refresh SPA/SEO corregidos (sin commit)
-Evidencia G-02: gate técnico E2E satisfecho (23/23 en dos ejecuciones consecutivas, incluidos los 11 originales validados previamente en instalación limpia; npm test 570/570); aprobación adversarial final de Fase 0.3 pendiente
-Siguiente objetivo: aprobación adversarial final de Fase 0.3; Fase 0 no se declara completada. Multi-tab y cache de envío por CP/edad sin clave de carrito siguen como deudas explícitas fuera del incremento
-Bloqueadores conocidos: endpoints productivos aún no conectados a services/*; proveedores reales de envío aún pendientes de smoke test con credenciales
+Incremento actual: checkout/webhook/admin/stock conectados a services/* mediante adaptador SQL fail-closed; TX1 antes de proveedor, TX2, eventos/outbox/auditoría durables, PII mínima y preferencias inciertas sin POST ciego (sin commit). Implementado en código, NO configurado ni validado en producción. Operación: docs/POSTGRES_PRODUCTION.md
+Evidencia G-02: E2E Chromium 23/23 preservado; checkout snapshot, global lock, verifier, Shipping Brain y frontend sin rediseño. La matriz SQL usa PostgreSQL local marcado, procesos distintos y proveedores falsos. Integración aprobada adversarialmente por Claude: APPROVE WITH NON-BLOCKING NOTES; micro-hardening TLS por destino y texto de preferencia incierta verificado con gates locales completos
+Siguiente objetivo: obtener autorización explícita de commit y preparar la aprobación operativa del cutover; Fase 0 no se declara completada. Multi-tab y cache de envío por CP/edad sin clave de carrito siguen fuera del incremento; leads SQL diferidos por falta de servicio probado
+Bloqueadores conocidos: configurar y verificar roles/TLS/secretos/stock/canales/backup-restore en producción; aprobar retención y cutover legacy. Preferencias inciertas requieren conciliación manual; proveedores reales pendientes de smoke autorizado. No se habilitó infraestructura ni se contactó producción
 Actualizado: 02-oct-2026
 
 *Derivado posible a futuro: generar desde este archivo un `VALQUIRIA_CONTEXT_SHORT.md` de 10-15 KB para tareas pequeñas; este documento sigue siendo siempre la fuente canónica completa.*

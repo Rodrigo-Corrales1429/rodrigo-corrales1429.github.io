@@ -205,18 +205,18 @@ function construirPreferencia({
 /**
  * Crea la preferencia contra la API de Mercado Pago.
  *
- * La clave de idempotencia evita el peor accidente de un checkout: un doble
- * clic —o un reintento de la red— que genera dos preferencias y acaba en dos
- * cobros. Con la misma clave, Mercado Pago devuelve la preferencia original.
+ * Se envía una clave estable por intento, pero no se presupone que Preferences
+ * deduplique POSTs. El adaptador SQL no repite una creación de resultado incierto.
  */
-async function crearPreferencia(preferencia, token, conTimeout) {
+async function crearPreferencia(preferencia, token, conTimeout, { idempotencyKey = preferencia.external_reference } = {}) {
   const r = await conTimeout(
     fetch(`${MP_API}/checkout/preferences`, {
       method: "POST",
+      signal: AbortSignal.timeout(15000), // deadline incluye headers y lectura del body.
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
-        "X-Idempotency-Key": preferencia.external_reference
+        "X-Idempotency-Key": idempotencyKey
       },
       body: JSON.stringify(preferencia)
     }),
@@ -288,6 +288,7 @@ function validarFirmaWebhook({ xSignature, xRequestId, dataId, secreto }) {
 async function consultarPago(pagoId, token, conTimeout) {
   const r = await conTimeout(
     fetch(`${MP_API}/v1/payments/${encodeURIComponent(pagoId)}`, {
+      signal: AbortSignal.timeout(12000),
       headers: { Authorization: `Bearer ${token}` }
     }),
     12000,

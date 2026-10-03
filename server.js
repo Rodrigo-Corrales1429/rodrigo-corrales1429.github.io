@@ -32,7 +32,8 @@
 const express = require("express");
 const cors = require("cors");
 const crypto = require("crypto");
-require("dotenv").config();
+// Tests aislados nunca cargan secretos del .env privado.
+if (process.env.NODE_ENV !== "test") require("dotenv").config({ path: process.env.DOTENV_CONFIG_PATH || ".env" });
 const { GoogleGenAI } = require("@google/genai");
 
 const {
@@ -60,6 +61,11 @@ const { estadoEnvios, cotizarEnvio, respuestaPublicaEnvio, ubicar } = require(".
 const avisos = require("./notificaciones.js");
 const inventario = require("./inventario.js");
 const almacen = require("./almacen.js");
+// Opt-in explícito; una URL configurada sin modo también exige SQL. Un modo
+// inválido cierra comercio: jamás se interpreta como permiso para caer a RAM.
+const MODO_PERSISTENCIA = process.env.DATABASE_URL && process.env.PERSISTENCIA === "legacy" ? "invalid" :
+  process.env.PERSISTENCIA || (process.env.DATABASE_URL ? "postgres" : "legacy");
+const COMERCIO = MODO_PERSISTENCIA === "legacy" ? null : require("./services/postgres-runtime").createRuntime();
 const { crearIdentidad, duenoDeReserva } = require("./identidad.js");
 const { minimizar: minimizarPii, contactoEscrito } = require("./assets/js/pii-comercial.js");
 const {
@@ -1001,7 +1007,8 @@ async function correrConversacion(historialInicial, contextoSesion = "", carrito
      el modelo puede perder el hilo del estado sin que la cuenta se estropee.
      Lo mismo el contacto retenido: el modelo no lo ve. Y `leads`, el mapa de
      ESTA petición donde registrar_interes deja el lead completo por folio. */
-  const ctxHerramientas = { carrito, contactoRetenido, leads };
+  const ctxHerramientas = { carrito, contactoRetenido, leads,
+    ...(COMERCIO ? { obtenerStock: async () => new Map((await COMERCIO.inventory()).map(p => [p.sku, p.disponible])) } : {}) };
 
   let skusParaTarjetas = [];
   let ultimaCotizacion = null;
@@ -1412,7 +1419,17 @@ app.post("/api/pago", limitarPagos, async (req, res) => {
       });
     }
 
-    const cot = calcularCotizacion(items);
+    if (COMERCIO && MODO_PERSISTENCIA !== "postgres") {
+      return res.status(503).json({ error: COMERCIO.MESSAGE });
+    }
+    const idempotencyKey = req.get("idempotency-key");
+    if (COMERCIO && idempotencyKey !== undefined && !/^[A-Za-z0-9_-]{8,120}$/.test(idempotencyKey)) {
+      return res.status(400).json({ error: "Clave de reintento inválida." });
+    }
+    // El motor comprueba existencia/stock físico; TX1 decide disponibilidad y reservas
+    // bajo locks (incluye el apartado propio de un reintento, sin rechazarlo dos veces).
+    const stockSql = COMERCIO ? new Map((await COMERCIO.inventory()).map(p => [p.sku, p.stock_declarado])) : null;
+    const cot = calcularCotizacion(items, stockSql ? { stockPorSku: stockSql } : {});
     if (!cot.ok) {
       return res.status(400).json({ error: cot.error });
     }
@@ -1451,6 +1468,11 @@ app.post("/api/pago", limitarPagos, async (req, res) => {
     }
     const envioCentavos = opcionEnvio.costo_centavos;
     const totalCentavos = cot._raw.subtotal_centavos + envioCentavos;
+
+    if (COMERCIO) {
+      return await checkoutPostgres({ res, cot, dueno, comprador: comprador.datos, idempotencyKey,
+        envioReal, opcionEnvio, envioCentavos, totalCentavos, mpToken });
+    }
 
     /* ═══ LUGAR PARA EL PEDIDO, ANTES DE APARTAR NADA ═══
        Si la memoria de pedidos está llena de pedidos que todavía pueden
@@ -1632,6 +1654,11 @@ app.post("/api/pago", limitarPagos, async (req, res) => {
       url_prueba: data.sandbox_init_point || undefined
     });
   } catch (e) {
+    if (COMERCIO) {
+      COMERCIO.state.checkout_failures++;
+      console.error("[commerce] checkout_failed");
+      return res.status(503).json({ error: res.locals.preferenceUnconfirmed ? COMERCIO.UNCERTAIN_MESSAGE : COMERCIO.MESSAGE });
+    }
     console.error(`[/api/pago] req_id=${requestId} folio=${folioLog} fallo mp_http=${Number(e.mpStatus) || 0}`);
     return res.status(502).json({
       error:
@@ -1643,6 +1670,67 @@ app.post("/api/pago", limitarPagos, async (req, res) => {
     if (ocupaLugar) pedidosEnCreacion--;
   }
 });
+
+async function checkoutPostgres({ res, cot, dueno, comprador, idempotencyKey,
+  envioReal, opcionEnvio, envioCentavos, totalCentavos, mpToken }) {
+  const folio = "VQ-" + Date.now().toString(36).toUpperCase() + "-" + crypto.randomBytes(6).toString("hex").toUpperCase();
+  const shipping = {
+    envio: `${opcionEnvio.paqueteria} · ${opcionEnvio.servicio} · ${opcionEnvio.costo}`,
+    logistica: envioReal.logistica,
+    desglose: { subtotal_centavos: cot._raw.subtotal_centavos, envio_centavos: envioCentavos,
+      total_centavos: totalCentavos, envio: { cp: envioReal.destino.cp, paqueteria: opcionEnvio.paqueteria,
+        servicio: opcionEnvio.servicio, costo: opcionEnvio.costo, costo_centavos: envioCentavos,
+        gratis: !!opcionEnvio.envio_gratis, texto: opcionEnvio.texto || "",
+        es_estimacion: !!envioReal.es_estimacion, fuente: envioReal.fuente } }
+  };
+  const prepared = await COMERCIO.prepare({ cot, identity: dueno, buyer: comprador, idempotencyKey,
+    shipping, expiresAt: new Date(Date.now() + VIGENCIA_MIN * 60_000), folio });
+  if (!prepared.ok) {
+    const motives = { max_per_sku: "tope-por-sku", max_units: "tope-unidades", stock_protected: "stock-protegido" };
+    return res.status(prepared.reason === "stock" || prepared.reason === "idempotency_conflict" ? 409 : 400).json({
+      error: prepared.reason === "idempotency_conflict" ? "El reintento no coincide con el pedido original." :
+        "No puedo apartar esas cantidades para pago en línea. Ajusta el pedido o escríbenos por WhatsApp al +52 771 795 9131.",
+      motivo: motives[prepared.reason] || "stock" });
+  }
+  const claim = await COMERCIO.claimPreference(prepared.attemptId);
+  if (claim.busy || claim.closed) return res.status(503).json({ error: claim.uncertain ? COMERCIO.UNCERTAIN_MESSAGE : COMERCIO.MESSAGE });
+  const order = await COMERCIO.read(prepared.folio);
+  const response = url => res.json({ url, folio: order.folio, total: centavosAPesos(Number(order.total_centavos)),
+    total_centavos: Number(order.total_centavos), desglose: order.shipping_quote.desglose });
+  if (claim.ready) return response(claim.attempt.checkout_url);
+  const preference = construirPreferencia({
+    cot: { lineas: order.items.map(i => ({ sku: i.sku, nombre: i.title, cantidad: i.quantity })),
+      _raw: { subtotal_centavos: Number(order.subtotal_centavos), envio_centavos: Number(order.shipping_centavos) } },
+    productoPorSku: sku => ({ ...getProductoPorSku(sku), precio_centavos: Number(order.items.find(i => i.sku === sku).unit_price_centavos) }),
+    folio: order.folio, sitioUrl: SITIO_URL,
+    notificacionUrl: BACKEND_URL ? `${BACKEND_URL}/api/pago/webhook` : null,
+    comprador: { nombre: order.buyer_name, email: order.buyer_email, whatsapp: order.buyer_phone, ...order.shipping_address },
+    envio: { centavos: Number(order.shipping_centavos), servicio: order.shipping_quote.desglose.envio.servicio }
+  });
+  preference.expiration_date_to = new Date(claim.attempt.expires_at).toISOString();
+  preference.metadata.attempt_id = prepared.attemptId;
+  let data;
+  // Sólo selecciona texto HTTP; no cambia estados, retries ni transacciones.
+  // Desde el POST hasta confirmar TX2 el proveedor podría haber creado el intento.
+  res.locals.preferenceUnconfirmed = true;
+  try {
+    data = await crearPreferencia(preference, mpToken, conTimeout, { idempotencyKey: claim.attempt.provider_key });
+    const destination = new URL(data.init_point);
+    if (typeof data.id !== "string" || !/^[A-Za-z0-9_-]{1,120}$/.test(data.id) || destination.protocol !== "https:" ||
+        destination.username || destination.password || !/(^|\.)mercadopago\.com(\.mx)?$/.test(destination.hostname)) {
+      throw new Error("provider_contract");
+    }
+  } catch (error) {
+    const definitive = Number(error.mpStatus) >= 400 && Number(error.mpStatus) < 500 && ![408, 429].includes(Number(error.mpStatus));
+    if (definitive) res.locals.preferenceUnconfirmed = false;
+    await COMERCIO.failPreference(claim.attempt, definitive);
+    throw error;
+  }
+  await COMERCIO.attachPreference(claim.attempt, data);
+  res.locals.preferenceUnconfirmed = false;
+  despertarOutbox();
+  return response(data.init_point);
+}
 
 /**
  * ═══ WEBHOOK DE MERCADO PAGO ═══
@@ -1741,6 +1829,7 @@ app.post("/api/pago/webhook", async (req, res) => {
   /* Lo que no es un pago se acusa y se olvida: hay notificaciones de tipos
      que no nos incumben y reintentarlas no arreglaría nada. */
   if (tipo !== "payment" || !dataId || !mpToken) {
+    if (COMERCIO && tipo === "payment" && !mpToken) return res.status(503).json({ error: COMERCIO.MESSAGE });
     return res.status(200).json({ recibido: true, ignorado: true });
   }
 
@@ -1757,6 +1846,13 @@ app.post("/api/pago/webhook", async (req, res) => {
      es lo que hace que reintentar sea barato. */
   try {
     const pago = await consultarPago(dataId, mpToken, conTimeout);
+    if (COMERCIO) {
+      const result = await COMERCIO.reconcile(pago, dataId);
+      despertarOutbox();
+      return res.json({ recibido: true, repetido: result.outcome === "duplicate",
+        duplicado: result.outcome === "double_payment",
+        revision: ["review", "association_conflict", "paid_unallocated", "financial_reversal"].includes(result.outcome) });
+    }
     const folio = pago.external_reference || null;
     const estado = pago.status;
     const clave = `${pago.id}:${estado}`;
@@ -1995,6 +2091,11 @@ app.post("/api/pago/webhook", async (req, res) => {
     marcarEventoProcesado(clave);
     return res.status(200).json({ recibido: true });
   } catch (e) {
+    if (COMERCIO) {
+      COMERCIO.state.webhook_reconciliation_failures++;
+      console.error("[commerce] webhook_reconciliation_failed");
+      return res.status(503).json({ error: "No se pudo registrar el pago. Reintenta." });
+    }
     /* 5xx a propósito: es la única forma de pedirle a Mercado Pago que
        vuelva a intentarlo. Un 200 aquí sería dar por procesado un pago que
        no se pudo ni leer. */
@@ -2019,7 +2120,14 @@ app.post("/api/pago/webhook", async (req, res) => {
  * tiempo, así que no se adivina; aun así, aquí no salen ni el contacto ni la
  * dirección — quien pregunta por un folio no demuestra ser su dueño.
  */
-app.get("/api/pedido/:folio", limitarPulso, (req, res) => {
+app.get("/api/pedido/:folio", limitarPulso, async (req, res) => {
+  if (COMERCIO) {
+    try {
+      if (!/^[A-Za-z0-9_-]{3,120}$/.test(req.params.folio || "")) return res.status(404).json({ error: "Pedido no encontrado." });
+      const order = await COMERCIO.read(req.params.folio);
+      return order ? res.json(COMERCIO.publicOrder(order)) : res.status(404).json({ error: "Pedido no encontrado." });
+    } catch { return res.status(503).json({ error: "No se pudo consultar el pedido. Intenta de nuevo." }); }
+  }
   const p = PEDIDOS.get(String(req.params.folio || ""));
   if (!p) return res.status(404).json({ error: "Pedido no encontrado." });
   return res.json({
@@ -2319,10 +2427,14 @@ app.post("/api/admin/sesion", limitarAdmin, (req, res) => {
   res.json({ ok: true, ...emitirSesionAdmin() });
 });
 
-app.get("/api/admin/resumen", limitarAdmin, (req, res) => {
+app.get("/api/admin/resumen", limitarAdmin, async (req, res) => {
   if (!exigirAdmin(req, res)) return;
-
-  const pedidos = [...PEDIDOS.values()]
+  let sql;
+  if (COMERCIO) {
+    try { sql = await COMERCIO.admin(); }
+    catch { return res.status(503).json({ error: "Comercio temporalmente no disponible.", persistencia: { ...COMERCIO.state } }); }
+  }
+  const pedidos = sql ? sql.pedidos : [...PEDIDOS.values()]
     .sort((a, b) => String(b.creado || "").localeCompare(String(a.creado || "")))
     .map(p => ({
       folio: p.folio,
@@ -2352,8 +2464,9 @@ app.get("/api/admin/resumen", limitarAdmin, (req, res) => {
   res.json({
     ok: true,
     generado: new Date().toISOString(),
-    hoy: avisos.metricas(),
+    hoy: sql ? sql.hoy : avisos.metricas(),
     dinero: {
+      ...(sql?.dinero || {}),
       pedidos_totales: pedidos.length,
       pagados: aprobados.length,
       pendientes: pendientes.length,
@@ -2371,13 +2484,15 @@ app.get("/api/admin/resumen", limitarAdmin, (req, res) => {
     envios: estadoEnvios(),
     almacen: almacen.estadoAlmacen(),
     inventario: inventario.estadoInventario(),
+    ...(sql ? { dinero: sql.dinero, inventario: sql.inventario, persistencia: sql.persistencia, intentos_inciertos: sql.intentos_inciertos,
+      pagos_no_conciliados: sql.pagos_no_conciliados } : {}),
     configuracion: {
       pagos: Boolean(process.env.MP_ACCESS_TOKEN),
       webhook_firmado: Boolean(process.env.MP_WEBHOOK_SECRET),
       modelo: MODELO,
       leads_webhook: Boolean(process.env.LEADS_WEBHOOK_URL)
     },
-    advertencia_persistencia:
+    advertencia_persistencia: sql ? "Pedidos/pagos/inventario: PostgreSQL. Leads y telemetría siguen en el almacén legacy." :
       "Los pedidos e intereses de esta pantalla viven en la memoria del " +
       "proceso: al reiniciarse Render se vacían. El registro definitivo de " +
       "cobros está en Mercado Pago."
@@ -2452,7 +2567,7 @@ function auditarConfiguracion() {
       `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`
     );
   }
-  if (!almacen.ACTIVO) {
+  if (!almacen.ACTIVO && !COMERCIO) {
     flojos.push(
       "ALMACEN_RUTA — pedidos, intereses y bitácora se BORRAN cuando Render " +
       "reinicia. Se arregla con un Persistent Disk. Ver AVISOS.md §7."
@@ -2511,12 +2626,14 @@ function auditarConfiguracion() {
  */
 almacen.configurar({
   leer: {
-    pedidos: () => [...PEDIDOS.values()],
+    ...(!COMERCIO ? { pedidos: () => [...PEDIDOS.values()] } : {}),
     leads: () => leadsCrudos(),
     bitacora: () => avisos.bitacoraCruda()
   },
   escribir: {
-    pedidos: filas => { for (const p of filas) if (p?.folio) PEDIDOS.set(p.folio, p); },
+    ...(!COMERCIO ? { pedidos: filas => {
+      for (const p of filas) if (p?.folio) PEDIDOS.set(p.folio, p);
+    } } : {}),
     leads: filas => restaurarLeads(filas),
     bitacora: filas => avisos.restaurarBitacora(filas)
   }
@@ -2532,6 +2649,36 @@ avisos.avisar = function (evento) {
 };
 
 const RELOJ_RESUMEN_MS = 10 * 60_000;
+let outboxEnCurso = false;
+function despertarOutbox() {
+  if (!COMERCIO || outboxEnCurso) return;
+  outboxEnCurso = true;
+  COMERCIO.ready().then(() => COMERCIO.drain(async (entry, order) => {
+    if (entry.event_type === "pago_aprobado" &&
+        (!order || order.payment_state !== "approved" || order.fulfillment_state !== "allocated")) return true;
+    const buyer = order ? { nombre: order.buyer_name, email: order.buyer_email,
+      whatsapp: order.buyer_phone, ...order.shipping_address } : null;
+    if (entry.channel === "orders_webhook") {
+      // La comprobación previa también suprime avisos humanos de aprobación obsoleta.
+      const url = process.env.PEDIDOS_WEBHOOK_URL || process.env.LEADS_WEBHOOK_URL;
+      if (!url) return false; // pendiente durable; configurar canal, no perder aviso.
+      const result = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json",
+        "X-Idempotency-Key": entry.id }, signal: AbortSignal.timeout(8000),
+      body: JSON.stringify({ tipo: "pedido", ...entry.event_data, evento_id: entry.id, version: entry.entity_version, comprador: buyer,
+        items: order.items.map(i => ({ sku: i.sku, cantidad: i.quantity, titulo: i.title })),
+        envio: order.shipping_quote?.envio, logistica: order.shipping_quote?.logistica }) });
+      return result.ok;
+    }
+    return avisos.entregarDurable({ ...entry.event_data, tipo: entry.event_type,
+      evento_id: entry.id, folio: order?.folio || entry.event_data.folio,
+      total_centavos: entry.event_data.total_centavos ?? Number(order?.total_centavos || 0),
+      comprador: contactoEnUnaLinea(buyer), whatsapp: buyer?.whatsapp, direccion: buyer?.direccion, cp: buyer?.cp,
+      items: order?.items.map(i => `${i.quantity}× ${i.title}`).join(", "),
+      envio: order?.shipping_quote?.envio, logistica: order?.shipping_quote?.logistica });
+  })).catch(() => console.error("[commerce] outbox_retry_pending"))
+    .finally(() => { outboxEnCurso = false; });
+}
+if (COMERCIO) setInterval(despertarOutbox, 30_000).unref();
 setInterval(() => {
   avisos.quizaResumenDiario().catch(e =>
     console.error("[avisos] resumen diario falló")
@@ -2559,7 +2706,7 @@ const servidor = app.listen(port, () => {
   const rest = almacen.restaurar();
   if (rest.restaurado) {
     console.log(
-      `[almacen] Recuperado de ${rest.guardado_el}: ` +
+      `[almacen] Recuperado: ` +
       `${rest.pedidos ?? 0} pedidos, ${rest.leads ?? 0} intereses, ` +
       `${rest.bitacora ?? 0} eventos.`
     );
@@ -2567,6 +2714,7 @@ const servidor = app.listen(port, () => {
     console.log(`[almacen] Sin datos previos (${rest.motivo}).`);
   }
   almacen.arrancar();
+  despertarOutbox();
   auditarConfiguracion();
 });
 
@@ -2588,7 +2736,8 @@ function cerrarLimpio(senal) {
   /* Último volcado: es el que salva el pedido que entró en el minuto anterior
      al despliegue. */
   if (almacen.detener()) console.log("[shutdown] Instantánea guardada.");
-  servidor.close(() => {
+  servidor.close(async () => {
+    if (COMERCIO) await COMERCIO.close().catch(() => {});
     console.log("[shutdown] Servidor cerrado correctamente.");
     process.exit(0);
   });
